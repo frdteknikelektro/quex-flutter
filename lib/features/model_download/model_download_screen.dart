@@ -40,16 +40,24 @@ class _ModelDownloadScreenState extends ConsumerState<ModelDownloadScreen> {
 
   Future<void> _downloadModel() async {
     setState(() => _downloading = true);
-    await for (final progress in ModelManager.simulateDownload()) {
+    try {
+      await for (final progress in ModelManager.downloadModel()) {
+        if (!mounted) return;
+        setState(() => _progress = progress);
+      }
+      await ModelManager.markReady(progress: 1.0);
       if (!mounted) return;
-      setState(() => _progress = progress);
+      setState(() {
+        _ready = true;
+        _downloading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _downloading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Download failed: $error')),
+      );
     }
-    await ModelManager.markReady(progress: 1.0);
-    if (!mounted) return;
-    setState(() {
-      _ready = true;
-      _downloading = false;
-    });
   }
 
   Future<void> _reset() async {

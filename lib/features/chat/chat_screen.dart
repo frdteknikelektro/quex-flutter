@@ -34,7 +34,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         createdAt: DateTime.now(),
       ),
     );
-    final reply = QuexAi.coachReply(
+    final reply = await QuexAi.coachReply(
       session: bundle.session,
       materials: bundle.materials,
       history: bundle.messages,

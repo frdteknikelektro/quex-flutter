@@ -1,9 +1,47 @@
 import 'dart:math';
 
+import 'gemma_inference_service.dart';
 import '../models/models.dart';
 
 class QuexAi {
-  static List<Question> buildQuiz({
+  /// Optional Gemma inference service for LLM-powered features.
+  /// When null, falls back to rule-based generation.
+  static GemmaInferenceService? _gemmaService;
+
+  /// Set the Gemma inference service to enable LLM-powered features.
+  static void setGemmaService(GemmaInferenceService? service) {
+    _gemmaService = service;
+  }
+
+  /// Build a quiz with optional LLM enhancement.
+  /// Uses Gemma E4B when available, otherwise falls back to rule-based generation.
+  static Future<List<Question>> buildQuiz({
+    required Session session,
+    required List<StudyMaterial> materials,
+    required int questionCount,
+  }) async {
+    // Try LLM-powered quiz generation if service is available
+    if (_gemmaService != null && _gemmaService!.isInitialized) {
+      try {
+        return await _gemmaService!.generateQuiz(
+          session: session,
+          materials: materials,
+          questionCount: questionCount,
+        );
+      } catch (_) {
+        // Fall back to rule-based on error
+      }
+    }
+
+    // Rule-based fallback
+    return _buildQuizRuleBased(
+      session: session,
+      materials: materials,
+      questionCount: questionCount,
+    );
+  }
+
+  static List<Question> _buildQuizRuleBased({
     required Session session,
     required List<StudyMaterial> materials,
     required int questionCount,
@@ -55,10 +93,39 @@ class QuexAi {
     return questions;
   }
 
-  static String coachReply({
+  /// Get coach reply with optional LLM enhancement.
+  /// Uses Gemma E4B when available, otherwise falls back to rule-based responses.
+  static Future<String> coachReply({
     required Session session,
     required List<StudyMaterial> materials,
     required List<ChatMessage> history,
+    required String message,
+  }) async {
+    // Try LLM-powered coach reply if service is available
+    if (_gemmaService != null && _gemmaService!.isInitialized) {
+      try {
+        return await _gemmaService!.getCoachReply(
+          session: session,
+          materials: materials,
+          history: history,
+          message: message,
+        );
+      } catch (_) {
+        // Fall back to rule-based on error
+      }
+    }
+
+    // Rule-based fallback
+    return _coachReplyRuleBased(
+      session: session,
+      materials: materials,
+      message: message,
+    );
+  }
+
+  static String _coachReplyRuleBased({
+    required Session session,
+    required List<StudyMaterial> materials,
     required String message,
   }) {
     final topics = _topics(materials);

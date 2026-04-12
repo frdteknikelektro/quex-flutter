@@ -36,11 +36,11 @@ class _ProcessingScreenState extends ConsumerState<ProcessingScreen> {
       createdAt: DateTime.now(),
     );
     final quizId = await QuizDAO().insert(quiz);
-    final questions = QuexAi.buildQuiz(
+    final questions = (await QuexAi.buildQuiz(
       session: bundle.session,
       materials: bundle.materials,
       questionCount: bundle.session.questionCount,
-    ).map((question) => question.copyWith(quizId: quizId)).toList();
+    )).map((question) => question.copyWith(quizId: quizId)).toList();
     await QuestionDAO().insertAll(questions);
     if (!mounted) return;
 
