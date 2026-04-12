@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/ai/download_state.dart';
+import '../core/ai/model_download_notifier.dart';
 import 'breakpoints.dart';
 import 'router.dart';
 
 enum QuexDestination { home, newSession, settings, model }
 
-class QuexAppShell extends StatelessWidget {
+class QuexAppShell extends ConsumerWidget {
   final QuexDestination destination;
   final String title;
   final Widget child;
@@ -27,9 +30,10 @@ class QuexAppShell extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final compact = MediaQuery.sizeOf(context).width < QuexBreakpoints.tablet;
     final index = destination.index;
+    final downloadState = ref.watch(modelDownloadProvider);
 
     final content = Scaffold(
       appBar: AppBar(
@@ -37,7 +41,19 @@ class QuexAppShell extends StatelessWidget {
         actions: actions,
         bottom: bottom,
       ),
-      body: child,
+      body: Column(
+        children: [
+          Expanded(child: child),
+          if (downloadState.isActive)
+            _DownloadBanner(
+              progress: downloadState.progress,
+              status: downloadState.status,
+              onCancel: () =>
+                  ref.read(modelDownloadProvider.notifier).cancel(),
+              onTap: () => context.go(Routes.modelDownload),
+            ),
+        ],
+      ),
       floatingActionButton: floatingActionButton,
       bottomNavigationBar: showNavigation && compact
           ? NavigationBar(
@@ -128,5 +144,87 @@ class QuexAppShell extends StatelessWidget {
         context.go(Routes.modelDownload);
         return;
     }
+  }
+}
+
+class _DownloadBanner extends StatelessWidget {
+  final double progress;
+  final DownloadStatus status;
+  final VoidCallback onCancel;
+  final VoidCallback onTap;
+
+  const _DownloadBanner({
+    required this.progress,
+    required this.status,
+    required this.onCancel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final isCancelling = status == DownloadStatus.cancelling;
+    final percent = (progress * 100).round();
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        color: scheme.secondaryContainer,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: SafeArea(
+          top: false,
+          child: Row(
+            children: [
+              Icon(
+                Icons.downloading_outlined,
+                size: 20,
+                color: scheme.onSecondaryContainer,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      isCancelling ? 'Cancelling…' : 'Downloading model  $percent%',
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                            color: scheme.onSecondaryContainer,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: isCancelling ? null : progress,
+                        backgroundColor:
+                            scheme.onSecondaryContainer.withValues(alpha: 0.2),
+                        color: scheme.onSecondaryContainer,
+                        minHeight: 4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (!isCancelling)
+                IconButton(
+                  onPressed: onCancel,
+                  icon: Icon(
+                    Icons.close,
+                    size: 18,
+                    color: scheme.onSecondaryContainer,
+                  ),
+                  tooltip: 'Cancel download',
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

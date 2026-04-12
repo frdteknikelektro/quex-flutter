@@ -1,77 +1,20 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/app_shell.dart';
+import '../../core/ai/download_state.dart';
+import '../../core/ai/model_download_notifier.dart';
 import '../../core/ai/model_manager.dart';
 import '../../widgets/quex_ui.dart';
 
-class ModelDownloadScreen extends ConsumerStatefulWidget {
+class ModelDownloadScreen extends ConsumerWidget {
   const ModelDownloadScreen({super.key});
 
   @override
-  ConsumerState<ModelDownloadScreen> createState() => _ModelDownloadScreenState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(modelDownloadProvider);
+    final notifier = ref.read(modelDownloadProvider.notifier);
 
-class _ModelDownloadScreenState extends ConsumerState<ModelDownloadScreen> {
-  bool _ready = false;
-  double _progress = 0;
-  bool _downloading = false;
-  String _version = ModelManager.currentVersion;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadState();
-  }
-
-  Future<void> _loadState() async {
-    final ready = await ModelManager.isReady();
-    final progress = await ModelManager.progress();
-    final version = await ModelManager.version();
-    if (!mounted) return;
-    setState(() {
-      _ready = ready;
-      _progress = progress;
-      _version = version;
-    });
-  }
-
-  Future<void> _downloadModel() async {
-    setState(() => _downloading = true);
-    try {
-      await for (final progress in ModelManager.downloadModel()) {
-        if (!mounted) return;
-        setState(() => _progress = progress);
-      }
-      await ModelManager.markReady(progress: 1.0);
-      if (!mounted) return;
-      setState(() {
-        _ready = true;
-        _downloading = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() => _downloading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Download failed: $error')),
-      );
-    }
-  }
-
-  Future<void> _reset() async {
-    await ModelManager.reset();
-    if (!mounted) return;
-    setState(() {
-      _ready = false;
-      _progress = 0;
-      _downloading = false;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
     return QuexAppShell(
       destination: QuexDestination.model,
       title: 'Model',
@@ -80,31 +23,34 @@ class _ModelDownloadScreenState extends ConsumerState<ModelDownloadScreen> {
         child: LayoutBuilder(
           builder: (context, constraints) {
             final wide = constraints.maxWidth >= 960;
-            final panels = [
-              _StatusPanel(
-                ready: _ready,
-                progress: _progress,
-                version: _version,
-                downloading: _downloading,
-                onDownload: _downloading || _ready ? null : _downloadModel,
-                onReset: _ready ? _reset : null,
-              ),
-              const SizedBox(height: 16),
-              const _InfoPanel(),
-            ];
+            final statusPanel = _StatusPanel(
+              state: state,
+              onDownload: state.status == DownloadStatus.idle
+                  ? notifier.start
+                  : null,
+              onCancel: state.isActive ? notifier.cancel : null,
+              onRetry: state.hasFailed ? notifier.retry : null,
+              onReset: state.isCompleted ? notifier.reset : null,
+            );
 
             if (wide) {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: panels[0]),
+                  Expanded(child: statusPanel),
                   const SizedBox(width: 16),
-                  SizedBox(width: 360, child: panels[2]),
+                  const SizedBox(width: 360, child: _InfoPanel()),
                 ],
               );
             }
 
-            return Column(children: panels);
+            return Column(
+              children: [
+                statusPanel,
+                const SizedBox(height: 16),
+                const _InfoPanel(),
+              ],
+            );
           },
         ),
       ),
@@ -113,66 +59,148 @@ class _ModelDownloadScreenState extends ConsumerState<ModelDownloadScreen> {
 }
 
 class _StatusPanel extends StatelessWidget {
-  final bool ready;
-  final double progress;
-  final String version;
-  final bool downloading;
+  final ModelDownloadState state;
   final VoidCallback? onDownload;
+  final VoidCallback? onCancel;
+  final VoidCallback? onRetry;
   final VoidCallback? onReset;
 
   const _StatusPanel({
-    required this.ready,
-    required this.progress,
-    required this.version,
-    required this.downloading,
+    required this.state,
     required this.onDownload,
+    required this.onCancel,
+    required this.onRetry,
     required this.onReset,
   });
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final percent = (state.progress * 100).round();
+
+    final statusLabel = switch (state.status) {
+      DownloadStatus.idle => state.progress > 0 ? 'Paused at $percent%' : 'Not downloaded yet',
+      DownloadStatus.downloading => 'Downloading…  $percent%',
+      DownloadStatus.cancelling => 'Cancelling…',
+      DownloadStatus.completed => 'Ready to use',
+      DownloadStatus.failed => 'Download failed',
+    };
+
+    final statusColor = switch (state.status) {
+      DownloadStatus.completed => scheme.primary,
+      DownloadStatus.failed => scheme.error,
+      _ => scheme.onSurface,
+    };
+
     return QuexPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const QuexSectionHeader(
             title: 'Study engine',
-            subtitle: 'Track the local model state without leaving the app.',
+            subtitle: 'Track and control the local model download.',
           ),
           const SizedBox(height: 16),
           Text(
-            ready ? 'Ready to use' : 'Not downloaded yet',
+            statusLabel,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w900,
+                  color: statusColor,
                 ),
           ),
           const SizedBox(height: 8),
-          Text('Version: $version'),
+          FutureBuilder<String>(
+            future: ModelManager.version(),
+            builder: (context, snap) =>
+                Text('Version: ${snap.data ?? ModelManager.currentVersion}'),
+          ),
+          if (state.hasFailed && state.error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              state.error!,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: scheme.error),
+            ),
+          ],
           const SizedBox(height: 20),
-          LinearProgressIndicator(value: downloading || ready ? progress : 0),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: state.status == DownloadStatus.cancelling
+                  ? null
+                  : (state.isActive || state.isCompleted)
+                      ? state.progress
+                      : state.progress > 0
+                          ? state.progress
+                          : 0,
+              minHeight: 6,
+            ),
+          ),
           const SizedBox(height: 12),
-          Text('${(progress * 100).round()}%'),
+          Text('$percent% of ~6.6 GB'),
           const SizedBox(height: 20),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
-              FilledButton.icon(
-                onPressed: onDownload,
-                icon: downloading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.download),
-                label: Text(downloading ? 'Downloading...' : 'Download'),
-              ),
-              OutlinedButton.icon(
-                onPressed: onReset,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Reset'),
-              ),
+              if (onDownload != null)
+                FilledButton.icon(
+                  onPressed: onDownload,
+                  icon: const Icon(Icons.download),
+                  label: Text(
+                    state.progress > 0 ? 'Resume download' : 'Download',
+                  ),
+                ),
+              if (onCancel != null)
+                OutlinedButton.icon(
+                  onPressed: onCancel,
+                  icon: state.status == DownloadStatus.cancelling
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.stop_circle_outlined),
+                  label: const Text('Cancel'),
+                ),
+              if (onRetry != null)
+                FilledButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+              if (onReset != null)
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Delete model?'),
+                        content: const Text(
+                          'This will delete the downloaded model (~6.6 GB) from your device. '
+                          'You will need to download it again to use the AI features.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Cancel'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true) {
+                      onReset!();
+                    }
+                  },
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('Reset'),
+                ),
             ],
           ),
         ],
@@ -191,13 +219,18 @@ class _InfoPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           QuexSectionHeader(
-            title: 'Best practice',
-            subtitle: 'This screen keeps the model state explicit and recoverable.',
+            title: 'About the model',
+            subtitle: 'Gemma 4 E4B — your on-device study engine.',
           ),
           SizedBox(height: 16),
           Text(
-            'On tablet, this screen leaves room for status and guidance side by side. '
-            'On phone, it stays linear and easy to scan.',
+            'The model runs entirely on your device — no internet required after download. '
+            'You can navigate away freely while it downloads; progress is preserved and '
+            'a notification will alert you when it finishes.',
+          ),
+          SizedBox(height: 12),
+          Text(
+            'Size: ~6.6 GB  •  Format: LiteRT-LM  •  Capabilities: text, image, audio',
           ),
         ],
       ),
