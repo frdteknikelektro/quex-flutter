@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../core/ai/model_download_notifier.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/material/add_material_screen.dart';
@@ -10,9 +12,11 @@ import '../features/quiz/quiz_screen.dart';
 import '../features/session_detail/session_detail_screen.dart';
 import '../features/session_new/new_session_screen.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/splash/splash_screen.dart';
 import '../features/summary/summary_screen.dart';
 
 class Routes {
+  static const splash = '/splash';
   static const home = '/';
   static const newSession = '/session/new';
   static const session = '/session/:sessionId';
@@ -26,9 +30,32 @@ class Routes {
 }
 
 final appRouter = GoRouter(
-  initialLocation: Routes.home,
+  initialLocation: Routes.splash,
   debugLogDiagnostics: false,
+  redirect: (context, state) {
+    final container = ProviderScope.containerOf(context);
+    final downloadState = container.read(modelDownloadProvider);
+    final isOnSplash = state.matchedLocation == Routes.splash;
+    final isOnModelDownload = state.matchedLocation == Routes.modelDownload;
+
+    // If model is completed and on splash, redirect to home
+    if (downloadState.isCompleted && isOnSplash) {
+      return Routes.home;
+    }
+
+    // If model is not completed and not on splash/model-download, redirect to splash
+    if (!downloadState.isCompleted && !isOnSplash && !isOnModelDownload) {
+      return Routes.splash;
+    }
+
+    return null; // No redirect
+  },
   routes: [
+    GoRoute(
+      path: Routes.splash,
+      name: 'splash',
+      builder: (context, state) => const SplashScreen(),
+    ),
     GoRoute(
       path: Routes.home,
       name: 'home',
