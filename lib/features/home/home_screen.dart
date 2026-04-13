@@ -21,27 +21,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int? _selectedSessionId;
 
   @override
-  void initState() {
-    super.initState();
-    _restoreActiveProfile();
-  }
-
-  Future<void> _restoreActiveProfile() async {
-    final saved = await readActiveProfileId();
-    if (!mounted) return;
-    ref.read(activeProfileProvider.notifier).state = saved;
-  }
-
-  Future<void> _setActiveProfile(Profile profile) async {
-    await saveActiveProfileId(profile.id!);
-    if (!mounted) return;
-    ref.read(activeProfileProvider.notifier).state = profile.id;
-    setState(() {
-      _selectedSessionId = null;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
     final profilesAsync = ref.watch(profilesProvider);
     final activeProfileId = ref.watch(activeProfileProvider);
@@ -52,7 +31,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           return const QuexEmptyState(
             icon: Icons.school_outlined,
             title: 'No profiles yet',
-            message: 'Create a profile in Settings to start a new study flow.',
+            message: 'Switch to a profile to start a new study flow.',
           );
         }
 
@@ -98,9 +77,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         children: [
                           _HomeHero(
                             profile: activeProfile,
-                            onSwitchProfile: (profile) => _setActiveProfile(profile),
                             onCreateSession: () => context.go(Routes.newSession),
-                            profiles: profiles,
                           ),
                           const SizedBox(height: 16),
                           const QuexEmptyState(
@@ -136,15 +113,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                                 width: 380,
                                 child: _HomeSidebar(
                                   profile: activeProfile,
-                                  profiles: profiles,
-                                  onSwitchProfile: _setActiveProfile,
                                   sessions: sessions,
                                   selectedSessionId: _selectedSessionId,
                                   onSelectSession: (sessionId) {
                                     setState(() => _selectedSessionId = sessionId);
                                   },
                                   onCreateSession: () => context.go(Routes.newSession),
-                                  onManageProfiles: () => context.go(Routes.settings),
                                 ),
                               ),
                               const SizedBox(width: 20),
@@ -176,9 +150,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             children: [
                               _HomeHero(
                                 profile: activeProfile,
-                                onSwitchProfile: (profile) => _setActiveProfile(profile),
                                 onCreateSession: () => context.go(Routes.newSession),
-                                profiles: profiles,
                               ),
                               const SizedBox(height: 16),
                               _HomeDetail(
@@ -235,14 +207,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
 class _HomeHero extends StatelessWidget {
   final Profile profile;
-  final List<Profile> profiles;
-  final ValueChanged<Profile> onSwitchProfile;
   final VoidCallback onCreateSession;
 
   const _HomeHero({
     required this.profile,
-    required this.profiles,
-    required this.onSwitchProfile,
     required this.onCreateSession,
   });
 
@@ -280,34 +248,10 @@ class _HomeHero extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 18),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: profiles
-                .map(
-                  (item) => ChoiceChip(
-                    label: Text(item.name),
-                    selected: item.id == profile.id,
-                    onSelected: (_) => onSwitchProfile(item),
-                  ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              FilledButton.icon(
-                onPressed: onCreateSession,
-                icon: const Icon(Icons.add),
-                label: const Text('New session'),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: () => context.go(Routes.settings),
-                icon: const Icon(Icons.tune),
-                label: const Text('Settings'),
-              ),
-            ],
+          FilledButton.icon(
+            onPressed: onCreateSession,
+            icon: const Icon(Icons.add),
+            label: const Text('New session'),
           ),
         ],
       ),
@@ -374,23 +318,17 @@ class _RecentSessionsList extends StatelessWidget {
 
 class _HomeSidebar extends StatelessWidget {
   final Profile profile;
-  final List<Profile> profiles;
-  final ValueChanged<Profile> onSwitchProfile;
   final List<Session> sessions;
   final int? selectedSessionId;
   final ValueChanged<int> onSelectSession;
   final VoidCallback onCreateSession;
-  final VoidCallback onManageProfiles;
 
   const _HomeSidebar({
     required this.profile,
-    required this.profiles,
-    required this.onSwitchProfile,
     required this.sessions,
     required this.selectedSessionId,
     required this.onSelectSession,
     required this.onCreateSession,
-    required this.onManageProfiles,
   });
 
   @override
@@ -399,8 +337,6 @@ class _HomeSidebar extends StatelessWidget {
       children: [
         _HomeHero(
           profile: profile,
-          profiles: profiles,
-          onSwitchProfile: onSwitchProfile,
           onCreateSession: onCreateSession,
         ),
         const SizedBox(height: 16),
@@ -433,12 +369,6 @@ class _HomeSidebar extends StatelessWidget {
               ),
             ],
           ),
-        ),
-        const SizedBox(height: 16),
-        FilledButton.tonalIcon(
-          onPressed: onManageProfiles,
-          icon: const Icon(Icons.manage_accounts_outlined),
-          label: const Text('Manage profiles'),
         ),
       ],
     );

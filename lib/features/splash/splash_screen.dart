@@ -41,7 +41,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
       if (next.isCompleted && previous?.isCompleted != true) {
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
-            context.go(Routes.home);
+            context.go(Routes.profileSelection);
           }
         });
       }

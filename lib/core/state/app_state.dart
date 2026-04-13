@@ -8,6 +8,10 @@ const activeProfileIdKey = 'active_profile_id';
 
 final activeProfileProvider = StateProvider<int?>((ref) => null);
 
+/// True once the user has selected a profile in this app session.
+/// Resets to false every cold-start (not persisted).
+final sessionProfileSetProvider = StateProvider<bool>((ref) => false);
+
 final profilesProvider = FutureProvider<List<Profile>>((ref) async {
   return ProfileDAO().getAll();
 });

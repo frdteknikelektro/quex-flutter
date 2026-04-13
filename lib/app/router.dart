@@ -5,20 +5,25 @@ import 'package:go_router/go_router.dart';
 import '../app/breakpoints.dart';
 import '../core/ai/download_state.dart';
 import '../core/ai/model_download_notifier.dart';
+import '../core/state/app_state.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/material/add_material_screen.dart';
 import '../features/model_download/model_download_screen.dart';
 import '../features/processing/processing_screen.dart';
+import '../features/profile/profile_screen.dart';
+import '../features/profile_selection/create_first_profile_screen.dart';
+import '../features/profile_selection/profile_selection_screen.dart';
 import '../features/quiz/quiz_screen.dart';
 import '../features/session_detail/session_detail_screen.dart';
 import '../features/session_new/new_session_screen.dart';
-import '../features/settings/settings_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../features/summary/summary_screen.dart';
 
 class Routes {
   static const splash = '/splash';
+  static const profileSelection = '/profile-selection';
+  static const createFirstProfile = '/create-first-profile';
   static const home = '/';
   static const newSession = '/session/new';
   static const session = '/session/:sessionId';
@@ -27,7 +32,7 @@ class Routes {
   static const quiz = '/session/:sessionId/quiz/:quizId';
   static const chat = '/session/:sessionId/chat';
   static const summary = '/session/:sessionId/quiz/:quizId/summary';
-  static const settings = '/settings';
+  static const profile = '/profile';
   static const modelDownload = '/model-download';
 }
 
@@ -37,20 +42,33 @@ final appRouter = GoRouter(
   redirect: (context, state) {
     final container = ProviderScope.containerOf(context);
     final downloadState = container.read(modelDownloadProvider);
-    final isOnSplash = state.matchedLocation == Routes.splash;
-    final isOnModelDownload = state.matchedLocation == Routes.modelDownload;
+    final sessionProfileSet = container.read(sessionProfileSetProvider);
 
-    // If model is completed and on splash, redirect to home
-    if (downloadState.isCompleted && isOnSplash) {
-      return Routes.home;
-    }
+    final loc = state.matchedLocation;
+    final isOnSplash = loc == Routes.splash;
+    final isOnModelDownload = loc == Routes.modelDownload;
+    final isOnProfileSelection = loc == Routes.profileSelection;
+    final isOnCreateFirstProfile = loc == Routes.createFirstProfile;
 
-    // If model is not completed and not on splash/model-download, redirect to splash
+    // If model is not complete, enforce splash / model-download screens
     if (!downloadState.isCompleted && !isOnSplash && !isOnModelDownload) {
       return Routes.splash;
     }
 
-    return null; // No redirect
+    // Once model is ready on splash, send to profile selection
+    if (downloadState.isCompleted && isOnSplash) {
+      return Routes.profileSelection;
+    }
+
+    // Gate every cold-start behind profile selection
+    if (downloadState.isCompleted &&
+        !sessionProfileSet &&
+        !isOnProfileSelection &&
+        !isOnCreateFirstProfile) {
+      return Routes.profileSelection;
+    }
+
+    return null;
   },
   routes: [
     GoRoute(
@@ -82,9 +100,9 @@ final appRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: Routes.settings,
-              name: 'settings',
-              builder: (context, state) => const SettingsScreen(),
+              path: Routes.profile,
+              name: 'profile',
+              builder: (context, state) => const ProfileScreen(),
             ),
           ],
         ),
@@ -149,6 +167,16 @@ final appRouter = GoRouter(
         return SummaryScreen(sessionId: sessionId, quizId: quizId);
       },
     ),
+    GoRoute(
+      path: Routes.profileSelection,
+      name: 'profile-selection',
+      builder: (context, state) => const ProfileSelectionScreen(),
+    ),
+    GoRoute(
+      path: Routes.createFirstProfile,
+      name: 'create-first-profile',
+      builder: (context, state) => const CreateFirstProfileScreen(),
+    ),
   ],
   errorBuilder: (context, state) => Scaffold(
     body: Center(
@@ -186,7 +214,7 @@ class _BottomNavigationShell extends ConsumerWidget {
         case 1:
           return 'New Session';
         case 2:
-          return 'Settings';
+          return 'Profile';
         case 3:
           return 'Model Download';
         default:
@@ -205,12 +233,17 @@ class _BottomNavigationShell extends ConsumerWidget {
             ),
             IconButton(
               onPressed: () => navigationShell.goBranch(2),
-              icon: const Icon(Icons.settings_outlined),
-              tooltip: 'Settings',
+              icon: const Icon(Icons.person_outline),
+              tooltip: 'Profile',
             ),
           ];
         case 2:
           return [
+            IconButton(
+              onPressed: () => context.go(Routes.profileSelection),
+              icon: const Icon(Icons.switch_account_outlined),
+              tooltip: 'Switch profile',
+            ),
             IconButton(
               onPressed: () => navigationShell.goBranch(3),
               icon: const Icon(Icons.cloud_download_outlined),
@@ -267,9 +300,9 @@ class _BottomNavigationShell extends ConsumerWidget {
                   label: 'New session',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.tune_outlined),
-                  selectedIcon: Icon(Icons.tune),
-                  label: 'Settings',
+                  icon: Icon(Icons.person_outline),
+                  selectedIcon: Icon(Icons.person),
+                  label: 'Profile',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.cloud_download_outlined),
@@ -303,9 +336,9 @@ class _BottomNavigationShell extends ConsumerWidget {
                     label: Text('New'),
                   ),
                   NavigationRailDestination(
-                    icon: Icon(Icons.tune_outlined),
-                    selectedIcon: Icon(Icons.tune),
-                    label: Text('Settings'),
+                    icon: Icon(Icons.person_outline),
+                    selectedIcon: Icon(Icons.person),
+                    label: Text('Profile'),
                   ),
                   NavigationRailDestination(
                     icon: Icon(Icons.cloud_download_outlined),

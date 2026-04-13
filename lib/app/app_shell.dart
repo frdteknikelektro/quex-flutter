@@ -7,7 +7,7 @@ import '../core/ai/model_download_notifier.dart';
 import 'breakpoints.dart';
 import 'router.dart';
 
-enum QuexDestination { home, newSession, settings, model }
+enum QuexDestination { home, newSession, profile, model }
 
 class QuexAppShell extends ConsumerWidget {
   final QuexDestination destination;
@@ -71,9 +71,9 @@ class QuexAppShell extends ConsumerWidget {
                   label: 'New session',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.tune_outlined),
-                  selectedIcon: Icon(Icons.tune),
-                  label: 'Settings',
+                  icon: Icon(Icons.person_outline),
+                  selectedIcon: Icon(Icons.person),
+                  label: 'Profile',
                 ),
                 NavigationDestination(
                   icon: Icon(Icons.cloud_download_outlined),
@@ -110,9 +110,9 @@ class QuexAppShell extends ConsumerWidget {
                   label: Text('New'),
                 ),
                 NavigationRailDestination(
-                  icon: Icon(Icons.tune_outlined),
-                  selectedIcon: Icon(Icons.tune),
-                  label: Text('Settings'),
+                  icon: Icon(Icons.person_outline),
+                  selectedIcon: Icon(Icons.person),
+                  label: Text('Profile'),
                 ),
                 NavigationRailDestination(
                   icon: Icon(Icons.cloud_download_outlined),
@@ -137,8 +137,8 @@ class QuexAppShell extends ConsumerWidget {
       case QuexDestination.newSession:
         context.go(Routes.newSession);
         return;
-      case QuexDestination.settings:
-        context.go(Routes.settings);
+      case QuexDestination.profile:
+        context.go(Routes.profile);
         return;
       case QuexDestination.model:
         context.go(Routes.modelDownload);
