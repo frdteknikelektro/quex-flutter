@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../app/app_shell.dart';
 import '../../core/ai/download_state.dart';
 import '../../core/ai/model_download_notifier.dart';
 import '../../core/ai/model_manager.dart';
@@ -15,10 +14,7 @@ class ModelDownloadScreen extends ConsumerWidget {
     final state = ref.watch(modelDownloadProvider);
     final notifier = ref.read(modelDownloadProvider.notifier);
 
-    return QuexAppShell(
-      destination: QuexDestination.model,
-      title: 'Model',
-      child: SingleChildScrollView(
+    return SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -53,7 +49,6 @@ class ModelDownloadScreen extends ConsumerWidget {
             );
           },
         ),
-      ),
     );
   }
 }

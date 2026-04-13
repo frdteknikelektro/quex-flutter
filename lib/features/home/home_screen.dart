@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../app/app_shell.dart';
 import '../../app/breakpoints.dart';
 import '../../app/router.dart';
 import '../../core/db/daos.dart';
@@ -46,25 +45,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final profilesAsync = ref.watch(profilesProvider);
     final activeProfileId = ref.watch(activeProfileProvider);
-    final compact = MediaQuery.sizeOf(context).width < QuexBreakpoints.tablet;
 
     return profilesAsync.when(
       data: (profiles) {
         if (profiles.isEmpty) {
-          return QuexAppShell(
-            destination: QuexDestination.home,
-            title: 'Quex',
-            actions: [
-              IconButton(
-                onPressed: () => context.go(Routes.settings),
-                icon: const Icon(Icons.settings_outlined),
-              ),
-            ],
-            child: const QuexEmptyState(
-              icon: Icons.school_outlined,
-              title: 'No profiles yet',
-              message: 'Create a profile in Settings to start a new study flow.',
-            ),
+          return const QuexEmptyState(
+            icon: Icons.school_outlined,
+            title: 'No profiles yet',
+            message: 'Create a profile in Settings to start a new study flow.',
           );
         }
 
@@ -83,27 +71,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
         final sessionsAsync = ref.watch(recentSessionsProvider(activeProfile.id!));
 
-        return QuexAppShell(
-          destination: QuexDestination.home,
-          title: 'Quex',
-          actions: [
-            IconButton(
-              onPressed: () => context.go(Routes.newSession),
-              icon: const Icon(Icons.add_circle_outline),
-            ),
-            IconButton(
-              onPressed: () => context.go(Routes.settings),
-              icon: const Icon(Icons.settings_outlined),
-            ),
-          ],
-          floatingActionButton: compact
-              ? FloatingActionButton.extended(
-                  onPressed: () => context.go(Routes.newSession),
-                  icon: const Icon(Icons.add),
-                  label: const Text('New session'),
-                )
-              : null,
-          child: sessionsAsync.when(
+        return sessionsAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (error, _) => Center(child: Text('Failed to load sessions: $error')),
             data: (sessions) {
@@ -253,8 +221,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               );
             },
-          ),
-        );
+          );
       },
       loading: () => const Scaffold(
         body: Center(child: CircularProgressIndicator()),

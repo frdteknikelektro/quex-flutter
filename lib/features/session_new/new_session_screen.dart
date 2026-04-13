@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app/app_shell.dart';
 import '../../app/breakpoints.dart';
-import '../../app/router.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
@@ -94,17 +92,7 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen> {
       questionCount: _questionCount,
     );
 
-    return QuexAppShell(
-      destination: QuexDestination.newSession,
-      title: 'New session',
-      actions: [
-        TextButton(
-          onPressed: _saving ? null : () => context.go(Routes.home),
-          child: const Text('Cancel'),
-        ),
-      ],
-      showNavigation: true,
-      child: SingleChildScrollView(
+    return SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
         child: compact
             ? Column(
@@ -122,7 +110,6 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen> {
                   SizedBox(width: 360, child: preview),
                 ],
               ),
-      ),
     );
   }
 

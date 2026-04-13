@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app/app_shell.dart';
 import '../../core/ai/model_manager.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
@@ -148,16 +147,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final profilesAsync = ref.watch(profilesProvider);
     final activeId = ref.watch(activeProfileProvider);
 
-    return QuexAppShell(
-      destination: QuexDestination.settings,
-      title: 'Settings',
-      actions: [
-        IconButton(
-          onPressed: () => context.go('/model-download'),
-          icon: const Icon(Icons.cloud_download_outlined),
-        ),
-      ],
-      child: profilesAsync.when(
+    return profilesAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(child: Text('Failed to load settings: $error')),
         data: (profiles) {
@@ -219,9 +209,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 );
               },
             ),
-          );
-        },
-      ),
+        );
+      },
     );
   }
 }
