@@ -1,6 +1,6 @@
 {
-    "name": "quex",
-    "short_name": "quex",
+    "name": "Quex",
+    "short_name": "Quex",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
