@@ -114,16 +114,16 @@ class ModelManager {
   /// Returns a stream of download progress (0.0 to 1.0).
   /// Pass a [CancelToken] to support cancellation; cancelling the token
   /// also closes the stream.
-  /// Times out after 30 seconds if no progress updates (e.g., stuck in resume pending).
+  /// Times out after 60 seconds if no progress updates (e.g., stuck in resume pending).
   static Stream<double> downloadModel({CancelToken? cancelToken}) async* {
     if (_isInstalling) return;
     _isInstalling = true;
     try {
       final stream = _installWithProgress(cancelToken: cancelToken);
       await for (final progress in stream.timeout(
-        const Duration(seconds: 30),
+        const Duration(seconds: 60),
         onTimeout: (sink) {
-          sink.addError(TimeoutException('Download timed out - no progress for 30 seconds'));
+          sink.addError(TimeoutException('Download timed out - no progress for 60 seconds'));
           sink.close();
         },
       )) {

@@ -3,9 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
-import '../../app/theme.dart';
+import '../../core/ai/download_state.dart';
 import '../../core/ai/model_download_notifier.dart';
-import '../../widgets/quex_ui.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -14,17 +13,64 @@ class SplashScreen extends ConsumerStatefulWidget {
   ConsumerState<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends ConsumerState<SplashScreen> {
+class _SplashScreenState extends ConsumerState<SplashScreen>
+    with TickerProviderStateMixin {
+  late final AnimationController _bounceController;
+  late final AnimationController _fadeController;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _bounceAnimation;
+
   @override
   void initState() {
     super.initState();
+
+    _bounceController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+
+    _fadeController = AnimationController(
+      duration: const Duration(milliseconds: 400),
+      vsync: this,
+    );
+
+    // Bounce from above (start at -100, end at 0)
+    final tween = Tween<Offset>(
+      begin: const Offset(0, -0.5),
+      end: Offset.zero,
+    );
+    final curved = CurvedAnimation(
+      parent: _bounceController,
+      curve: Curves.elasticOut,
+    );
+    _bounceAnimation = tween.animate(curved);
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _fadeController,
+      curve: Curves.easeOut,
+    );
+
+    // Staggered animations
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (mounted) _bounceController.forward();
+    });
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (mounted) _fadeController.forward();
+    });
+
     _autoStartDownloadIfNeeded();
+  }
+
+  @override
+  void dispose() {
+    _bounceController.dispose();
+    _fadeController.dispose();
+    super.dispose();
   }
 
   void _autoStartDownloadIfNeeded() {
     final downloadState = ref.read(modelDownloadProvider);
     if (!downloadState.isCompleted && !downloadState.isActive) {
-      // Auto-start download if model is not ready
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ref.read(modelDownloadProvider.notifier).start();
       });
@@ -36,7 +82,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     final downloadState = ref.watch(modelDownloadProvider);
     final scheme = Theme.of(context).colorScheme;
 
-    // Listen for download completion and auto-redirect after 2 seconds
     ref.listen(modelDownloadProvider, (previous, next) {
       if (next.isCompleted && previous?.isCompleted != true) {
         Future.delayed(const Duration(seconds: 2), () {
@@ -48,122 +93,186 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     });
 
     return Scaffold(
+      backgroundColor: scheme.surface,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: Sp.edge,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: QuexPanel(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // App title
-                    Text(
-                      'Quex',
-                      style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                            fontWeight: FontWeight.w900,
-                            color: scheme.primary,
-                          ),
-                    ),
-                    const SizedBox(height: Sp.lg),
-                    // Download status
-                    if (downloadState.isCompleted) ...[
-                      Icon(
-                        Icons.check_circle_outline,
-                        size: 64,
-                        color: scheme.primary,
-                      ),
-                      const SizedBox(height: Sp.md),
-                      Text(
-                        'Model ready',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
-                      const SizedBox(height: Sp.sm),
-                      Text(
-                        'Setting up your study experience…',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ] else if (downloadState.isActive) ...[
-                      Icon(
-                        Icons.downloading_outlined,
-                        size: 64,
-                        color: scheme.primary,
-                      ),
-                      const SizedBox(height: Sp.md),
-                      Text(
-                        'Downloading model…',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                            ),
-                      ),
-                      const SizedBox(height: Sp.xl),
-                      // Progress bar
-                      ClipRRect(
-                        borderRadius: Br.sm,
-                        child: LinearProgressIndicator(
-                          value: downloadState.progress,
-                          backgroundColor: scheme.surfaceContainerHighest,
-                          color: scheme.primary,
-                          minHeight: 8,
+        child: Stack(
+          children: [
+            // Center: Brand mark
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Bouncing duck emoji
+                  GestureDetector(
+                    onTap: () {
+                      _bounceController.forward(from: 0);
+                    },
+                    child: SlideTransition(
+                      position: _bounceAnimation,
+                      child: Text(
+                        '🦆',
+                        style: TextStyle(
+                          fontSize: 72,
+                          height: 1,
                         ),
                       ),
-                      const SizedBox(height: Sp.sm),
-                      Text(
-                        '${(downloadState.progress * 100).round()}%',
-                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w700,
-                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Fading text - also triggers duck bounce
+                  GestureDetector(
+                    onTap: () {
+                      _bounceController.forward(from: 0);
+                    },
+                    child: FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: Column(
+                        children: [
+                          Text(
+                            'Quex',
+                            style: Theme.of(context).textTheme.displayMedium?.copyWith(
+                                  fontWeight: FontWeight.w800,
+                                  color: scheme.primary,
+                                  letterSpacing: -0.5,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Quick Exam',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                          Text(
+                            'Practice makes Perfect',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                          ),
+                          // Balance padding to center the content visually (duck is 72px)
+                          const SizedBox(height: 88),
+                        ],
                       ),
-                      const SizedBox(height: Sp.xs),
-                      Text(
-                        'of ~6.6 GB',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                      ),
-                    ] else if (downloadState.hasFailed) ...[
-                      Icon(
-                        Icons.error_outline,
-                        size: 64,
-                        color: scheme.error,
-                      ),
-                      const SizedBox(height: Sp.md),
-                      Text(
-                        'Download failed',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              color: scheme.error,
-                            ),
-                      ),
-                      const SizedBox(height: Sp.sm),
-                      Text(
-                        downloadState.error ?? 'Unknown error',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: Sp.lg),
-                      FilledButton.icon(
-                        onPressed: () =>
-                            ref.read(modelDownloadProvider.notifier).retry(),
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Retry'),
-                      ),
-                    ],
-                  ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Bottom: State indicator
+            Positioned(
+              bottom: 48,
+              left: 32,
+              right: 32,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder: (child, animation) {
+                  return ScaleTransition(
+                    scale: animation,
+                    child: FadeTransition(
+                      opacity: animation,
+                      child: child,
+                    ),
+                  );
+                },
+                child: _buildStateIndicator(downloadState, scheme),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStateIndicator(
+    ModelDownloadState downloadState,
+    ColorScheme scheme,
+  ) {
+    if (downloadState.isCompleted) {
+      return Center(
+        key: const ValueKey('ready'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Ready! 🎉',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (downloadState.hasFailed) {
+      return Center(
+        key: const ValueKey('error'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Oops, something went wrong',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () =>
+                  ref.read(modelDownloadProvider.notifier).retry(),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Try again'),
+              style: TextButton.styleFrom(
+                foregroundColor: scheme.primary,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Active downloading state
+    final percent = (downloadState.progress * 100).round();
+    return Center(
+      key: const ValueKey('downloading'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Rounded pill progress bar
+          Container(
+            height: 8,
+            width: 200,
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: FractionallySizedBox(
+                alignment: Alignment.centerLeft,
+                widthFactor: downloadState.progress,
+                child: Container(
+                  height: 8,
+                  color: scheme.primary,
                 ),
               ),
             ),
           ),
-        ),
+          const SizedBox(height: 12),
+          Text(
+            'Downloading brain… $percent% 🧠',
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+          ),
+        ],
       ),
     );
   }
