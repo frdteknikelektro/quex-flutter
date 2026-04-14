@@ -9,17 +9,16 @@ import '../core/state/app_state.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/material/add_material_screen.dart';
-import '../features/model_download/model_download_screen.dart';
 import '../features/processing/processing_screen.dart';
 import '../features/profile/profile_screen.dart';
+import '../features/session_new/new_session_screen.dart';
 import '../features/profile_selection/create_first_profile_screen.dart';
 import '../features/profile_selection/profile_selection_screen.dart';
 import '../features/quiz/quiz_screen.dart';
 import '../features/session_detail/session_detail_screen.dart';
-import '../features/session_new/new_session_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../features/summary/summary_screen.dart';
-
+import '../features/model_download/model_download_screen.dart';
 class Routes {
   static const splash = '/splash';
   static const profileSelection = '/profile-selection';
@@ -34,7 +33,7 @@ class Routes {
   static const summary = '/session/:sessionId/quiz/:quizId/summary';
   static const profile = '/profile';
   static const modelDownload = '/model-download';
-}
+  }
 
 final appRouter = GoRouter(
   initialLocation: Routes.splash,
@@ -46,18 +45,17 @@ final appRouter = GoRouter(
 
     final loc = state.matchedLocation;
     final isOnSplash = loc == Routes.splash;
-    final isOnModelDownload = loc == Routes.modelDownload;
     final isOnProfileSelection = loc == Routes.profileSelection;
     final isOnCreateFirstProfile = loc == Routes.createFirstProfile;
 
-    // If model is not complete, enforce splash / model-download screens
-    if (!downloadState.isCompleted && !isOnSplash && !isOnModelDownload) {
+    // If model is not complete, enforce splash
+    if (!downloadState.isCompleted && !isOnSplash) {
       return Routes.splash;
     }
 
-    // Once model is ready on splash, send to profile selection
+    // Once model is ready on splash and profile not set, send to profile selection
     if (downloadState.isCompleted && isOnSplash) {
-      return Routes.profileSelection;
+      return sessionProfileSet ? Routes.home : Routes.profileSelection;
     }
 
     // Gate every cold-start behind profile selection
@@ -91,27 +89,9 @@ final appRouter = GoRouter(
         StatefulShellBranch(
           routes: [
             GoRoute(
-              path: Routes.newSession,
-              name: 'new-session',
-              builder: (context, state) => const NewSessionScreen(),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
               path: Routes.profile,
               name: 'profile',
               builder: (context, state) => const ProfileScreen(),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: Routes.modelDownload,
-              name: 'model-download',
-              builder: (context, state) => const ModelDownloadScreen(),
             ),
           ],
         ),
@@ -168,6 +148,11 @@ final appRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: Routes.newSession,
+      name: 'new-session',
+      builder: (context, state) => const NewSessionScreen(),
+    ),
+    GoRoute(
       path: Routes.profileSelection,
       name: 'profile-selection',
       builder: (context, state) => const ProfileSelectionScreen(),
@@ -176,6 +161,11 @@ final appRouter = GoRouter(
       path: Routes.createFirstProfile,
       name: 'create-first-profile',
       builder: (context, state) => const CreateFirstProfileScreen(),
+    ),
+    GoRoute(
+      path: Routes.modelDownload,
+      name: 'model-download',
+      builder: (context, state) => const ModelDownloadScreen(),
     ),
   ],
   errorBuilder: (context, state) => Scaffold(
@@ -210,13 +200,9 @@ class _BottomNavigationShell extends ConsumerWidget {
     String getTitle() {
       switch (navigationShell.currentIndex) {
         case 0:
-          return 'Quex';
+          return 'Home';
         case 1:
-          return 'New Session';
-        case 2:
           return 'Profile';
-        case 3:
-          return 'Model Download';
         default:
           return 'Quex';
       }
@@ -225,31 +211,9 @@ class _BottomNavigationShell extends ConsumerWidget {
     List<Widget> getActions() {
       switch (navigationShell.currentIndex) {
         case 0:
-          return [
-            IconButton(
-              onPressed: () => navigationShell.goBranch(1),
-              icon: const Icon(Icons.add_circle_outline),
-              tooltip: 'New session',
-            ),
-            IconButton(
-              onPressed: () => navigationShell.goBranch(2),
-              icon: const Icon(Icons.person_outline),
-              tooltip: 'Profile',
-            ),
-          ];
-        case 2:
-          return [
-            IconButton(
-              onPressed: () => context.go(Routes.profileSelection),
-              icon: const Icon(Icons.switch_account_outlined),
-              tooltip: 'Switch profile',
-            ),
-            IconButton(
-              onPressed: () => navigationShell.goBranch(3),
-              icon: const Icon(Icons.cloud_download_outlined),
-              tooltip: 'Model download',
-            ),
-          ];
+          return [];
+        case 1:
+          return [];
         default:
           return [];
       }
@@ -258,7 +222,7 @@ class _BottomNavigationShell extends ConsumerWidget {
     Widget? getFloatingActionButton() {
       if (compact && navigationShell.currentIndex == 0) {
         return FloatingActionButton.extended(
-          onPressed: () => navigationShell.goBranch(1),
+          onPressed: () => context.go(Routes.newSession),
           icon: const Icon(Icons.add),
           label: const Text('New session'),
         );
@@ -279,7 +243,7 @@ class _BottomNavigationShell extends ConsumerWidget {
               progress: downloadState.progress,
               status: downloadState.status,
               onCancel: () => ref.read(modelDownloadProvider.notifier).cancel(),
-              onTap: () => navigationShell.goBranch(3),
+              onTap: () => context.go(Routes.modelDownload),
             ),
         ],
       ),
@@ -295,19 +259,9 @@ class _BottomNavigationShell extends ConsumerWidget {
                   label: 'Home',
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.edit_note_outlined),
-                  selectedIcon: Icon(Icons.edit_note),
-                  label: 'New session',
-                ),
-                NavigationDestination(
                   icon: Icon(Icons.person_outline),
                   selectedIcon: Icon(Icons.person),
                   label: 'Profile',
-                ),
-                NavigationDestination(
-                  icon: Icon(Icons.cloud_download_outlined),
-                  selectedIcon: Icon(Icons.cloud_download),
-                  label: 'Model',
                 ),
               ],
             )
@@ -331,19 +285,9 @@ class _BottomNavigationShell extends ConsumerWidget {
                     label: Text('Home'),
                   ),
                   NavigationRailDestination(
-                    icon: Icon(Icons.edit_note_outlined),
-                    selectedIcon: Icon(Icons.edit_note),
-                    label: Text('New'),
-                  ),
-                  NavigationRailDestination(
                     icon: Icon(Icons.person_outline),
                     selectedIcon: Icon(Icons.person),
                     label: Text('Profile'),
-                  ),
-                  NavigationRailDestination(
-                    icon: Icon(Icons.cloud_download_outlined),
-                    selectedIcon: Icon(Icons.cloud_download),
-                    label: Text('Model'),
                   ),
                 ],
               ),
@@ -362,7 +306,7 @@ class _BottomNavigationShell extends ConsumerWidget {
                           progress: downloadState.progress,
                           status: downloadState.status,
                           onCancel: () => ref.read(modelDownloadProvider.notifier).cancel(),
-                          onTap: () => navigationShell.goBranch(3),
+                          onTap: () => context.go(Routes.modelDownload),
                         ),
                     ],
                   ),
