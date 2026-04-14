@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
+import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
@@ -97,156 +98,36 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
     final nameController = TextEditingController(text: profile?.name ?? '');
     String emoji = profile?.emoji ?? '🧒';
     int grade = profile?.grade ?? 3;
-    int questions = profile?.defaultQuestionCount ?? 20;
 
     if (!mounted) return;
-    await showDialog<void>(
+    await showModalBottomSheet<void>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) {
-          final scheme = Theme.of(dialogContext).colorScheme;
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(28),
-            ),
-            title: Text(
-              profile == null ? 'Add New Profile' : 'Edit Profile',
-              textAlign: TextAlign.center,
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Large emoji preview
-                  Container(
-                    width: 100,
-                    height: 100,
-                    decoration: BoxDecoration(
-                      color: scheme.primaryContainer,
-                      borderRadius: BorderRadius.circular(28),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      emoji,
-                      style: const TextStyle(fontSize: 48),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Name',
-                      hintText: 'What should we call you?',
-                    ),
-                    textCapitalization: TextCapitalization.words,
-                  ),
-                  const SizedBox(height: 20),
-                  // Sticker-style emoji picker
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'Pick a character',
-                      style: Theme.of(dialogContext)
-                          .textTheme
-                          .labelMedium
-                          ?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _emojiOptions
-                        .map(
-                          (value) => _StickerEmoji(
-                            emoji: value,
-                            isSelected: emoji == value,
-                            onTap: () => setDialogState(() => emoji = value),
-                          ),
-                        )
-                        .toList(),
-                  ),
-                  const SizedBox(height: 20),
-                  DropdownButtonFormField<int>(
-                    initialValue: grade,
-                    decoration: const InputDecoration(labelText: 'Grade Level'),
-                    items: List.generate(
-                      12,
-                      (index) => DropdownMenuItem(
-                        value: index + 1,
-                        child: Text('Grade ${index + 1}'),
-                      ),
-                    ),
-                    onChanged: (value) =>
-                        setDialogState(() => grade = value ?? grade),
-                  ),
-                  const SizedBox(height: 20),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      'How many questions?',
-                      style: Theme.of(dialogContext)
-                          .textTheme
-                          .labelMedium
-                          ?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SegmentedButton<int>(
-                    segments: const [
-                      ButtonSegment(value: 10, label: Text('Quick 10')),
-                      ButtonSegment(value: 20, label: Text('Standard 20')),
-                      ButtonSegment(value: 30, label: Text('Challenge 30')),
-                    ],
-                    selected: {questions},
-                    onSelectionChanged: (values) =>
-                        setDialogState(() => questions = values.first),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  nameController.dispose();
-                  Navigator.of(dialogContext).pop();
-                },
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () async {
-                  final name = nameController.text.trim();
-                  if (name.isEmpty) return;
-                  final dao = ProfileDAO();
-                  if (profile == null) {
-                    await dao.insert(Profile(
-                      name: name,
-                      emoji: emoji,
-                      grade: grade,
-                      defaultQuestionCount: questions,
-                      createdAt: DateTime.now(),
-                    ));
-                  } else {
-                    await dao.update(profile.copyWith(
-                      name: name,
-                      emoji: emoji,
-                      grade: grade,
-                      defaultQuestionCount: questions,
-                    ));
-                  }
-                  if (!mounted) return;
-                  ref.invalidate(profilesProvider);
-                  nameController.dispose();
-                  if (dialogContext.mounted) Navigator.of(dialogContext).pop();
-                },
-                child: const Text('Save'),
-              ),
-            ],
-          );
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (dialogContext) => _ProfileBottomSheet(
+        profile: profile,
+        nameController: nameController,
+        initialEmoji: emoji,
+        initialGrade: grade,
+        onSave: (name, selectedEmoji, selectedGrade) async {
+          final dao = ProfileDAO();
+          if (profile == null) {
+            await dao.insert(Profile(
+              name: name,
+              emoji: selectedEmoji,
+              grade: selectedGrade,
+              defaultQuestionCount: 20,
+              createdAt: DateTime.now(),
+            ));
+          } else {
+            await dao.update(profile.copyWith(
+              name: name,
+              emoji: selectedEmoji,
+              grade: selectedGrade,
+            ));
+          }
+          if (!mounted) return;
+          ref.invalidate(profilesProvider);
         },
       ),
     );
@@ -311,6 +192,7 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
                           constraints.maxWidth >= 600 ? 3 : 2;
                       return GridView.builder(
                         padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                        physics: const ClampingScrollPhysics(),
                         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: crossAxisCount,
                           crossAxisSpacing: 20,
@@ -631,6 +513,391 @@ class _StickerEmoji extends StatelessWidget {
         child: Text(
           emoji,
           style: const TextStyle(fontSize: 24),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileBottomSheet extends StatefulWidget {
+  final Profile? profile;
+  final TextEditingController nameController;
+  final String initialEmoji;
+  final int initialGrade;
+  final Future<void> Function(String name, String emoji, int grade) onSave;
+
+  const _ProfileBottomSheet({
+    required this.profile,
+    required this.nameController,
+    required this.initialEmoji,
+    required this.initialGrade,
+    required this.onSave,
+  });
+
+  @override
+  State<_ProfileBottomSheet> createState() => _ProfileBottomSheetState();
+}
+
+class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
+    with TickerProviderStateMixin {
+  static const _emojiOptions = [
+    '👧',
+    '👦',
+    '🧒',
+    '👶',
+    '🎓',
+    '🌟',
+    '⭐',
+    '🦁',
+    '🐯',
+    '🦊',
+    '🐼',
+    '🐨',
+    '🦆',
+    '🐤',
+    '🦄',
+    '🐙',
+  ];
+
+  late final AnimationController _slideController;
+  late final AnimationController _scaleController;
+  late final AnimationController _staggerController;
+  late final Animation<Offset> _slideAnimation;
+  late final Animation<double> _scaleAnimation;
+  late final List<Animation<double>> _staggerAnimations;
+
+  late String _emoji;
+  late int _grade;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _emoji = widget.initialEmoji;
+    _grade = widget.initialGrade;
+
+    _slideController = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+
+    _scaleController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+
+    _staggerController = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _slideController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    _scaleAnimation = Tween<double>(
+      begin: 0.95,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _scaleController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    // Staggered animations for fields (5 fields: title, emoji, name, picker, grade, buttons)
+    _staggerAnimations = List.generate(6, (index) {
+      final start = (index * 0.1).clamp(0.0, 0.5);
+      final end = (start + 0.2).clamp(0.2, 1.0);
+      return Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(
+          parent: _staggerController,
+          curve: Interval(start, end, curve: Curves.easeOutCubic),
+        ),
+      );
+    });
+
+    _slideController.forward();
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) _staggerController.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _slideController.dispose();
+    _scaleController.dispose();
+    _staggerController.dispose();
+    super.dispose();
+  }
+
+  void _handleEmojiSelection(String newEmoji) {
+    setState(() => _emoji = newEmoji);
+    _scaleController.forward(from: 0);
+  }
+
+  void _onEmojiTap(String emoji) {
+    _handleEmojiSelection(emoji);
+  }
+
+  Future<void> _handleSave() async {
+    final name = widget.nameController.text.trim();
+    if (name.isEmpty) return;
+
+    setState(() => _saving = true);
+    try {
+      await widget.onSave(name, _emoji, _grade);
+      if (mounted) Navigator.of(context).pop();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    // Dynamic background color based on emoji
+    final bgColors = [
+      scheme.primaryContainer,
+      scheme.secondaryContainer,
+      scheme.tertiaryContainer,
+      const Color(0xFFFFE4B5),
+      const Color(0xFFE0F2FE),
+      const Color(0xFFDCFCE7),
+    ];
+    final bgColor = bgColors[_emoji.length % bgColors.length];
+
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: Container(
+          decoration: BoxDecoration(
+            color: scheme.surface,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Drag handle
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: Br.full,
+                ),
+              ),
+              const SizedBox(height: Sp.lg),
+              // Title
+              AnimatedBuilder(
+                animation: _staggerAnimations[0],
+                builder: (context, child) {
+                  return Opacity(
+                    opacity: _staggerAnimations[0].value,
+                    child: Transform.translate(
+                      offset: Offset(0, 20 * (1 - _staggerAnimations[0].value)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: Sp.md),
+                        child: Text(
+                          widget.profile == null ? 'Add New Profile' : 'Edit Profile',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: Sp.xl),
+              // Emoji preview
+              AnimatedBuilder(
+                animation: _staggerAnimations[1],
+                builder: (context, child) {
+                  return Opacity(
+                    opacity: _staggerAnimations[1].value,
+                    child: Transform.translate(
+                      offset: Offset(0, 20 * (1 - _staggerAnimations[1].value)),
+                      child: Center(
+                        child: AnimatedScale(
+                          scale: _scaleAnimation.value,
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.easeOutCubic,
+                          child: Container(
+                            width: 96,
+                            height: 96,
+                            decoration: BoxDecoration(
+                              color: bgColor,
+                              borderRadius: Br.full,
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              _emoji,
+                              style: const TextStyle(fontSize: 44),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: Sp.lg),
+              // Name field
+              AnimatedBuilder(
+                animation: _staggerAnimations[2],
+                builder: (context, child) {
+                  return Opacity(
+                    opacity: _staggerAnimations[2].value,
+                    child: Transform.translate(
+                      offset: Offset(0, 20 * (1 - _staggerAnimations[2].value)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: Sp.md),
+                        child: TextField(
+                          controller: widget.nameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Name',
+                            hintText: 'What should we call you?',
+                          ),
+                          textCapitalization: TextCapitalization.words,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: Sp.lg),
+              // Emoji picker
+              AnimatedBuilder(
+                animation: _staggerAnimations[3],
+                builder: (context, child) {
+                  return Opacity(
+                    opacity: _staggerAnimations[3].value,
+                    child: Transform.translate(
+                      offset: Offset(0, 20 * (1 - _staggerAnimations[3].value)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: Sp.md),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Pick a character',
+                              style: theme.textTheme.labelMedium?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: Sp.sm),
+                            SizedBox(
+                              height: 60,
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _emojiOptions.length,
+                                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                                itemBuilder: (context, index) {
+                                  final value = _emojiOptions[index];
+                                  return _StickerEmoji(
+                                    emoji: value,
+                                    isSelected: _emoji == value,
+                                    onTap: () => _onEmojiTap(value),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: Sp.lg),
+              // Grade dropdown
+              AnimatedBuilder(
+                animation: _staggerAnimations[4],
+                builder: (context, child) {
+                  return Opacity(
+                    opacity: _staggerAnimations[4].value,
+                    child: Transform.translate(
+                      offset: Offset(0, 20 * (1 - _staggerAnimations[4].value)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: Sp.md),
+                        child: DropdownButtonFormField<int>(
+                          value: _grade,
+                          decoration: const InputDecoration(labelText: 'Grade Level'),
+                          items: List.generate(
+                            12,
+                            (index) => DropdownMenuItem(
+                              value: index + 1,
+                              child: Text('Grade ${index + 1}'),
+                            ),
+                          ),
+                          onChanged: (value) =>
+                              setState(() => _grade = value ?? _grade),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: Sp.xl),
+              // Buttons
+              AnimatedBuilder(
+                animation: _staggerAnimations[5],
+                builder: (context, child) {
+                  return Opacity(
+                    opacity: _staggerAnimations[5].value,
+                    child: Transform.translate(
+                      offset: Offset(0, 20 * (1 - _staggerAnimations[5].value)),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(Sp.md, 0, Sp.md, Sp.xl),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () {
+                                  widget.nameController.dispose();
+                                  Navigator.of(context).pop();
+                                },
+                                child: const Text('Cancel'),
+                              ),
+                            ),
+                            const SizedBox(width: Sp.md),
+                            Expanded(
+                              child: FilledButton(
+                                onPressed: _saving ? null : _handleSave,
+                                child: _saving
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text('Save'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              // Bottom padding for safe area (keyboard + system navigation bar)
+              SizedBox(
+                height: MediaQuery.of(context).viewInsets.bottom +
+                    MediaQuery.of(context).padding.bottom,
+              ),
+            ],
+          ),
         ),
       ),
     );
