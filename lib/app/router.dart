@@ -189,11 +189,17 @@ class _BottomNavigationShell extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final compact = MediaQuery.sizeOf(context).width < QuexBreakpoints.tablet;
     final downloadState = ref.watch(modelDownloadProvider);
+    final activeProfileId = ref.watch(activeProfileProvider);
+    final hasSessions = ref.watch(recentSessionsProvider(activeProfileId ?? 0)).when(
+          data: (sessions) => sessions.isNotEmpty,
+          loading: () => true,
+          error: (_, __) => true,
+        );
 
     String getTitle() {
       switch (navigationShell.currentIndex) {
         case 0:
-          return 'Home';
+          return '🦆 Quex';
         case 1:
           return 'Profile';
         default:
@@ -213,7 +219,7 @@ class _BottomNavigationShell extends ConsumerWidget {
     }
 
     Widget? getFloatingActionButton() {
-      if (compact && navigationShell.currentIndex == 0) {
+      if (compact && navigationShell.currentIndex == 0 && hasSessions) {
         return FloatingActionButton.extended(
           onPressed: () => context.go(Routes.newSession),
           icon: const Icon(Icons.add),
