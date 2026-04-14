@@ -2,23 +2,62 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class QuexTheme {
-  static const brandBlue = Color(0xFF2563EB);
-  static const brandTeal = Color(0xFF0F766E);
-  static const brandOrange = Color(0xFFF59E0B);
-  static const brandRed = Color(0xFFEF4444);
-  static const brandPurple = Color(0xFF7C3AED);
+  static const primaryBlue = Color(0xFF4A90E2);
+  static const warmRed = Color(0xFFFF6B6B);
+  static const amber = Color(0xFFFFB347);
 
   static ThemeData get lightTheme => _theme(Brightness.light);
   static ThemeData get darkTheme => _theme(Brightness.dark);
 
   static ThemeData _theme(Brightness brightness) {
     final base = ThemeData(brightness: brightness, useMaterial3: true);
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: brandBlue,
+
+    // Create completely custom ColorScheme to eliminate any generated mismatched tones
+    final colorScheme = ColorScheme(
       brightness: brightness,
+      primary: primaryBlue,
+      onPrimary: Colors.white,
+      primaryContainer: brightness == Brightness.light
+          ? const Color(0xFFD4E8F7)
+          : const Color(0xFF2A4A6C),
+      onPrimaryContainer: brightness == Brightness.light
+          ? const Color(0xFF1A3A5C)
+          : const Color(0xFFD4E8F7),
+      secondary: warmRed,
+      onSecondary: Colors.white,
+      secondaryContainer: brightness == Brightness.light
+          ? const Color(0xFFFFE5E5)
+          : const Color(0xFF4A2C2C),
+      onSecondaryContainer: brightness == Brightness.light
+          ? const Color(0xFF4A2C2C)
+          : const Color(0xFFFFE5E5),
+      tertiary: amber,
+      onTertiary: Colors.white,
+      tertiaryContainer: brightness == Brightness.light
+          ? const Color(0xFFFFF3E0)
+          : const Color(0xFF4A3520),
+      onTertiaryContainer: brightness == Brightness.light
+          ? const Color(0xFF4A3520)
+          : const Color(0xFFFFF3E0),
+      error: const Color(0xFFBA1A1A),
+      onError: Colors.white,
+      errorContainer: const Color(0xFFFFDAD6),
+      onErrorContainer: const Color(0xFF410002),
       surface: brightness == Brightness.light
-          ? const Color(0xFFF8FAFC)
-          : const Color(0xFF0F172A),
+          ? const Color(0xFFFEF7F0)
+          : const Color(0xFF1C1816),
+      onSurface: brightness == Brightness.light
+          ? const Color(0xFF1C1B1F)
+          : const Color(0xFFE6E1E5),
+      surfaceContainerHighest: brightness == Brightness.light
+          ? const Color(0xFFE1E3E8)
+          : const Color(0xFF36343A),
+      outline: brightness == Brightness.light
+          ? const Color(0xFF74777F)
+          : const Color(0xFF938F99),
+      outlineVariant: brightness == Brightness.light
+          ? const Color(0xFFC4C6CF)
+          : const Color(0xFF47474F),
     );
 
     final textTheme = GoogleFonts.nunitoSansTextTheme(base.textTheme);
@@ -113,10 +152,8 @@ class QuexTheme {
       ),
       extensions: const [
         QuexColors(
-          teal: brandTeal,
-          orange: brandOrange,
-          red: brandRed,
-          purple: brandPurple,
+          warmRed: warmRed,
+          amber: amber,
         ),
       ],
     );
@@ -125,25 +162,19 @@ class QuexTheme {
 
 @immutable
 class QuexColors extends ThemeExtension<QuexColors> {
-  final Color? teal;
-  final Color? orange;
-  final Color? red;
-  final Color? purple;
+  final Color? warmRed;
+  final Color? amber;
 
   const QuexColors({
-    required this.teal,
-    required this.orange,
-    required this.red,
-    required this.purple,
+    required this.warmRed,
+    required this.amber,
   });
 
   @override
-  QuexColors copyWith({Color? teal, Color? orange, Color? red, Color? purple}) {
+  QuexColors copyWith({Color? warmRed, Color? amber}) {
     return QuexColors(
-      teal: teal ?? this.teal,
-      orange: orange ?? this.orange,
-      red: red ?? this.red,
-      purple: purple ?? this.purple,
+      warmRed: warmRed ?? this.warmRed,
+      amber: amber ?? this.amber,
     );
   }
 
@@ -151,10 +182,8 @@ class QuexColors extends ThemeExtension<QuexColors> {
   QuexColors lerp(ThemeExtension<QuexColors>? other, double t) {
     if (other is! QuexColors) return this;
     return QuexColors(
-      teal: Color.lerp(teal, other.teal, t),
-      orange: Color.lerp(orange, other.orange, t),
-      red: Color.lerp(red, other.red, t),
-      purple: Color.lerp(purple, other.purple, t),
+      warmRed: Color.lerp(warmRed, other.warmRed, t),
+      amber: Color.lerp(amber, other.amber, t),
     );
   }
 }

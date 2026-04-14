@@ -310,13 +310,13 @@ class _ProfileCardState extends State<_ProfileCard> {
     final scheme = theme.colorScheme;
 
     // Dynamic background color based on emoji
+    final quexColors = theme.extension<QuexColors>();
     final bgColors = [
       scheme.primaryContainer,
-      scheme.secondaryContainer,
-      scheme.tertiaryContainer,
-      const Color(0xFFFFE4B5), // Warm peach
-      const Color(0xFFE0F2FE), // Light blue
-      const Color(0xFFDCFCE7), // Light green
+      quexColors?.warmRed ?? scheme.secondaryContainer,
+      quexColors?.amber ?? scheme.tertiaryContainer,
+      scheme.primaryContainer.withValues(alpha: 0.7),
+      scheme.secondaryContainer.withValues(alpha: 0.7),
     ];
     final bgColor = bgColors[widget.profile.name.length % bgColors.length];
 
@@ -661,13 +661,13 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
     final scheme = theme.colorScheme;
 
     // Dynamic background color based on emoji
+    final quexColors = theme.extension<QuexColors>();
     final bgColors = [
       scheme.primaryContainer,
-      scheme.secondaryContainer,
-      scheme.tertiaryContainer,
-      const Color(0xFFFFE4B5),
-      const Color(0xFFE0F2FE),
-      const Color(0xFFDCFCE7),
+      quexColors?.warmRed ?? scheme.secondaryContainer,
+      quexColors?.amber ?? scheme.tertiaryContainer,
+      scheme.primaryContainer.withValues(alpha: 0.7),
+      scheme.secondaryContainer.withValues(alpha: 0.7),
     ];
     final bgColor = bgColors[_emoji.length % bgColors.length];
 
