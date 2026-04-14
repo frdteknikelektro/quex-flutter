@@ -37,6 +37,12 @@ class ProfileDAO {
   Future<void> delete(int id) async {
     await (await _db).delete('profiles', where: 'id = ?', whereArgs: [id]);
   }
+
+  /// Deletes profile and all associated data via FK CASCADE:
+  /// - Sessions, Materials, Quizzes, Questions, Chat messages
+  Future<void> deleteCascade(int id) async {
+    await (await _db).delete('profiles', where: 'id = ?', whereArgs: [id]);
+  }
 }
 
 class SessionDAO {
@@ -74,6 +80,22 @@ class SessionDAO {
 
   Future<void> delete(int id) async {
     await (await _db).delete('sessions', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<int> countByProfile(int profileId) async {
+    final result = await (await _db).rawQuery(
+      'SELECT COUNT(*) AS c FROM sessions WHERE profile_id = ?',
+      [profileId],
+    );
+    return result.first['c'] as int;
+  }
+
+  Future<void> deleteAllByProfile(int profileId) async {
+    await (await _db).delete(
+      'sessions',
+      where: 'profile_id = ?',
+      whereArgs: [profileId],
+    );
   }
 }
 
@@ -149,6 +171,17 @@ class QuizDAO {
       where: 'id = ?',
       whereArgs: [quizId],
     );
+  }
+
+  Future<void> deleteCompletedByProfile(int profileId) async {
+    final db = await _db;
+    await db.rawDelete('''
+      DELETE FROM quizzes 
+      WHERE completed_at IS NOT NULL 
+      AND session_id IN (
+        SELECT id FROM sessions WHERE profile_id = ?
+      )
+    ''', [profileId]);
   }
 }
 

@@ -18,7 +18,6 @@ import '../features/quiz/quiz_screen.dart';
 import '../features/session_detail/session_detail_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../features/summary/summary_screen.dart';
-import '../features/model_download/model_download_screen.dart';
 class Routes {
   static const splash = '/splash';
   static const profileSelection = '/profile-selection';
@@ -32,7 +31,6 @@ class Routes {
   static const chat = '/session/:sessionId/chat';
   static const summary = '/session/:sessionId/quiz/:quizId/summary';
   static const profile = '/profile';
-  static const modelDownload = '/model-download';
   }
 
 final appRouter = GoRouter(
@@ -162,11 +160,6 @@ final appRouter = GoRouter(
       name: 'create-first-profile',
       builder: (context, state) => const CreateFirstProfileScreen(),
     ),
-    GoRoute(
-      path: Routes.modelDownload,
-      name: 'model-download',
-      builder: (context, state) => const ModelDownloadScreen(),
-    ),
   ],
   errorBuilder: (context, state) => Scaffold(
     body: Center(
@@ -243,7 +236,6 @@ class _BottomNavigationShell extends ConsumerWidget {
               progress: downloadState.progress,
               status: downloadState.status,
               onCancel: () => ref.read(modelDownloadProvider.notifier).cancel(),
-              onTap: () => context.go(Routes.modelDownload),
             ),
         ],
       ),
@@ -306,7 +298,6 @@ class _BottomNavigationShell extends ConsumerWidget {
                           progress: downloadState.progress,
                           status: downloadState.status,
                           onCancel: () => ref.read(modelDownloadProvider.notifier).cancel(),
-                          onTap: () => context.go(Routes.modelDownload),
                         ),
                     ],
                   ),
@@ -326,13 +317,11 @@ class _DownloadBanner extends StatelessWidget {
   final double progress;
   final DownloadStatus status;
   final VoidCallback onCancel;
-  final VoidCallback onTap;
 
   const _DownloadBanner({
     required this.progress,
     required this.status,
     required this.onCancel,
-    required this.onTap,
   });
 
   @override
@@ -341,62 +330,59 @@ class _DownloadBanner extends StatelessWidget {
     final isCancelling = status == DownloadStatus.cancelling;
     final percent = (progress * 100).round();
 
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        color: scheme.secondaryContainer,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: SafeArea(
-          top: false,
-          child: Row(
-            children: [
-              Icon(
-                Icons.downloading_outlined,
-                size: 20,
-                color: scheme.onSecondaryContainer,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      isCancelling ? 'Cancelling…' : 'Downloading model  $percent%',
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                            color: scheme.onSecondaryContainer,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: isCancelling ? null : progress,
-                        backgroundColor: scheme.onSecondaryContainer.withValues(alpha: 0.2),
-                        color: scheme.onSecondaryContainer,
-                        minHeight: 4,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              if (!isCancelling)
-                IconButton(
-                  onPressed: onCancel,
-                  icon: Icon(
-                    Icons.close,
-                    size: 18,
-                    color: scheme.onSecondaryContainer,
+    return Container(
+      color: scheme.secondaryContainer,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Icon(
+              Icons.downloading_outlined,
+              size: 20,
+              color: scheme.onSecondaryContainer,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    isCancelling ? 'Cancelling…' : 'Downloading model  $percent%',
+                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                          color: scheme.onSecondaryContainer,
+                          fontWeight: FontWeight.w600,
+                        ),
                   ),
-                  tooltip: 'Cancel download',
-                  visualDensity: VisualDensity.compact,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  const SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: LinearProgressIndicator(
+                      value: isCancelling ? null : progress,
+                      backgroundColor: scheme.onSecondaryContainer.withValues(alpha: 0.2),
+                      color: scheme.onSecondaryContainer,
+                      minHeight: 4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            if (!isCancelling)
+              IconButton(
+                onPressed: onCancel,
+                icon: Icon(
+                  Icons.close,
+                  size: 18,
+                  color: scheme.onSecondaryContainer,
                 ),
-            ],
-          ),
+                tooltip: 'Cancel download',
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+          ],
         ),
       ),
     );

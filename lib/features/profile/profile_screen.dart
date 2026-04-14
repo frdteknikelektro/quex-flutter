@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
 import '../../app/theme.dart';
-import '../../core/ai/model_manager.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
@@ -110,68 +109,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
         }
 
         return SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 24),
-              // Animated header
-              FadeTransition(
-                opacity: _headerFade,
-                child: SlideTransition(
-                  position: _headerSlide,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Your Profile',
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Manage your learning settings',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Profile Hero
+                _AnimatedCardEntry(
+                  animation: _cardController,
+                  delay: 0.0,
+                  child: _ProfileHeroCard(
+                    profile: activeProfile,
+                    onEdit: () => _showEditBottomSheet(activeProfile),
+                    onSwitchProfile: () => context.go(Routes.profileSelection),
                   ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                  child: Column(
-                    children: [
-                      // Profile Hero Card
-                      _AnimatedCardEntry(
-                        animation: _cardController,
-                        delay: 0.0,
-                        child: _ProfileHeroCard(
-                          profile: activeProfile,
-                          onEdit: () => _showEditBottomSheet(activeProfile),
-                          onSwitchProfile: () => context.go(Routes.profileSelection),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // Model Status Row
-                      _AnimatedCardEntry(
-                        animation: _cardController,
-                        delay: 0.15,
-                        child: _ModelStatusRow(),
-                      ),
-                    ],
-                  ),
+                const SizedBox(height: 24),
+                // Stats + Settings merged into single card
+                _AnimatedCardEntry(
+                  animation: _cardController,
+                  delay: 0.1,
+                  child: _SettingsListCard(profile: activeProfile),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -235,11 +196,13 @@ class _ProfileHeroCard extends StatelessWidget {
     final scheme = theme.colorScheme;
     final quexColors = theme.extension<QuexColors>();
 
-    // Dynamic background color based on emoji
+    // Dynamic background color based on emoji (matches profile_selection_screen.dart)
     final bgColors = [
       scheme.primaryContainer,
       quexColors?.warmRed ?? scheme.secondaryContainer,
       quexColors?.amber ?? scheme.tertiaryContainer,
+      scheme.primaryContainer.withValues(alpha: 0.7),
+      scheme.secondaryContainer.withValues(alpha: 0.7),
     ];
     final bgColor = bgColors[profile.name.length % bgColors.length];
 
@@ -250,45 +213,56 @@ class _ProfileHeroCard extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Large Avatar
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(28),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                profile.emoji,
-                style: const TextStyle(fontSize: 48),
-              ),
-            ),
-            const SizedBox(height: 20),
-            // Name
-            Text(
-              profile.name,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            // Grade and question count badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              decoration: BoxDecoration(
-                color: scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                'Grade ${profile.grade}  •  ${profile.defaultQuestionCount} questions',
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
+            // Avatar left, name + grade right
+            Row(
+              children: [
+                // Avatar
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: bgColor,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    profile.emoji,
+                    style: const TextStyle(fontSize: 40),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 20),
+                // Name and grade
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        profile.name,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Grade ${profile.grade}',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             // Action buttons
@@ -318,49 +292,216 @@ class _ProfileHeroCard extends StatelessWidget {
   }
 }
 
-class _ModelStatusRow extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+class _SettingsListCard extends ConsumerStatefulWidget {
+  final Profile profile;
 
-    return FutureBuilder<bool>(
-      future: ModelManager.isReady(),
-      builder: (context, snapshot) {
-        final ready = snapshot.data ?? false;
-        return Card(
-          elevation: 0,
-          color: scheme.surfaceContainerLow,
-          child: ListTile(
-            leading: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: ready
-                    ? scheme.primaryContainer
-                    : scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                ready ? Icons.check_circle_outline : Icons.cloud_off_outlined,
-                color: ready ? scheme.primary : scheme.onSurfaceVariant,
-              ),
-            ),
-            title: Text(
-              'Study Engine',
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            subtitle: Text(
-              ready ? 'Ready to use' : 'Not downloaded',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.go(Routes.modelDownload),
+  const _SettingsListCard({required this.profile});
+
+  @override
+  ConsumerState<_SettingsListCard> createState() => _SettingsListCardState();
+}
+
+class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
+  bool _clearingSessions = false;
+  bool _deleting = false;
+
+  Future<void> _clearAllSessions() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear all sessions?'),
+        content: const Text(
+          'This will permanently delete all study sessions, materials, quizzes, and chat history for this profile.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _clearingSessions = true);
+    try {
+      await SessionDAO().deleteAllByProfile(widget.profile.id!);
+      if (mounted) {
+        ref.invalidate(recentSessionsProvider(widget.profile.id!));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('All sessions cleared')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _clearingSessions = false);
+    }
+  }
+
+  Future<void> _deleteProfile() async {
+    final profileName = widget.profile.name;
+    final controller = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.warning_rounded, color: Theme.of(context).colorScheme.error),
+              const SizedBox(width: 8),
+              const Text('Delete profile?'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This will permanently delete "$profileName" and ALL associated data.',
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Type the profile name to confirm:',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: controller,
+                decoration: InputDecoration(
+                  hintText: profileName,
+                  filled: true,
+                  fillColor: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.3),
+                ),
+                autofocus: true,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: controller,
+              builder: (context, value, child) {
+                final canDelete = value.text.trim() == profileName;
+                return FilledButton(
+                  onPressed: canDelete ? () => Navigator.pop(context, true) : null,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.error,
+                    foregroundColor: Theme.of(context).colorScheme.onError,
+                  ),
+                  child: const Text('Delete'),
+                );
+              },
+            ),
+          ],
         );
       },
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _deleting = true);
+    try {
+      await ProfileDAO().deleteCascade(widget.profile.id!);
+      if (mounted) {
+        ref.invalidate(profilesProvider);
+        ref.read(activeProfileProvider.notifier).state = null;
+        ref.read(sessionProfileSetProvider.notifier).state = false;
+        context.go(Routes.profileSelection);
+      }
+    } finally {
+      if (mounted) setState(() => _deleting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Column(
+      children: [
+        // Metric card
+        Card(
+          elevation: 0,
+          color: scheme.surfaceContainerLow,
+          child: FutureBuilder<int>(
+            future: SessionDAO().countByProfile(widget.profile.id!),
+            builder: (context, snapshot) {
+              final count = snapshot.data ?? 0;
+              return ListTile(
+                leading: Icon(Icons.auto_stories_outlined, color: scheme.primary),
+                title: const Text('Total sessions'),
+                trailing: Text(
+                  '$count',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: scheme.primary,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Actions card
+        Card(
+          elevation: 0,
+          color: scheme.surfaceContainerLow,
+          child: Column(
+            children: [
+              // Clear sessions (neutral)
+              ListTile(
+                leading: Icon(Icons.folder_delete_outlined, color: scheme.onSurfaceVariant),
+                title: const Text('Clear all sessions'),
+                subtitle: const Text('Remove all study data'),
+                trailing: _clearingSessions
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.chevron_right),
+                onTap: _clearingSessions ? null : _clearAllSessions,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              // Delete profile (danger)
+              ListTile(
+                leading: Icon(Icons.delete_forever, color: scheme.error),
+                title: Text(
+                  'Delete profile',
+                  style: TextStyle(color: scheme.error),
+                ),
+                subtitle: Text(
+                  'Remove "${widget.profile.name}" and all data',
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                ),
+                trailing: _deleting
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: scheme.error,
+                        ),
+                      )
+                    : Icon(Icons.chevron_right, color: scheme.error),
+                onTap: _deleting ? null : _deleteProfile,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
