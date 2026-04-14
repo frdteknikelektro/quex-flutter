@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
-import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
@@ -16,11 +15,74 @@ class ProfileSelectionScreen extends ConsumerStatefulWidget {
       _ProfileSelectionScreenState();
 }
 
-class _ProfileSelectionScreenState
-    extends ConsumerState<ProfileSelectionScreen> {
+class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
+    with TickerProviderStateMixin {
   static const _emojiOptions = [
-    '👧', '👦', '🧒', '🎓', '🌟', '🦁', '🐯', '🦊',
+    '👧',
+    '👦',
+    '🧒',
+    '👶',
+    '🎓',
+    '🌟',
+    '⭐',
+    '🦁',
+    '🐯',
+    '🦊',
+    '🐼',
+    '🐨',
+    '🦆',
+    '🐤',
+    '🦄',
+    '🐙',
   ];
+
+  late final AnimationController _headerController;
+  late final AnimationController _cardsController;
+  late final Animation<double> _headerFade;
+  late final Animation<Offset> _headerSlide;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _headerController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+
+    _cardsController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _headerFade = CurvedAnimation(
+      parent: _headerController,
+      curve: Curves.easeOut,
+    );
+
+    _headerSlide = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _headerController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    // Staggered entry
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) _headerController.forward();
+    });
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (mounted) _cardsController.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _headerController.dispose();
+    _cardsController.dispose();
+    super.dispose();
+  }
 
   Future<void> _selectProfile(Profile profile) async {
     await saveActiveProfileId(profile.id!);
@@ -42,36 +104,74 @@ class _ProfileSelectionScreenState
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setDialogState) {
+          final scheme = Theme.of(dialogContext).colorScheme;
           return AlertDialog(
-            title: Text(profile == null ? 'Add profile' : 'Edit profile'),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(28),
+            ),
+            title: Text(
+              profile == null ? 'Add New Profile' : 'Edit Profile',
+              textAlign: TextAlign.center,
+            ),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Large emoji preview
+                  Container(
+                    width: 100,
+                    height: 100,
+                    decoration: BoxDecoration(
+                      color: scheme.primaryContainer,
+                      borderRadius: BorderRadius.circular(28),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      emoji,
+                      style: const TextStyle(fontSize: 48),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                   TextField(
                     controller: nameController,
-                    decoration: const InputDecoration(labelText: 'Name'),
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                      hintText: 'What should we call you?',
+                    ),
                     textCapitalization: TextCapitalization.words,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 20),
+                  // Sticker-style emoji picker
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Pick a character',
+                      style: Theme.of(dialogContext)
+                          .textTheme
+                          .labelMedium
+                          ?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: _emojiOptions
                         .map(
-                          (value) => ChoiceChip(
-                            label: Text(value),
-                            selected: emoji == value,
-                            onSelected: (_) =>
-                                setDialogState(() => emoji = value),
+                          (value) => _StickerEmoji(
+                            emoji: value,
+                            isSelected: emoji == value,
+                            onTap: () => setDialogState(() => emoji = value),
                           ),
                         )
                         .toList(),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 20),
                   DropdownButtonFormField<int>(
                     initialValue: grade,
-                    decoration: const InputDecoration(labelText: 'Grade'),
+                    decoration: const InputDecoration(labelText: 'Grade Level'),
                     items: List.generate(
                       12,
                       (index) => DropdownMenuItem(
@@ -82,12 +182,25 @@ class _ProfileSelectionScreenState
                     onChanged: (value) =>
                         setDialogState(() => grade = value ?? grade),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 20),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'How many questions?',
+                      style: Theme.of(dialogContext)
+                          .textTheme
+                          .labelMedium
+                          ?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   SegmentedButton<int>(
                     segments: const [
-                      ButtonSegment(value: 10, label: Text('10')),
-                      ButtonSegment(value: 20, label: Text('20')),
-                      ButtonSegment(value: 30, label: Text('30')),
+                      ButtonSegment(value: 10, label: Text('Quick 10')),
+                      ButtonSegment(value: 20, label: Text('Standard 20')),
+                      ButtonSegment(value: 30, label: Text('Challenge 30')),
                     ],
                     selected: {questions},
                     onSelectionChanged: (values) =>
@@ -98,7 +211,10 @@ class _ProfileSelectionScreenState
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(),
+                onPressed: () {
+                  nameController.dispose();
+                  Navigator.of(dialogContext).pop();
+                },
                 child: const Text('Cancel'),
               ),
               FilledButton(
@@ -124,6 +240,7 @@ class _ProfileSelectionScreenState
                   }
                   if (!mounted) return;
                   ref.invalidate(profilesProvider);
+                  nameController.dispose();
                   if (dialogContext.mounted) Navigator.of(dialogContext).pop();
                 },
                 child: const Text('Save'),
@@ -133,43 +250,6 @@ class _ProfileSelectionScreenState
         },
       ),
     );
-  }
-
-  Future<void> _deleteProfile(Profile profile, List<Profile> profiles) async {
-    if (profiles.length <= 1) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot delete the only profile.')),
-      );
-      return;
-    }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete profile'),
-        content: Text(
-          'Delete "${profile.name}"? All sessions and quizzes for this profile will be lost.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    await ProfileDAO().delete(profile.id!);
-    if (!mounted) return;
-    ref.invalidate(profilesProvider);
   }
 
   @override
@@ -194,54 +274,72 @@ class _ProfileSelectionScreenState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: Sp.xl),
-                Text(
-                  'Who\'s studying?',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
+                const SizedBox(height: 48),
+                // Animated header
+                FadeTransition(
+                  opacity: _headerFade,
+                  child: SlideTransition(
+                    position: _headerSlide,
+                    child: Column(
+                      children: [
+                        Text(
+                          'Who\'s studying?',
+                          style: theme.textTheme.displaySmall?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            color: scheme.primary,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Pick your profile to start learning! 🚀',
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
                   ),
-                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: Sp.xs),
-                Text(
-                  'Select your profile to continue',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: Sp.xl),
+                const SizedBox(height: 32),
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final crossAxisCount =
-                          constraints.maxWidth >= 600 ? 4 : 2;
+                          constraints.maxWidth >= 600 ? 3 : 2;
                       return GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(
-                          Sp.md, 0, Sp.md, Sp.xl,
-                        ),
-                        gridDelegate:
-                            SliverGridDelegateWithFixedCrossAxisCount(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: crossAxisCount,
-                          crossAxisSpacing: Sp.md,
-                          mainAxisSpacing: Sp.md,
-                          childAspectRatio: 0.85,
+                          crossAxisSpacing: 20,
+                          mainAxisSpacing: 20,
+                          childAspectRatio: 0.75,
                         ),
                         itemCount: profiles.length + 1,
                         itemBuilder: (context, index) {
+                          // Staggered animation delay
+                          final delay = index * 0.08;
+                          final start = delay.clamp(0.0, 0.6);
+
                           if (index == profiles.length) {
-                            return _AddProfileCard(
-                              onTap: () => _showProfileDialog(),
+                            return _AnimatedCardEntry(
+                              animation: _cardsController,
+                              delay: start,
+                              child: _AddProfileCard(
+                                onTap: () => _showProfileDialog(),
+                              ),
                             );
                           }
                           final profile = profiles[index];
-                          return _ProfileCard(
-                            profile: profile,
-                            onTap: () => _selectProfile(profile),
-                            onEdit: () =>
-                                _showProfileDialog(profile: profile),
-                            onDelete: () =>
-                                _deleteProfile(profile, profiles),
+                          return _AnimatedCardEntry(
+                            animation: _cardsController,
+                            delay: start,
+                            child: _ProfileCard(
+                              profile: profile,
+                              onTap: () => _selectProfile(profile),
+                            ),
                           );
                         },
                       );
@@ -257,136 +355,282 @@ class _ProfileSelectionScreenState
   }
 }
 
-class _ProfileCard extends StatelessWidget {
+class _AnimatedCardEntry extends StatelessWidget {
+  final Animation<double> animation;
+  final double delay;
+  final Widget child;
+
+  const _AnimatedCardEntry({
+    required this.animation,
+    required this.delay,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final delayedAnimation = CurvedAnimation(
+      parent: animation,
+      curve: Interval(
+        delay.clamp(0.0, 0.6),
+        (delay + 0.4).clamp(0.4, 1.0),
+        curve: Curves.elasticOut,
+      ),
+    );
+
+    return AnimatedBuilder(
+      animation: delayedAnimation,
+      builder: (context, child) {
+        final value = delayedAnimation.value;
+        return Transform.scale(
+          scale: 0.8 + (value * 0.2),
+          child: Opacity(
+            opacity: value.clamp(0.0, 1.0),
+            child: child,
+          ),
+        );
+      },
+      child: child,
+    );
+  }
+}
+
+class _ProfileCard extends StatefulWidget {
   final Profile profile;
   final VoidCallback onTap;
-  final VoidCallback onEdit;
-  final VoidCallback onDelete;
 
   const _ProfileCard({
     required this.profile,
     required this.onTap,
-    required this.onEdit,
-    required this.onDelete,
   });
+
+  @override
+  State<_ProfileCard> createState() => _ProfileCardState();
+}
+
+class _ProfileCardState extends State<_ProfileCard> {
+  double _scale = 1.0;
+
+  void _onTapDown(TapDownDetails details) {
+    setState(() => _scale = 0.96);
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    setState(() => _scale = 1.0);
+  }
+
+  void _onTapCancel() {
+    setState(() => _scale = 1.0);
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Stack(
-      children: [
-        Card(
+    // Dynamic background color based on emoji
+    final bgColors = [
+      scheme.primaryContainer,
+      scheme.secondaryContainer,
+      scheme.tertiaryContainer,
+      const Color(0xFFFFE4B5), // Warm peach
+      const Color(0xFFE0F2FE), // Light blue
+      const Color(0xFFDCFCE7), // Light green
+    ];
+    final bgColor = bgColors[widget.profile.name.length % bgColors.length];
+
+    return GestureDetector(
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onTapCancel: _onTapCancel,
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _scale,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeOutCubic,
+        child: Card(
           clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(Sp.md),
+          elevation: 0,
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Large avatar with dynamic background
+                      Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(28),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          widget.profile.emoji,
+                          style: const TextStyle(fontSize: 48),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        widget.profile.name,
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      // Grade badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'Grade ${widget.profile.grade}',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AddProfileCard extends StatefulWidget {
+  final VoidCallback onTap;
+
+  const _AddProfileCard({required this.onTap});
+
+  @override
+  State<_AddProfileCard> createState() => _AddProfileCardState();
+}
+
+class _AddProfileCardState extends State<_AddProfileCard> {
+  double _scale = 1.0;
+
+  void _onTapDown(TapDownDetails details) {
+    setState(() => _scale = 0.96);
+  }
+
+  void _onTapUp(TapUpDetails details) {
+    setState(() => _scale = 1.0);
+  }
+
+  void _onTapCancel() {
+    setState(() => _scale = 1.0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return GestureDetector(
+      onTapDown: _onTapDown,
+      onTapUp: _onTapUp,
+      onTapCancel: _onTapCancel,
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _scale,
+        duration: const Duration(milliseconds: 100),
+        curve: Curves.easeOutCubic,
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          elevation: 0,
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
-                    width: 80,
-                    height: 80,
+                    width: 100,
+                    height: 100,
                     decoration: BoxDecoration(
-                      color: scheme.primaryContainer,
-                      borderRadius: Br.full,
+                      color: scheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(28),
                     ),
                     alignment: Alignment.center,
-                    child: Text(
-                      profile.emoji,
-                      style: const TextStyle(fontSize: 36),
+                    child: Icon(
+                      Icons.add,
+                      size: 48,
+                      color: scheme.onSurfaceVariant,
                     ),
                   ),
-                  const SizedBox(height: Sp.md),
+                  const SizedBox(height: 16),
                   Text(
-                    profile.name,
-                    style: theme.textTheme.titleMedium?.copyWith(
+                    'Add New Profile',
+                    style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w700,
+                      color: scheme.onSurfaceVariant,
                     ),
                     textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
             ),
           ),
         ),
-        Positioned(
-          top: 4,
-          right: 4,
-          child: PopupMenuButton<String>(
-            icon: Icon(
-              Icons.more_vert,
-              size: 20,
-              color: scheme.onSurfaceVariant,
-            ),
-            tooltip: 'Profile options',
-            onSelected: (value) {
-              if (value == 'edit') onEdit();
-              if (value == 'delete') onDelete();
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'edit', child: Text('Edit')),
-              PopupMenuItem(value: 'delete', child: Text('Delete')),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-class _AddProfileCard extends StatelessWidget {
+// Sticker-style emoji picker widget
+class _StickerEmoji extends StatelessWidget {
+  final String emoji;
+  final bool isSelected;
   final VoidCallback onTap;
 
-  const _AddProfileCard({required this.onTap});
+  const _StickerEmoji({
+    required this.emoji,
+    required this.isSelected,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(Sp.md),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest,
-                  borderRadius: Br.full,
-                  border: Border.all(
-                    color: scheme.outline,
-                    width: 2,
-                  ),
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.add,
-                  size: 36,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: Sp.md),
-              Text(
-                'Add Profile',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: scheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ],
-          ),
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutCubic,
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: isSelected
+              ? scheme.primaryContainer
+              : scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(16),
+          border:
+              isSelected ? Border.all(color: scheme.primary, width: 2) : null,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          emoji,
+          style: const TextStyle(fontSize: 24),
         ),
       ),
     );
