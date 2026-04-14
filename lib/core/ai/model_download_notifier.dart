@@ -40,6 +40,16 @@ class ModelDownloadNotifier extends Notifier<ModelDownloadState> {
   Future<void> start() async {
     if (state.isActive) return;
 
+    // Skip if model is already downloaded (race condition with _checkInitialState)
+    final ready = await ModelManager.isReady();
+    if (ready) {
+      state = const ModelDownloadState(
+        status: DownloadStatus.completed,
+        progress: 1.0,
+      );
+      return;
+    }
+
     _cancelToken = CancelToken();
     _lastNotifPercent = -1;
     state = state.copyWith(status: DownloadStatus.downloading);
