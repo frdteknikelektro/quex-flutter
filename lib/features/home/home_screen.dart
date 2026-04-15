@@ -68,7 +68,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       const SizedBox(height: 16),
                     ],
                     if (sessions.isEmpty)
-                      _EmptySessions(onCreate: () => context.go(Routes.newSession))
+                      _EmptySessions(onCreate: () => context.push(Routes.newSession))
                     else
                       _RecentSessionsList(sessions: sessions),
                   ],
@@ -184,7 +184,7 @@ class _SessionTile extends StatelessWidget {
       color: scheme.surfaceContainerLow,
       elevation: 0,
       child: InkWell(
-        onTap: () => context.go('/session/${session.id}'),
+        onTap: () => context.push('/session/${session.id}'),
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),

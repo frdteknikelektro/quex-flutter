@@ -72,28 +72,10 @@ final appRouter = GoRouter(
       name: 'splash',
       builder: (context, state) => const SplashScreen(),
     ),
-    StatefulShellRoute.indexedStack(
-      builder: (context, state, navigationShell) => _BottomNavigationShell(navigationShell: navigationShell),
-      branches: [
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: Routes.home,
-              name: 'home',
-              builder: (context, state) => const HomeScreen(),
-            ),
-          ],
-        ),
-        StatefulShellBranch(
-          routes: [
-            GoRoute(
-              path: Routes.profile,
-              name: 'profile',
-              builder: (context, state) => const ProfileScreen(),
-            ),
-          ],
-        ),
-      ],
+    GoRoute(
+      path: Routes.home,
+      name: 'home',
+      builder: (context, state) => const _AppShell(),
     ),
     GoRoute(
       path: Routes.session,
@@ -180,13 +162,18 @@ final appRouter = GoRouter(
   ),
 );
 
-class _BottomNavigationShell extends ConsumerWidget {
-  final StatefulNavigationShell navigationShell;
-
-  const _BottomNavigationShell({required this.navigationShell});
+class _AppShell extends ConsumerStatefulWidget {
+  const _AppShell();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends ConsumerState<_AppShell> {
+  int _currentIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).width < QuexBreakpoints.tablet;
     final downloadState = ref.watch(modelDownloadProvider);
     final activeProfileId = ref.watch(activeProfileProvider);
@@ -197,7 +184,7 @@ class _BottomNavigationShell extends ConsumerWidget {
         );
 
     String getTitle() {
-      switch (navigationShell.currentIndex) {
+      switch (_currentIndex) {
         case 0:
           return '🦆 Quex';
         case 1:
@@ -208,7 +195,7 @@ class _BottomNavigationShell extends ConsumerWidget {
     }
 
     List<Widget> getActions() {
-      switch (navigationShell.currentIndex) {
+      switch (_currentIndex) {
         case 0:
           return [];
         case 1:
@@ -219,9 +206,9 @@ class _BottomNavigationShell extends ConsumerWidget {
     }
 
     Widget? getFloatingActionButton() {
-      if (compact && navigationShell.currentIndex == 0 && hasSessions) {
+      if (compact && _currentIndex == 0 && hasSessions) {
         return FloatingActionButton.extended(
-          onPressed: () => context.go(Routes.newSession),
+          onPressed: () => context.push(Routes.newSession),
           icon: const Icon(Icons.add),
           label: const Text('New session'),
         );
@@ -229,14 +216,23 @@ class _BottomNavigationShell extends ConsumerWidget {
       return null;
     }
 
+    final body = IndexedStack(
+      index: _currentIndex,
+      children: const [
+        HomeScreen(),
+        ProfileScreen(),
+      ],
+    );
+
     final content = Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Text(getTitle()),
         actions: getActions(),
       ),
       body: Column(
         children: [
-          Expanded(child: navigationShell),
+          Expanded(child: body),
           if (downloadState.isActive)
             _DownloadBanner(
               progress: downloadState.progress,
@@ -248,8 +244,8 @@ class _BottomNavigationShell extends ConsumerWidget {
       floatingActionButton: getFloatingActionButton(),
       bottomNavigationBar: compact
           ? NavigationBar(
-              selectedIndex: navigationShell.currentIndex,
-              onDestinationSelected: navigationShell.goBranch,
+              selectedIndex: _currentIndex,
+              onDestinationSelected: (i) => setState(() => _currentIndex = i),
               destinations: const [
                 NavigationDestination(
                   icon: Icon(Icons.home_outlined),
@@ -272,8 +268,8 @@ class _BottomNavigationShell extends ConsumerWidget {
           child: Row(
             children: [
               NavigationRail(
-                selectedIndex: navigationShell.currentIndex,
-                onDestinationSelected: navigationShell.goBranch,
+                selectedIndex: _currentIndex,
+                onDestinationSelected: (i) => setState(() => _currentIndex = i),
                 labelType: NavigationRailLabelType.all,
                 minWidth: 88,
                 destinations: const [
@@ -293,12 +289,13 @@ class _BottomNavigationShell extends ConsumerWidget {
               Expanded(
                 child: Scaffold(
                   appBar: AppBar(
+                    automaticallyImplyLeading: false,
                     title: Text(getTitle()),
                     actions: getActions(),
                   ),
                   body: Column(
                     children: [
-                      Expanded(child: navigationShell),
+                      Expanded(child: body),
                       if (downloadState.isActive)
                         _DownloadBanner(
                           progress: downloadState.progress,

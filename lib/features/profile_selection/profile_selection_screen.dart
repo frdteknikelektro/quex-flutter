@@ -91,7 +91,7 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
     ref.read(activeProfileProvider.notifier).state = profile.id;
     ref.read(sessionProfileSetProvider.notifier).state = true;
     if (!mounted) return;
-    context.go(Routes.home);
+    context.push(Routes.home);
   }
 
   Future<void> _showProfileDialog({Profile? profile}) async {
