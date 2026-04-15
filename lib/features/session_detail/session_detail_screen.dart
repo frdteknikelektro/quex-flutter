@@ -66,6 +66,10 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
           await SessionDAO().update(session.copyWith(title: title, emoji: emoji));
           if (!mounted) return;
           ref.invalidate(sessionBundleProvider(widget.sessionId));
+          final profileId = ref.read(activeProfileProvider);
+          if (profileId != null) {
+            ref.invalidate(recentSessionsProvider(profileId));
+          }
         },
       ),
     );
@@ -133,7 +137,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
                   1,
                   _NavigationCard(sessionId: widget.sessionId),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 32),
                 _staggerWrap(
                   2,
                   _QuizSection(
