@@ -78,6 +78,11 @@ final appRouter = GoRouter(
       builder: (context, state) => const _AppShell(),
     ),
     GoRoute(
+      path: Routes.newSession,
+      name: 'new-session',
+      builder: (context, state) => const NewSessionScreen(),
+    ),
+    GoRoute(
       path: Routes.session,
       name: 'session',
       builder: (context, state) {
@@ -126,11 +131,6 @@ final appRouter = GoRouter(
         final quizId = int.parse(state.pathParameters['quizId']!);
         return SummaryScreen(sessionId: sessionId, quizId: quizId);
       },
-    ),
-    GoRoute(
-      path: Routes.newSession,
-      name: 'new-session',
-      builder: (context, state) => const NewSessionScreen(),
     ),
     GoRoute(
       path: Routes.profileSelection,

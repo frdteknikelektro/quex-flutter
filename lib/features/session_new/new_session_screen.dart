@@ -2,11 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../app/breakpoints.dart';
+import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
-import '../../widgets/quex_ui.dart';
 
 class NewSessionScreen extends ConsumerStatefulWidget {
   const NewSessionScreen({super.key});
@@ -15,12 +14,18 @@ class NewSessionScreen extends ConsumerStatefulWidget {
   ConsumerState<NewSessionScreen> createState() => _NewSessionScreenState();
 }
 
-class _NewSessionScreenState extends ConsumerState<NewSessionScreen> {
+class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
+    with TickerProviderStateMixin {
   final _titleController = TextEditingController();
   String _emoji = '📘';
   int _grade = 3;
   int _questionCount = 20;
   bool _saving = false;
+
+  late final AnimationController _staggerController;
+  late final AnimationController _scaleController;
+  late final List<Animation<double>> _staggerAnimations;
+  late final Animation<double> _scaleAnimation;
 
   static const _emojiOptions = [
     '📘', '📚', '🔢', '🧪', '🌍', '🎨', '⚡', '🌱', '🧠', '🎯', '🪐', '💡',
@@ -29,23 +34,60 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen> {
   @override
   void initState() {
     super.initState();
+
+    _staggerController = AnimationController(
+      duration: const Duration(milliseconds: 900),
+      vsync: this,
+    );
+
+    _scaleController = AnimationController(
+      duration: const Duration(milliseconds: 200),
+      vsync: this,
+    );
+
+    _staggerAnimations = List.generate(6, (i) {
+      final start = (i * 0.1).clamp(0.0, 0.5);
+      final end = (start + 0.25).clamp(0.25, 1.0);
+      return Tween<double>(begin: 0.0, end: 1.0).animate(
+        CurvedAnimation(
+          parent: _staggerController,
+          curve: Interval(start, end, curve: Curves.easeOutCubic),
+        ),
+      );
+    });
+
+    _scaleAnimation = Tween<double>(begin: 0.92, end: 1.0).animate(
+      CurvedAnimation(parent: _scaleController, curve: Curves.easeOutCubic),
+    );
+
     _seedFromProfile();
+  }
+
+  @override
+  void dispose() {
+    _titleController.dispose();
+    _staggerController.dispose();
+    _scaleController.dispose();
+    super.dispose();
   }
 
   Future<void> _seedFromProfile() async {
     final savedId = await readActiveProfileId();
     final profiles = await ProfileDAO().getAll();
+    if (profiles.isEmpty) return;
     final active = profiles.firstWhere(
-      (profile) => profile.id == savedId,
+      (p) => p.id == savedId,
       orElse: () => profiles.first,
     );
     if (!mounted) return;
     setState(() {
       _grade = active.grade;
       _questionCount = active.defaultQuestionCount;
-      _emoji = active.emoji == '🧒' ? '📘' : active.emoji;
+      _emoji = '📘';
     });
     ref.read(activeProfileProvider.notifier).state = active.id;
+    _staggerController.forward();
+    _scaleController.forward();
   }
 
   Future<void> _createSession() async {
@@ -60,7 +102,7 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen> {
     final activeId = ref.read(activeProfileProvider);
     final profiles = await ProfileDAO().getAll();
     final active = profiles.firstWhere(
-      (profile) => profile.id == activeId,
+      (p) => p.id == activeId,
       orElse: () => profiles.first,
     );
 
@@ -82,196 +124,277 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen> {
     context.go('/session/$sessionId/material');
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < QuexBreakpoints.tablet;
-    final preview = _SessionPreview(
-      title: _titleController.text.trim().isEmpty ? 'New session' : _titleController.text.trim(),
-      emoji: _emoji,
-      grade: _grade,
-      questionCount: _questionCount,
-    );
+  Color _heroBgColor(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final quexColors = Theme.of(context).extension<QuexColors>();
+    final bgColors = [
+      scheme.primaryContainer,
+      quexColors?.warmRed ?? scheme.secondaryContainer,
+      quexColors?.amber ?? scheme.tertiaryContainer,
+      scheme.primaryContainer.withValues(alpha: 0.7),
+      scheme.secondaryContainer.withValues(alpha: 0.7),
+    ];
+    return bgColors[_emoji.length % bgColors.length];
+  }
 
-    return SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
-        child: compact
-            ? Column(
-                children: [
-                  _buildForm(context),
-                  const SizedBox(height: 16),
-                  preview,
-                ],
-              )
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: _buildForm(context)),
-                  const SizedBox(width: 16),
-                  SizedBox(width: 360, child: preview),
-                ],
-              ),
+  Widget _staggerWrap(int index, Widget child) {
+    return AnimatedBuilder(
+      animation: _staggerAnimations[index],
+      builder: (context, ch) {
+        final v = _staggerAnimations[index].value;
+        return Opacity(
+          opacity: v.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(0, 20 * (1 - v)),
+            child: ch,
+          ),
+        );
+      },
+      child: child,
     );
   }
 
-  Widget _buildForm(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return QuexPanel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const QuexSectionHeader(
-            title: 'Start a focused study session',
-            subtitle: 'Name the session, pick a grade, and choose how many questions you want.',
-          ),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _titleController,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              labelText: 'Session title',
-              hintText: 'e.g. Fractions practice',
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final title = _titleController.text.trim();
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('New Session')),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: SingleChildScrollView(
+              padding: Sp.page,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── [0] Hero: emoji preview + live title ────────
+                  _staggerWrap(
+                    0,
+                    Column(
+                      children: [
+                        AnimatedBuilder(
+                          animation: _scaleController,
+                          builder: (context, _) => Center(
+                            child: AnimatedScale(
+                              scale: _scaleAnimation.value,
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeOutCubic,
+                              child: Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  color: _heroBgColor(context),
+                                  borderRadius: Br.lg,
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  _emoji,
+                                  style: const TextStyle(fontSize: 48, height: 1),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: Sp.md),
+                        Text(
+                          title.isEmpty ? 'Session title' : title,
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: title.isEmpty
+                                ? scheme.onSurfaceVariant
+                                : scheme.onSurface,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Grade $_grade  •  $_questionCount questions',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: Sp.xl),
+
+                  // ── [1] Session title field ──────────────────────
+                  _staggerWrap(
+                    1,
+                    TextField(
+                      controller: _titleController,
+                      onChanged: (_) => setState(() {}),
+                      decoration: const InputDecoration(
+                        labelText: 'Session title',
+                        hintText: 'e.g. Fractions practice',
+                      ),
+                      textCapitalization: TextCapitalization.sentences,
+                    ),
+                  ),
+                  const SizedBox(height: Sp.lg),
+
+                  // ── [2] Emoji picker ─────────────────────────────
+                  _staggerWrap(
+                    2,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Pick an emoji',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: Sp.sm),
+                        SizedBox(
+                          height: 60,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _emojiOptions.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: 8),
+                            itemBuilder: (_, i) {
+                              final e = _emojiOptions[i];
+                              return _StickerEmoji(
+                                emoji: e,
+                                isSelected: _emoji == e,
+                                onTap: () {
+                                  setState(() => _emoji = e);
+                                  _scaleController.forward(from: 0);
+                                },
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: Sp.lg),
+
+                  // ── [3] Grade dropdown ───────────────────────────
+                  _staggerWrap(
+                    3,
+                    DropdownButtonFormField<int>(
+                      // ignore: deprecated_member_use
+                      value: _grade,
+                      decoration: const InputDecoration(labelText: 'Grade Level'),
+                      items: List.generate(
+                        12,
+                        (i) => DropdownMenuItem(
+                          value: i + 1,
+                          child: Text('Grade ${i + 1}'),
+                        ),
+                      ),
+                      onChanged: (value) =>
+                          setState(() => _grade = value ?? _grade),
+                    ),
+                  ),
+                  const SizedBox(height: Sp.lg),
+
+                  // ── [4] Question count ───────────────────────────
+                  _staggerWrap(
+                    4,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Number of questions',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: Sp.sm),
+                        SizedBox(
+                          width: double.infinity,
+                          child: SegmentedButton<int>(
+                            segments: const [
+                              ButtonSegment(value: 10, label: Text('10')),
+                              ButtonSegment(value: 20, label: Text('20')),
+                              ButtonSegment(value: 30, label: Text('30')),
+                            ],
+                            selected: {_questionCount},
+                            onSelectionChanged: (value) {
+                              setState(() => _questionCount = value.first);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: Sp.xl),
+
+                  // ── [5] Continue button ──────────────────────────
+                  _staggerWrap(
+                    5,
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _saving ? null : _createSession,
+                        icon: _saving
+                            ? SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: scheme.onPrimary,
+                                ),
+                              )
+                            : const Icon(Icons.arrow_forward),
+                        label: Text(_saving ? 'Creating...' : 'Continue'),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 18),
-          Text(
-            'Emoji',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _emojiOptions.map((emoji) {
-              final selected = emoji == _emoji;
-              return ChoiceChip(
-                label: Text(emoji, style: const TextStyle(fontSize: 18)),
-                selected: selected,
-                onSelected: (_) => setState(() => _emoji = emoji),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Grade',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: List.generate(12, (index) {
-              final grade = index + 1;
-              return ChoiceChip(
-                label: Text('Grade $grade'),
-                selected: _grade == grade,
-                onSelected: (_) => setState(() => _grade = grade),
-              );
-            }),
-          ),
-          const SizedBox(height: 18),
-          Text(
-            'Questions',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 10),
-          SegmentedButton<int>(
-            segments: const [
-              ButtonSegment(value: 10, label: Text('10')),
-              ButtonSegment(value: 20, label: Text('20')),
-              ButtonSegment(value: 30, label: Text('30')),
-            ],
-            selected: {_questionCount},
-            onSelectionChanged: (value) {
-              setState(() => _questionCount = value.first);
-            },
-          ),
-          const SizedBox(height: 22),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _saving ? null : _createSession,
-                  icon: _saving
-                      ? SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: scheme.onPrimary,
-                          ),
-                        )
-                      : const Icon(Icons.arrow_forward),
-                  label: Text(_saving ? 'Creating...' : 'Continue'),
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
-class _SessionPreview extends StatelessWidget {
-  final String title;
+class _StickerEmoji extends StatelessWidget {
   final String emoji;
-  final int grade;
-  final int questionCount;
+  final bool isSelected;
+  final VoidCallback onTap;
 
-  const _SessionPreview({
-    required this.title,
+  const _StickerEmoji({
     required this.emoji,
-    required this.grade,
-    required this.questionCount,
+    required this.isSelected,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return QuexPanel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const QuexSectionHeader(
-            title: 'Preview',
-            subtitle: 'This is how the session will appear in the dashboard.',
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              QuexAvatar(emoji: emoji, size: 58),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w900,
-                          ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text('Grade $grade • $questionCount questions'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          const Divider(),
-          const SizedBox(height: 12),
-          Text(
-            'Best practice',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Keep the title short and choose a grade that matches the material, not just the learner age.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-          ),
-        ],
+    final scheme = Theme.of(context).colorScheme;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOutCubic,
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          color: isSelected
+              ? scheme.primaryContainer
+              : scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(16),
+          border: isSelected ? Border.all(color: scheme.primary, width: 2) : null,
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          emoji,
+          style: const TextStyle(fontSize: 24),
+        ),
       ),
     );
   }

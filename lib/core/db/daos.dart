@@ -78,6 +78,15 @@ class SessionDAO {
     return Session.fromMap(rows.first);
   }
 
+  Future<void> update(Session session) async {
+    await (await _db).update(
+      'sessions',
+      session.toMap(),
+      where: 'id = ?',
+      whereArgs: [session.id],
+    );
+  }
+
   Future<void> delete(int id) async {
     await (await _db).delete('sessions', where: 'id = ?', whereArgs: [id]);
   }
