@@ -8,7 +8,7 @@ import '../core/ai/model_download_notifier.dart';
 import '../core/state/app_state.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/home/home_screen.dart';
-import '../features/material/add_material_screen.dart';
+import '../features/material/material_screen.dart';
 import '../features/processing/processing_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/session_new/new_session_screen.dart';
@@ -95,7 +95,7 @@ final appRouter = GoRouter(
       name: 'add-material',
       builder: (context, state) {
         final sessionId = int.parse(state.pathParameters['sessionId']!);
-        return AddMaterialScreen(sessionId: sessionId);
+        return MaterialScreen(sessionId: sessionId);
       },
     ),
     GoRoute(

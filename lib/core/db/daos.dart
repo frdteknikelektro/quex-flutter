@@ -133,6 +133,15 @@ class MaterialDAO {
     return result.first['c'] as int;
   }
 
+  Future<void> update(StudyMaterial material) async {
+    await (await _db).update(
+      'materials',
+      material.toMap(),
+      where: 'id = ?',
+      whereArgs: [material.id],
+    );
+  }
+
   Future<void> delete(int id) async {
     await (await _db).delete('materials', where: 'id = ?', whereArgs: [id]);
   }

@@ -155,8 +155,9 @@ class QuexAi {
   static List<String> highlights(List<StudyMaterial> materials) => _topics(materials);
 
   static List<String> _snippets(List<StudyMaterial> materials) {
+    final textOnly = materials.where((m) => m.kind == MaterialKind.text).toList();
     final snippets = <String>[];
-    for (final material in materials) {
+    for (final material in textOnly) {
       final parts = material.content
           .split(RegExp(r'[\n\r\.!?]+'))
           .map((part) => part.trim())
@@ -169,8 +170,9 @@ class QuexAi {
   }
 
   static List<String> _topics(List<StudyMaterial> materials) {
+    final textOnly = materials.where((m) => m.kind == MaterialKind.text).toList();
     final words = <String>[];
-    for (final material in materials) {
+    for (final material in textOnly) {
       words.addAll(
         material.content
             .split(RegExp(r'[^A-Za-z0-9]+'))

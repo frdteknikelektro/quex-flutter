@@ -124,7 +124,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
             ],
           ),
           body: SingleChildScrollView(
-            padding: Sp.page,
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -219,7 +219,7 @@ class _NavigationCard extends StatelessWidget {
             title: const Text('Study Materials'),
             subtitle: const Text('Add notes and references'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.go('/session/$sessionId/material'),
+            onTap: () => context.push('/session/$sessionId/material'),
           ),
           const Divider(height: 1, indent: 16, endIndent: 16),
           ListTile(

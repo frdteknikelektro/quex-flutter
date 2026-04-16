@@ -160,8 +160,9 @@ class GemmaInferenceService {
       throw StateError('No active chat. Call createSession() first.');
     }
 
-    final context = materials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
-    
+    final textMaterials = materials.where((m) => m.kind == MaterialKind.text).toList();
+    final context = textMaterials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
+
     final prompt = '''You are a study assistant helping create a quiz for "${session.title}".
 
 Context from study materials:
