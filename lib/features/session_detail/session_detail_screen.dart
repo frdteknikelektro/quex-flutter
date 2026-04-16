@@ -63,7 +63,8 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
       builder: (_) => _EditSessionBottomSheet(
         session: session,
         onSave: (title, emoji) async {
-          await SessionDAO().update(session.copyWith(title: title, emoji: emoji));
+          await SessionDAO()
+              .update(session.copyWith(title: title, emoji: emoji));
           if (!mounted) return;
           ref.invalidate(sessionBundleProvider(widget.sessionId));
           final profileId = ref.read(activeProfileProvider);
@@ -135,7 +136,10 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
                 const SizedBox(height: 32),
                 _staggerWrap(
                   1,
-                  _NavigationCard(sessionId: widget.sessionId),
+                  _NavigationCard(
+                    sessionId: widget.sessionId,
+                    materialCount: bundle.materials.length,
+                  ),
                 ),
                 const SizedBox(height: 32),
                 _staggerWrap(
@@ -202,12 +206,21 @@ class _SessionHeader extends StatelessWidget {
 
 class _NavigationCard extends StatelessWidget {
   final int sessionId;
+  final int materialCount;
 
-  const _NavigationCard({required this.sessionId});
+  const _NavigationCard({
+    required this.sessionId,
+    required this.materialCount,
+  });
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final subtitle = materialCount == 0
+        ? 'Add notes and references'
+        : materialCount == 1
+            ? '1 study material'
+            : '$materialCount study materials';
 
     return Card(
       elevation: 0,
@@ -217,7 +230,7 @@ class _NavigationCard extends StatelessWidget {
           ListTile(
             leading: Icon(Icons.library_books_outlined, color: scheme.primary),
             title: const Text('Study Materials'),
-            subtitle: const Text('Add notes and references'),
+            subtitle: Text(subtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/session/$sessionId/material'),
           ),
@@ -254,27 +267,14 @@ class _QuizSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Recent Quizzes',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 12),
-        if (quizzes.isEmpty) ...[
-          if (hasMaterials)
-            FilledButton.tonal(
-              onPressed: () => context.go('/session/$sessionId/processing'),
-              child: const Text('Generate quiz'),
-            )
-          else
-            Text(
-              'Add study materials first, then generate a quiz.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
+        if (quizzes.isNotEmpty) ...[
+          Text(
+            'Recent Quizzes',
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
-        ] else ...[
+          ),
+          const SizedBox(height: 12),
           ...quizzes.map(
             (quiz) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -310,8 +310,64 @@ class _QuizSection extends StatelessWidget {
               label: const Text('Generate another quiz'),
             ),
           ),
+        ] else if (hasMaterials) ...[
+          _QuizEmptyState(
+            onGenerate: () => context.go('/session/$sessionId/processing'),
+          ),
+        ] else ...[
+          Text(
+            'Add study materials first, then generate a quiz.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ],
+    );
+  }
+}
+
+class _QuizEmptyState extends StatefulWidget {
+  final VoidCallback onGenerate;
+
+  const _QuizEmptyState({required this.onGenerate});
+
+  @override
+  State<_QuizEmptyState> createState() => _QuizEmptyStateState();
+}
+
+class _QuizEmptyStateState extends State<_QuizEmptyState> {
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Ready to make a quiz?',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: widget.onGenerate,
+                icon: const Icon(Icons.auto_fix_high),
+                label: const Text('Generate quiz'),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -332,7 +388,18 @@ class _EditSessionBottomSheet extends StatefulWidget {
 
 class _EditSessionBottomSheetState extends State<_EditSessionBottomSheet> {
   static const _emojiOptions = [
-    '📘', '📚', '🔢', '🧪', '🌍', '🎨', '⚡', '🌱', '🧠', '🎯', '🪐', '💡',
+    '📘',
+    '📚',
+    '🔢',
+    '🧪',
+    '🌍',
+    '🎨',
+    '⚡',
+    '🌱',
+    '🧠',
+    '🎯',
+    '🪐',
+    '💡',
   ];
 
   late final TextEditingController _titleController;
@@ -380,7 +447,9 @@ class _EditSessionBottomSheetState extends State<_EditSessionBottomSheet> {
           Sp.md,
           Sp.sm,
           Sp.md,
-          Sp.xl + MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom,
+          Sp.xl +
+              MediaQuery.of(context).viewInsets.bottom +
+              MediaQuery.of(context).padding.bottom,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

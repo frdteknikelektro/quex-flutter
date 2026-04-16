@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
@@ -15,6 +16,7 @@ import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import 'material_actions.dart';
 
 // ─── File storage helper ──────────────────────────────────────────────────────
 
@@ -116,36 +118,6 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
     ref.invalidate(sessionBundleProvider(widget.sessionId));
   }
 
-  Future<void> _renameMaterial(StudyMaterial material) async {
-    final newTitle = await showDialog<String>(
-      context: context,
-      builder: (ctx) => _RenameDialog(initialTitle: material.title),
-    );
-    if (newTitle == null || newTitle.isEmpty || newTitle == material.title) return;
-    await MaterialDAO().update(material.copyWith(title: newTitle));
-    if (!mounted) return;
-    ref.invalidate(materialsProvider(widget.sessionId));
-  }
-
-  Future<void> _deleteMaterial(StudyMaterial material) async {
-    // Clean up physical files
-    if (material.kind == MaterialKind.photo) {
-      for (final p in material.content.split('\n').where((p) => p.isNotEmpty)) {
-        final f = File(p);
-        if (await f.exists()) await f.delete();
-      }
-    } else if (material.kind == MaterialKind.document) {
-      if (material.content.isNotEmpty) {
-        final f = File(material.content);
-        if (await f.exists()) await f.delete();
-      }
-    }
-    await MaterialDAO().delete(material.id!);
-    if (!mounted) return;
-    ref.invalidate(materialsProvider(widget.sessionId));
-    ref.invalidate(sessionBundleProvider(widget.sessionId));
-  }
-
   Future<bool?> _confirmDelete(BuildContext ctx) {
     return showDialog<bool>(
       context: ctx,
@@ -236,11 +208,19 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
                             direction: DismissDirection.endToStart,
                             background: const _DismissBackground(),
                             confirmDismiss: (_) => _confirmDelete(context),
-                            onDismissed: (_) => _deleteMaterial(material),
+                            onDismissed: (_) => deleteMaterial(
+                              context,
+                              ref,
+                              material,
+                              skipConfirm: true,
+                            ),
                             child: _MaterialFileTile(
                               material: material,
-                              onMenuRename: () => _renameMaterial(material),
-                              onMenuDelete: () => _deleteMaterial(material),
+                              sessionId: widget.sessionId,
+                              onMenuRename: () =>
+                                  renameMaterial(context, ref, material),
+                              onMenuDelete: () =>
+                                  deleteMaterial(context, ref, material),
                             ),
                           ),
                         );
@@ -309,11 +289,13 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
 
 class _MaterialFileTile extends StatelessWidget {
   final StudyMaterial material;
+  final int sessionId;
   final VoidCallback onMenuDelete;
   final VoidCallback onMenuRename;
 
   const _MaterialFileTile({
     required this.material,
+    required this.sessionId,
     required this.onMenuDelete,
     required this.onMenuRename,
   });
@@ -323,14 +305,17 @@ class _MaterialFileTile extends StatelessWidget {
 
     if (material.kind == MaterialKind.photo && material.content.isNotEmpty) {
       final firstPath = material.content.split('\n').first;
-      return ClipRRect(
-        borderRadius: Br.sm,
-        child: Image.file(
-          File(firstPath),
-          width: 44,
-          height: 44,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _emojiAvatar(meta, scheme),
+      return Hero(
+        tag: 'material-${material.id}-0',
+        child: ClipRRect(
+          borderRadius: Br.sm,
+          child: Image.file(
+            File(firstPath),
+            width: 44,
+            height: 44,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _emojiAvatar(meta, scheme),
+          ),
         ),
       );
     }
@@ -362,6 +347,18 @@ class _MaterialFileTile extends StatelessWidget {
     final scheme = theme.colorScheme;
 
     return ListTile(
+      onTap: () async {
+        if (material.kind == MaterialKind.document) {
+          final result = await OpenFilex.open(material.content);
+          if (result.type != ResultType.done && context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Could not open: ${result.message}')),
+            );
+          }
+        } else {
+          context.push('/session/$sessionId/material/${material.id}');
+        }
+      },
       contentPadding: const EdgeInsets.symmetric(horizontal: Sp.md, vertical: Sp.xs),
       leading: _buildLeading(scheme),
       title: Text(
@@ -934,53 +931,3 @@ class _GenerateQuizBar extends StatelessWidget {
   }
 }
 
-// ─── Rename dialog ────────────────────────────────────────────────────────────
-
-class _RenameDialog extends StatefulWidget {
-  final String initialTitle;
-
-  const _RenameDialog({required this.initialTitle});
-
-  @override
-  State<_RenameDialog> createState() => _RenameDialogState();
-}
-
-class _RenameDialogState extends State<_RenameDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialTitle);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Rename'),
-      content: TextField(
-        controller: _controller,
-        autofocus: true,
-        textCapitalization: TextCapitalization.sentences,
-        decoration: const InputDecoration(labelText: 'Title'),
-        onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
-}

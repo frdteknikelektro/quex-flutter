@@ -8,6 +8,7 @@ import '../core/ai/model_download_notifier.dart';
 import '../core/state/app_state.dart';
 import '../features/chat/chat_screen.dart';
 import '../features/home/home_screen.dart';
+import '../features/material/material_detail_screen.dart';
 import '../features/material/material_screen.dart';
 import '../features/processing/processing_screen.dart';
 import '../features/profile/profile_screen.dart';
@@ -26,6 +27,7 @@ class Routes {
   static const newSession = '/session/new';
   static const session = '/session/:sessionId';
   static const addMaterial = '/session/:sessionId/material';
+  static const materialDetail = '/session/:sessionId/material/:materialId';
   static const processing = '/session/:sessionId/processing';
   static const quiz = '/session/:sessionId/quiz/:quizId';
   static const chat = '/session/:sessionId/chat';
@@ -96,6 +98,18 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final sessionId = int.parse(state.pathParameters['sessionId']!);
         return MaterialScreen(sessionId: sessionId);
+      },
+    ),
+    GoRoute(
+      path: Routes.materialDetail,
+      name: 'material-detail',
+      builder: (context, state) {
+        final sessionId = int.parse(state.pathParameters['sessionId']!);
+        final materialId = int.parse(state.pathParameters['materialId']!);
+        return MaterialDetailScreen(
+          sessionId: sessionId,
+          materialId: materialId,
+        );
       },
     ),
     GoRoute(
