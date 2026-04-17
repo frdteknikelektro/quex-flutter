@@ -19,7 +19,6 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
   final _titleController = TextEditingController();
   String _emoji = '📘';
   int _grade = 3;
-  int _questionCount = 20;
   bool _saving = false;
 
   late final AnimationController _staggerController;
@@ -45,7 +44,7 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
       vsync: this,
     );
 
-    _staggerAnimations = List.generate(6, (i) {
+    _staggerAnimations = List.generate(5, (i) {
       final start = (i * 0.1).clamp(0.0, 0.5);
       final end = (start + 0.25).clamp(0.25, 1.0);
       return Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -82,7 +81,6 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
     if (!mounted) return;
     setState(() {
       _grade = active.grade;
-      _questionCount = active.defaultQuestionCount;
       _emoji = '📘';
     });
     ref.read(activeProfileProvider.notifier).state = active.id;
@@ -113,7 +111,7 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
         title: title,
         emoji: _emoji,
         gradeOverride: _grade,
-        questionCount: _questionCount,
+        questionCount: 20,
         createdAt: DateTime.now(),
       ),
     );
@@ -214,7 +212,7 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Grade $_grade  •  $_questionCount questions',
+                          'Grade $_grade',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
@@ -296,43 +294,11 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
                           setState(() => _grade = value ?? _grade),
                     ),
                   ),
-                  const SizedBox(height: Sp.lg),
-
-                  // ── [4] Question count ───────────────────────────
-                  _staggerWrap(
-                    4,
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Number of questions',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: Sp.sm),
-                        SizedBox(
-                          width: double.infinity,
-                          child: SegmentedButton<int>(
-                            segments: const [
-                              ButtonSegment(value: 10, label: Text('10')),
-                              ButtonSegment(value: 20, label: Text('20')),
-                              ButtonSegment(value: 30, label: Text('30')),
-                            ],
-                            selected: {_questionCount},
-                            onSelectionChanged: (value) {
-                              setState(() => _questionCount = value.first);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                   const SizedBox(height: Sp.xl),
 
-                  // ── [5] Continue button ──────────────────────────
+                  // ── [4] Continue button ──────────────────────────
                   _staggerWrap(
-                    5,
+                    4,
                     SizedBox(
                       width: double.infinity,
                       child: FilledButton.icon(

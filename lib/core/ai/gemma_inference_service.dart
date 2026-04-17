@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
 import '../models/models.dart';
+import 'material_preprocessor.dart';
+import 'quiz_generation_event.dart';
 
 /// Service for running inference using Gemma 4 E4B model.
 ///
@@ -19,7 +21,7 @@ class GemmaInferenceService {
   /// Initialize the inference service by creating the model.
   /// Call this after the model has been downloaded via ModelManager.
   Future<void> initialize({
-    int maxTokens = 4096,
+    int maxTokens = _maxOutputTokens,
     gemma.PreferredBackend preferredBackend = gemma.PreferredBackend.gpu,
   }) async {
     if (_isInitialized) return;
@@ -27,6 +29,8 @@ class GemmaInferenceService {
     _model = await gemma.FlutterGemma.getActiveModel(
       maxTokens: maxTokens,
       preferredBackend: preferredBackend,
+      supportImage: true,
+      maxNumImages: MaterialPreprocessor.totalImageCap,
     );
 
     _isInitialized = true;
@@ -150,49 +154,201 @@ class GemmaInferenceService {
     }
   }
 
-  /// Generate a quiz based on study materials using the LLM.
-  Future<List<Question>> generateQuiz({
+  static const _questionTool = gemma.Tool(
+    name: 'generate_question',
+    description: 'Submit one quiz question. You must call this once per question.',
+    parameters: {
+      'type': 'object',
+      'properties': {
+        'type': {
+          'type': 'string',
+          'enum': ['multipleChoice', 'textAnswer'],
+        },
+        'questionText': {'type': 'string'},
+        'options': {
+          'type': 'array',
+          'items': {'type': 'string'},
+          'description': 'Required for multipleChoice (3-4 items). Omit for textAnswer.',
+        },
+        'correctAnswer': {
+          'type': 'string',
+          'description': 'For multipleChoice: letter A-D. For textAnswer: exact answer text.',
+        },
+        'explanation': {'type': 'string'},
+      },
+      'required': ['type', 'questionText', 'correctAnswer', 'explanation'],
+    },
+  );
+
+  static const int _maxOutputTokens = 8192;
+
+  /// Generate a quiz one question at a time via multi-turn tool calling.
+  /// Calls generate_question once per question, yielding progress events.
+  /// Retries up to 2 times per question before emitting QuizGenerationError.
+  Stream<QuizGenerationEvent> generateQuizStreaming({
     required Session session,
     required List<StudyMaterial> materials,
     required int questionCount,
-  }) async {
-    if (_chat == null) {
-      throw StateError('No active chat. Call createSession() first.');
+  }) async* {
+    if (!_isInitialized) {
+      throw StateError('Service not initialized');
     }
 
-    final textMaterials = materials.where((m) => m.kind == MaterialKind.text).toList();
-    final context = textMaterials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
+    final prepared = await MaterialPreprocessor.prepare(materials);
+    final hasImages = prepared.any((p) => p.images.isNotEmpty);
 
-    final prompt = '''You are a study assistant helping create a quiz for "${session.title}".
+    const systemInstruction =
+        'You are a quiz generator for elementary students. '
+        'You MUST call generate_question exactly once per question — no plain text answers. '
+        'Each call submits exactly one question. '
+        'Use multipleChoice for factual recall (3-4 options). '
+        'Use textAnswer for definitions or short answers. '
+        'Match difficulty to the student grade level.';
 
-Context from study materials:
-$context
+    await createSession(
+      systemInstruction: systemInstruction,
+      isThinking: false,
+      tools: [_questionTool],
+      supportsFunctionCalls: true,
+      supportImage: hasImages,
+    );
 
-Create exactly $questionCount multiple choice questions based on the above materials. 
-For each question:
-1. Provide a clear question
-2. Provide 4 answer options labeled A, B, C, D
-3. Indicate the correct answer letter (A, B, C, or D)
-4. Provide a brief explanation for why the correct answer is right
+    yield QuizGenerationStarted(questionCount);
 
-Format as JSON array with this structure for each question:
-{
-  "questionText": "...",
-  "optionA": "...",
-  "optionB": "...",
-  "optionC": "...",
-  "optionD": "...",
-  "correctOption": "A|B|C|D",
-  "explanation": "..."
-}
+    final textContext = prepared
+        .map((p) => p.textChunk)
+        .where((t) => t.isNotEmpty)
+        .join('\n\n');
 
-Return only the JSON array, no other text.''';
+    final initialPrompt =
+        'Generate exactly $questionCount quiz questions for "${session.title}" '
+        '(Grade ${session.gradeOverride}) based on the study materials below. '
+        'Call generate_question once per question. '
+        '${hasImages ? 'Images of the materials follow. ' : ''}'
+        'Start now: call generate_question for question 1 of $questionCount.\n\n'
+        '$textContext';
 
-    final response = await sendMessage(prompt);
-    
-    // Parse the response into questions
-    // This is a simplified parser - in production, add proper JSON parsing
-    return _parseQuizResponse(response, questionCount, session);
+    await _chat!.addQueryChunk(gemma.Message.text(text: initialPrompt, isUser: true));
+
+    for (final prep in prepared) {
+      for (final imgBytes in prep.images) {
+        await _chat!.addQueryChunk(
+          gemma.Message.imageOnly(imageBytes: imgBytes, isUser: true),
+        );
+      }
+    }
+
+    final questions = <Question>[];
+
+    for (var i = 1; i <= questionCount; i++) {
+      Question? parsed;
+      var retries = 0;
+
+      while (parsed == null && retries < 2) {
+        var gotCall = false;
+
+        try {
+          await for (final response in _chat!.generateChatResponseAsync()) {
+            if (response is gemma.ThinkingResponse) {
+              yield QuizThinkingToken(response.content);
+            } else if (response is gemma.TextResponse) {
+              yield QuizTextToken(response.token);
+            } else if (response is gemma.FunctionCallResponse) {
+              gotCall = true;
+              parsed = _parseToolCallQuestion(response.args, orderIndex: i - 1);
+              if (parsed == null) retries++;
+            }
+          }
+        } catch (e) {
+          print('Turn $i error during generation: $e');
+          retries++;
+        }
+
+        if (!gotCall) retries++;
+
+        if (parsed == null && retries < 2) {
+          final prompt = 'Please call generate_question for question $i of $questionCount now.';
+          print('Turn $i retry #$retries: $prompt');
+          await _chat!.addQueryChunk(gemma.Message.text(
+            text: prompt,
+            isUser: true,
+          ));
+        }
+      }
+
+      if (parsed == null) {
+        // Try continuation prompt with full explicit structure
+        if (retries < 2 && i == questionCount - 1) {
+          // Last question: be very explicit
+          await _chat!.addQueryChunk(gemma.Message.text(
+            text: 'Last question: Call generate_question for question $questionCount of $questionCount. '
+                'This is the final question.',
+            isUser: true,
+          ));
+          // One more attempt
+          await for (final response in _chat!.generateChatResponseAsync()) {
+            if (response is gemma.FunctionCallResponse) {
+              parsed = _parseToolCallQuestion(response.args, orderIndex: questionCount - 1);
+              break;
+            }
+          }
+          if (parsed != null) {
+            questions.add(parsed);
+            yield QuizQuestionGenerated(parsed, questionCount, questionCount);
+            yield QuizGenerationComplete(questions);
+            return;
+          }
+        }
+
+        yield QuizGenerationError('Failed to generate question $i after retries');
+        return;
+      }
+
+      questions.add(parsed);
+      yield QuizQuestionGenerated(parsed, i, questionCount);
+
+      if (i < questionCount) {
+        await _chat!.addQueryChunk(gemma.Message.text(
+          text: 'Question $i of $questionCount recorded. '
+              'Now generate question ${i + 1} of $questionCount using the tool. '
+              'Call generate_question immediately.',
+          isUser: true,
+        ));
+      }
+    }
+
+    yield QuizGenerationComplete(questions);
+  }
+
+  Question? _parseToolCallQuestion(
+    Map<String, dynamic> args, {
+    required int orderIndex,
+  }) {
+    try {
+      final typeStr = args['type'] as String? ?? 'multipleChoice';
+      final type =
+          typeStr == 'textAnswer' ? QuestionType.textAnswer : QuestionType.multipleChoice;
+      final options = (args['options'] as List<dynamic>?)?.cast<String>() ?? [];
+
+      if (type == QuestionType.multipleChoice && options.length < 2) return null;
+
+      final questionText = args['questionText'] as String?;
+      final correctAnswer = args['correctAnswer'] as String?;
+      if (questionText == null || correctAnswer == null) return null;
+
+      return Question(
+        quizId: -1,
+        source: QuestionSource.generated,
+        type: type,
+        questionText: questionText,
+        options: type == QuestionType.multipleChoice ? options : [],
+        correctAnswer: correctAnswer,
+        explanation: args['explanation'] as String? ?? '',
+        orderIndex: orderIndex,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Get a coaching response based on user message and study context.
@@ -260,40 +416,4 @@ Summary:''';
     _isInitialized = false;
   }
 
-  /// Parse quiz response from LLM into Question objects.
-  List<Question> _parseQuizResponse(
-    String response,
-    int questionCount,
-    Session session,
-  ) {
-    // Fallback to simple parsing - in production, implement proper JSON parsing
-    final questions = <Question>[];
-    
-    // Simple template-based questions as fallback
-    final templates = [
-      'Which idea is best supported by this material?',
-      'What is the clearest takeaway from this section?',
-      'Which statement matches the study material?',
-      'What should the learner remember most?',
-    ];
-
-    for (var i = 0; i < questionCount; i++) {
-      questions.add(
-        Question(
-          quizId: -1,
-          source: QuestionSource.generated,
-          questionText: templates[i % templates.length],
-          optionA: 'Option A',
-          optionB: 'Option B',
-          optionC: 'Option C',
-          optionD: 'Option D',
-          correctOption: 'A',
-          explanation: 'This is the correct answer based on the study material.',
-          orderIndex: i,
-        ),
-      );
-    }
-
-    return questions;
-  }
 }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 @immutable
@@ -255,17 +257,17 @@ class Quiz {
 
 enum QuestionSource { extracted, generated, review }
 
+enum QuestionType { multipleChoice, textAnswer }
+
 @immutable
 class Question {
   final int? id;
   final int quizId;
   final QuestionSource source;
+  final QuestionType type;
   final String questionText;
-  final String optionA;
-  final String optionB;
-  final String optionC;
-  final String optionD;
-  final String correctOption;
+  final List<String> options; // 2-6 items for MCQ, empty for textAnswer
+  final String correctAnswer; // letter (A-F) for MCQ, actual text for textAnswer
   final String explanation;
   final String? userAnswer;
   final int orderIndex;
@@ -274,47 +276,38 @@ class Question {
     this.id,
     required this.quizId,
     required this.source,
+    this.type = QuestionType.multipleChoice,
     required this.questionText,
-    required this.optionA,
-    required this.optionB,
-    required this.optionC,
-    required this.optionD,
-    required this.correctOption,
+    required this.options,
+    required this.correctAnswer,
     required this.explanation,
     this.userAnswer,
     required this.orderIndex,
   });
 
-  bool? get isCorrect {
-    if (userAnswer == null) return null;
-    return userAnswer == correctOption;
+  bool? get isCorrect => userAnswer == null ? null : userAnswer == correctAnswer;
+
+  String? get correctOptionText {
+    if (type == QuestionType.textAnswer) return correctAnswer;
+    final idx = correctAnswer.codeUnitAt(0) - 'A'.codeUnitAt(0);
+    return idx < options.length ? options[idx] : null;
   }
 
-  String optionForLetter(String letter) {
-    switch (letter.toUpperCase()) {
-      case 'A':
-        return optionA;
-      case 'B':
-        return optionB;
-      case 'C':
-        return optionC;
-      case 'D':
-        return optionD;
-      default:
-        return optionA;
-    }
+  String? get userAnswerText {
+    if (userAnswer == null) return null;
+    if (type == QuestionType.textAnswer) return userAnswer;
+    final idx = userAnswer!.codeUnitAt(0) - 'A'.codeUnitAt(0);
+    return idx < options.length ? options[idx] : null;
   }
 
   Question copyWith({
     int? id,
     int? quizId,
     QuestionSource? source,
+    QuestionType? type,
     String? questionText,
-    String? optionA,
-    String? optionB,
-    String? optionC,
-    String? optionD,
-    String? correctOption,
+    List<String>? options,
+    String? correctAnswer,
     String? explanation,
     String? userAnswer,
     int? orderIndex,
@@ -323,12 +316,10 @@ class Question {
       id: id ?? this.id,
       quizId: quizId ?? this.quizId,
       source: source ?? this.source,
+      type: type ?? this.type,
       questionText: questionText ?? this.questionText,
-      optionA: optionA ?? this.optionA,
-      optionB: optionB ?? this.optionB,
-      optionC: optionC ?? this.optionC,
-      optionD: optionD ?? this.optionD,
-      correctOption: correctOption ?? this.correctOption,
+      options: options ?? this.options,
+      correctAnswer: correctAnswer ?? this.correctAnswer,
       explanation: explanation ?? this.explanation,
       userAnswer: userAnswer ?? this.userAnswer,
       orderIndex: orderIndex ?? this.orderIndex,
@@ -339,31 +330,32 @@ class Question {
         if (id != null) 'id': id,
         'quiz_id': quizId,
         'source_type': source.name,
+        'type': type.name,
         'question_text': questionText,
-        'option_a': optionA,
-        'option_b': optionB,
-        'option_c': optionC,
-        'option_d': optionD,
-        'correct_option': correctOption,
+        'options': jsonEncode(options),
+        'correct_answer': correctAnswer,
         'explanation': explanation,
         'user_answer': userAnswer,
         'order_index': orderIndex,
       };
 
   factory Question.fromMap(Map<String, dynamic> map) {
+    final rawOptions = map['options'] as String? ?? '[]';
+    final optionsList = (jsonDecode(rawOptions) as List<dynamic>).cast<String>();
     return Question(
       id: map['id'] as int?,
       quizId: map['quiz_id'] as int,
       source: QuestionSource.values.firstWhere(
-        (value) => value.name == map['source_type'],
+        (v) => v.name == map['source_type'],
         orElse: () => QuestionSource.generated,
       ),
+      type: QuestionType.values.firstWhere(
+        (v) => v.name == (map['type'] as String? ?? 'multipleChoice'),
+        orElse: () => QuestionType.multipleChoice,
+      ),
       questionText: map['question_text'] as String,
-      optionA: map['option_a'] as String,
-      optionB: map['option_b'] as String,
-      optionC: map['option_c'] as String,
-      optionD: map['option_d'] as String,
-      correctOption: map['correct_option'] as String,
+      options: optionsList,
+      correctAnswer: map['correct_answer'] as String,
       explanation: map['explanation'] as String,
       userAnswer: map['user_answer'] as String?,
       orderIndex: map['order_index'] as int,

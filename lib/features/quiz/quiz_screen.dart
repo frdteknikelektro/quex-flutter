@@ -45,7 +45,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
       }
     }
     final score = questions
-        .where((question) => _answers[question.id ?? question.orderIndex] == question.correctOption)
+        .where((q) => _answers[q.id ?? q.orderIndex] == q.correctAnswer)
         .length;
     await QuizDAO().complete(widget.quizId, score);
     if (!mounted) return;
@@ -121,6 +121,7 @@ class _QuizScreenState extends ConsumerState<QuizScreen> {
                       ),
                       const SizedBox(height: 16),
                       _QuestionCard(
+                        key: ValueKey(question.id ?? question.orderIndex),
                         question: question,
                         selected: _answers[question.id ?? question.orderIndex],
                         onAnswer: (value) => _answerQuestion(question, value),
@@ -273,84 +274,116 @@ class _QuestionRail extends StatelessWidget {
   }
 }
 
-class _QuestionCard extends StatelessWidget {
+class _QuestionCard extends StatefulWidget {
   final Question question;
   final String? selected;
   final ValueChanged<String> onAnswer;
 
   const _QuestionCard({
+    super.key,
     required this.question,
     required this.selected,
     required this.onAnswer,
   });
 
   @override
+  State<_QuestionCard> createState() => _QuestionCardState();
+}
+
+class _QuestionCardState extends State<_QuestionCard> {
+  late final TextEditingController _textController;
+
+  @override
+  void initState() {
+    super.initState();
+    _textController = TextEditingController(
+      text: widget.question.type == QuestionType.textAnswer
+          ? (widget.selected ?? '')
+          : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final options = <MapEntry<String, String>>[
-      MapEntry('A', question.optionA),
-      MapEntry('B', question.optionB),
-      MapEntry('C', question.optionC),
-      MapEntry('D', question.optionD),
-    ];
+    final scheme = Theme.of(context).colorScheme;
+    final letters = ['A', 'B', 'C', 'D', 'E', 'F'];
 
     return QuexPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Question ${question.orderIndex + 1}',
+            'Question ${widget.question.orderIndex + 1}',
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   fontWeight: FontWeight.w700,
-                  color: Theme.of(context).colorScheme.primary,
+                  color: scheme.primary,
                 ),
           ),
           const SizedBox(height: 8),
           Text(
-            question.questionText,
+            widget.question.questionText,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w900,
                 ),
           ),
           const SizedBox(height: 18),
-          ...options.map(
-            (option) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(18),
-                onTap: () => onAnswer(option.key),
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: selected == option.key
-                          ? Theme.of(context).colorScheme.primary
-                          : Theme.of(context).colorScheme.outlineVariant,
-                      width: selected == option.key ? 2 : 1,
+          if (widget.question.type == QuestionType.textAnswer) ...[
+            TextField(
+              controller: _textController,
+              decoration: const InputDecoration(
+                labelText: 'Your answer',
+                hintText: 'Type your answer here...',
+              ),
+              onChanged: widget.onAnswer,
+            ),
+          ] else ...[
+            ...widget.question.options.asMap().entries.map((entry) {
+              final letter = letters[entry.key];
+              final text = entry.value;
+              final isSelected = widget.selected == letter;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(18),
+                  onTap: () => widget.onAnswer(letter),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: isSelected ? scheme.primary : scheme.outlineVariant,
+                        width: isSelected ? 2 : 1,
+                      ),
+                      color: isSelected
+                          ? scheme.primaryContainer.withValues(alpha: 0.4)
+                          : scheme.surfaceContainerLow,
                     ),
-                    color: selected == option.key
-                        ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.4)
-                        : Theme.of(context).colorScheme.surfaceContainerLow,
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      QuexTonePill(label: option.key),
-                      const SizedBox(width: 12),
-                      Expanded(child: Text(option.value)),
-                    ],
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        QuexTonePill(label: letter),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(text)),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ),
-          if (selected != null) ...[
+              );
+            }),
+          ],
+          if (widget.selected != null) ...[
             const SizedBox(height: 12),
             Text(
-              question.explanation,
+              widget.question.explanation,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    color: scheme.onSurfaceVariant,
                   ),
             ),
           ],

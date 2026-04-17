@@ -6,6 +6,7 @@ import '../../app/breakpoints.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../widgets/quex_ui.dart';
+import '../processing/quiz_generation_modal.dart';
 
 class SummaryScreen extends ConsumerWidget {
   final int sessionId;
@@ -37,10 +38,8 @@ class SummaryScreen extends ConsumerWidget {
           );
         }
 
-        final score = bundle.quiz.score ?? bundle.questions.where((question) {
-          final answer = question.userAnswer;
-          return answer != null && answer == question.correctOption;
-        }).length;
+        final score = bundle.quiz.score ??
+            bundle.questions.where((q) => q.isCorrect == true).length;
 
         return sessionAsync.when(
           loading: () => const Scaffold(
@@ -226,7 +225,11 @@ class _SummaryActions extends StatelessWidget {
                 label: const Text('Discuss'),
               ),
               FilledButton.tonalIcon(
-                onPressed: () => context.go('/session/$sessionId/processing'),
+                onPressed: () => showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => QuizGenerationModal(sessionId: sessionId),
+                ),
                 icon: const Icon(Icons.replay_outlined),
                 label: const Text('Retry quiz'),
               ),
@@ -250,10 +253,7 @@ class _MissedQuestions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final missed = questions.where((question) {
-      final answer = question.userAnswer;
-      return answer != null && answer != question.correctOption;
-    }).toList();
+    final missed = questions.where((q) => q.isCorrect == false).toList();
 
     return QuexPanel(
       child: Column(
@@ -281,8 +281,8 @@ class _MissedQuestions extends StatelessWidget {
                             ),
                       ),
                       const SizedBox(height: 10),
-                      Text('Your answer: ${question.userAnswer}'),
-                      Text('Correct answer: ${question.correctOption}'),
+                      Text('Your answer: ${question.userAnswerText ?? question.userAnswer ?? '—'}'),
+                      Text('Correct answer: ${question.correctOptionText ?? question.correctAnswer}'),
                       const SizedBox(height: 10),
                       Text(question.explanation),
                     ],

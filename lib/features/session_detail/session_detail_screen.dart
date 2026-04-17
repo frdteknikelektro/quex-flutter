@@ -8,6 +8,7 @@ import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../widgets/quex_ui.dart';
+import '../processing/quiz_generation_modal.dart';
 
 class SessionDetailScreen extends ConsumerStatefulWidget {
   final int sessionId;
@@ -53,6 +54,11 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
   void dispose() {
     _staggerController.dispose();
     super.dispose();
+  }
+
+  Future<void> _deleteQuiz(int quizId) async {
+    await QuizDAO().delete(quizId);
+    ref.invalidate(sessionBundleProvider(widget.sessionId));
   }
 
   Future<void> _showEditBottomSheet(Session session) async {
@@ -124,6 +130,18 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
               ),
             ],
           ),
+          floatingActionButton: bundle.quizzes.isNotEmpty
+              ? FloatingActionButton.extended(
+                  onPressed: () => showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (_) =>
+                        QuizGenerationModal(sessionId: widget.sessionId),
+                  ),
+                  icon: const Icon(Icons.auto_fix_high),
+                  label: const Text('Generate quiz'),
+                )
+              : null,
           body: SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
             child: Column(
@@ -148,6 +166,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
                     sessionId: widget.sessionId,
                     quizzes: bundle.quizzes,
                     hasMaterials: bundle.materials.isNotEmpty,
+                    onDelete: _deleteQuiz,
                   ),
                 ),
               ],
@@ -248,26 +267,44 @@ class _NavigationCard extends StatelessWidget {
   }
 }
 
-class _QuizSection extends StatelessWidget {
+class _QuizSection extends StatefulWidget {
   final int sessionId;
   final List<Quiz> quizzes;
   final bool hasMaterials;
+  final Future<void> Function(int quizId) onDelete;
 
   const _QuizSection({
     required this.sessionId,
     required this.quizzes,
     required this.hasMaterials,
+    required this.onDelete,
   });
+
+  @override
+  State<_QuizSection> createState() => _QuizSectionState();
+}
+
+class _QuizSectionState extends State<_QuizSection> {
+  final _deletedIds = <int>{};
+
+  @override
+  void didUpdateWidget(_QuizSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Clear deleted IDs that no longer exist in the refreshed list.
+    final currentIds = widget.quizzes.map((q) => q.id!).toSet();
+    _deletedIds.removeWhere((id) => !currentIds.contains(id));
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final visible = widget.quizzes.where((q) => !_deletedIds.contains(q.id)).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (quizzes.isNotEmpty) ...[
+        if (visible.isNotEmpty) ...[
           Text(
             'Recent Quizzes',
             style: theme.textTheme.titleSmall?.copyWith(
@@ -275,44 +312,58 @@ class _QuizSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          ...quizzes.map(
+          ...visible.map(
             (quiz) => Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: Card(
-                elevation: 0,
-                color: scheme.surfaceContainerLow,
-                child: ListTile(
-                  leading: Icon(
-                    quiz.isCompleted ? Icons.check_circle : Icons.pending,
-                    color: quiz.isCompleted
-                        ? scheme.primary
-                        : scheme.onSurfaceVariant,
+              child: Dismissible(
+                key: ValueKey(quiz.id),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  decoration: BoxDecoration(
+                    color: scheme.errorContainer,
+                    borderRadius: BorderRadius.circular(24),
                   ),
-                  title: Text(
-                    quiz.isCompleted
-                        ? 'Score ${quiz.score}/${quiz.questionCount}'
-                        : 'In progress',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+                  child: Icon(Icons.delete_outline, color: scheme.onErrorContainer),
+                ),
+                onDismissed: (_) {
+                  setState(() => _deletedIds.add(quiz.id!));
+                  widget.onDelete(quiz.id!);
+                },
+                child: Card(
+                  elevation: 0,
+                  color: scheme.surfaceContainerLow,
+                  child: ListTile(
+                    leading: Icon(
+                      quiz.isCompleted ? Icons.check_circle : Icons.pending,
+                      color: quiz.isCompleted
+                          ? scheme.primary
+                          : scheme.onSurfaceVariant,
                     ),
+                    title: Text(
+                      quiz.isCompleted
+                          ? 'Score ${quiz.score}/${quiz.questionCount}'
+                          : 'In progress',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () =>
+                        context.go('/session/${widget.sessionId}/quiz/${quiz.id}'),
                   ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () =>
-                      context.go('/session/$sessionId/quiz/${quiz.id}'),
                 ),
               ),
             ),
           ),
-          Center(
-            child: TextButton.icon(
-              onPressed: () => context.go('/session/$sessionId/processing'),
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Generate another quiz'),
-            ),
-          ),
-        ] else if (hasMaterials) ...[
+        ] else if (widget.hasMaterials) ...[
           _QuizEmptyState(
-            onGenerate: () => context.go('/session/$sessionId/processing'),
+            onGenerate: () => showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (_) => QuizGenerationModal(sessionId: widget.sessionId),
+            ),
           ),
         ] else ...[
           Text(

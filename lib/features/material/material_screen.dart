@@ -16,7 +16,9 @@ import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../features/processing/quiz_generation_modal.dart';
 import 'material_actions.dart';
+import 'pdf_page_picker.dart';
 
 // ─── File storage helper ──────────────────────────────────────────────────────
 
@@ -277,8 +279,12 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
       ),
       bottomNavigationBar: hasMaterials
           ? _GenerateQuizBar(
-              onPressed: () =>
-                  context.go('/session/${widget.sessionId}/processing'),
+              onPressed: () => showDialog(
+                context: context,
+                barrierDismissible: false,
+                builder: (_) =>
+                    QuizGenerationModal(sessionId: widget.sessionId),
+              ),
             )
           : null,
     );
@@ -530,7 +536,7 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowMultiple: true,
-      allowedExtensions: ['pdf', 'txt', 'doc', 'docx', 'ppt', 'pptx'],
+      allowedExtensions: ['pdf'],
     );
     if (result != null) {
       final valid = result.files.where((f) => f.path != null).toList();
@@ -564,16 +570,25 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
 
       case MaterialKind.document:
         if (_selectedFiles.isEmpty) {
-          _showSnack('Pick at least one document.');
+          _showSnack('Pick at least one PDF.');
           return;
         }
         setState(() => _copying = true);
         for (final file in _selectedFiles) {
-          final dest = await _copyToMaterialsDir(file.path, file.name);
+          if (!mounted) break;
+          final pagePaths = await Navigator.of(context).push<List<String>>(
+            MaterialPageRoute(
+              builder: (_) => PdfPagePickerModal(
+                pdfPath: file.path,
+                suggestedTitle: pathlib.withoutExtension(file.name),
+              ),
+            ),
+          );
+          if (pagePaths == null || pagePaths.isEmpty) continue;
           await widget.onSaved(
-            MaterialKind.document,
+            MaterialKind.photo,
             pathlib.withoutExtension(file.name),
-            dest,
+            pagePaths.join('\n'),
           );
         }
         if (mounted) Navigator.of(context).pop();
@@ -694,7 +709,7 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.description_outlined, size: 20, color: scheme.primary),
+                    Icon(Icons.picture_as_pdf_outlined, size: 20, color: scheme.primary),
                     const SizedBox(width: Sp.sm),
                     Expanded(
                       child: Text(
@@ -720,7 +735,7 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
         OutlinedButton.icon(
           onPressed: _pickFiles,
           icon: const Icon(Icons.upload_file, size: 18),
-          label: Text(_selectedFiles.isEmpty ? 'Pick documents' : 'Add more'),
+          label: Text(_selectedFiles.isEmpty ? 'Pick PDF' : 'Add more'),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size(double.infinity, 48),
           ),
@@ -850,7 +865,7 @@ class _KindSelector extends StatelessWidget {
 
   static const _kinds = [
     (kind: MaterialKind.photo, emoji: '📷', label: 'Photo'),
-    (kind: MaterialKind.document, emoji: '📄', label: 'Doc'),
+    (kind: MaterialKind.document, emoji: '📄', label: 'PDF'),
     (kind: MaterialKind.text, emoji: '📝', label: 'Text'),
   ];
 

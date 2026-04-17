@@ -10,7 +10,6 @@ import '../features/chat/chat_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/material/material_detail_screen.dart';
 import '../features/material/material_screen.dart';
-import '../features/processing/processing_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/session_new/new_session_screen.dart';
 import '../features/profile_selection/create_first_profile_screen.dart';
@@ -28,7 +27,6 @@ class Routes {
   static const session = '/session/:sessionId';
   static const addMaterial = '/session/:sessionId/material';
   static const materialDetail = '/session/:sessionId/material/:materialId';
-  static const processing = '/session/:sessionId/processing';
   static const quiz = '/session/:sessionId/quiz/:quizId';
   static const chat = '/session/:sessionId/chat';
   static const summary = '/session/:sessionId/quiz/:quizId/summary';
@@ -110,14 +108,6 @@ final appRouter = GoRouter(
           sessionId: sessionId,
           materialId: materialId,
         );
-      },
-    ),
-    GoRoute(
-      path: Routes.processing,
-      name: 'processing',
-      builder: (context, state) {
-        final sessionId = int.parse(state.pathParameters['sessionId']!);
-        return ProcessingScreen(sessionId: sessionId);
       },
     ),
     GoRoute(

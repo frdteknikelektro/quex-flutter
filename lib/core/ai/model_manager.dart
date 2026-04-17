@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// ModelManager handles Gemma 4 E4B model installation and status.
 ///
 /// Gemma 4 E4B specs (litert-community):
-/// - Size: ~6.6GB
+/// - Size: ~3.65GB
 /// - ModelType: ModelType.gemmaIt
 /// - Capabilities: Text, Image, Audio, Function Calling, Thinking Mode
 /// - Format: .litertlm for LiteRT-LM framework
@@ -72,7 +72,7 @@ class ModelManager {
   }
 
   /// Delete the downloaded model file from storage.
-  /// Call this to free up ~6.6GB of space.
+  /// Call this to free up ~3.65GB of space.
   static Future<void> deleteModel() async {
     try {
       // FlutterGemma stores the model in the app's data directory
@@ -182,7 +182,16 @@ class ModelManager {
     }
   }
 
+  /// Re-register already-downloaded model as active for this session.
+  /// install() is idempotent — skips download if file exists, just sets active.
+  static Future<void> activateModel() async {
+    if (FlutterGemma.hasActiveModel()) return;
+    await FlutterGemma.installModel(modelType: ModelType.gemmaIt)
+        .fromNetwork(gemmaModelUrl)
+        .install();
+  }
+
   static String sizeLabel(bool ready) {
-    return ready ? '6.6 GB ready (Gemma 4 E4B)' : 'Not downloaded';
+    return ready ? '3.65 GB ready (Gemma 4 E4B)' : 'Not downloaded';
   }
 }

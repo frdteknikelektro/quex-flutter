@@ -4,7 +4,7 @@ import 'package:sqflite/sqflite.dart';
 class QuexDatabase {
   static Database? _db;
   static const String _dbName = 'quex.db';
-  static const int _version = 1;
+  static const int _version = 2;
 
   static Future<Database> get instance async {
     if (_db != null) return _db!;
@@ -80,12 +80,10 @@ class QuexDatabase {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         quiz_id INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
         source_type TEXT NOT NULL,
+        type TEXT NOT NULL DEFAULT 'multipleChoice',
         question_text TEXT NOT NULL,
-        option_a TEXT NOT NULL,
-        option_b TEXT NOT NULL,
-        option_c TEXT NOT NULL,
-        option_d TEXT NOT NULL,
-        correct_option TEXT NOT NULL,
+        options TEXT NOT NULL DEFAULT '[]',
+        correct_answer TEXT NOT NULL,
         explanation TEXT NOT NULL,
         user_answer TEXT,
         order_index INTEGER NOT NULL DEFAULT 0
@@ -106,7 +104,7 @@ class QuexDatabase {
     await db.execute('CREATE INDEX idx_sessions_created ON sessions(created_at DESC)');
     await db.execute('CREATE INDEX idx_materials_session ON materials(session_id, page_index)');
     await db.execute('CREATE INDEX idx_quizzes_session ON quizzes(session_id, created_at DESC)');
-    await db.execute('CREATE INDEX idx_questions_quiz ON questions(quiz_id, order_index)');
+    await db.execute('CREATE INDEX idx_questions_quiz_order ON questions(quiz_id, order_index)');
     await db.execute('CREATE INDEX idx_chat_session ON chat_messages(session_id, created_at)');
 
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -127,7 +125,34 @@ class QuexDatabase {
   }
 
   static Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    // No migrations yet.
+    if (oldVersion < 2) {
+      await db.execute('''
+        CREATE TABLE questions_v2 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          quiz_id INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+          source_type TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'multipleChoice',
+          question_text TEXT NOT NULL,
+          options TEXT NOT NULL DEFAULT '[]',
+          correct_answer TEXT NOT NULL,
+          explanation TEXT NOT NULL,
+          user_answer TEXT,
+          order_index INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      await db.execute('''
+        INSERT INTO questions_v2
+          (id, quiz_id, source_type, type, question_text, options, correct_answer, explanation, user_answer, order_index)
+        SELECT
+          id, quiz_id, source_type, 'multipleChoice', question_text,
+          json_array(option_a, option_b, option_c, option_d),
+          correct_option, explanation, user_answer, order_index
+        FROM questions
+      ''');
+      await db.execute('DROP TABLE questions');
+      await db.execute('ALTER TABLE questions_v2 RENAME TO questions');
+      await db.execute('CREATE INDEX idx_questions_quiz_order ON questions(quiz_id, order_index)');
+    }
   }
 
   static Future<void> close() async {

@@ -13,35 +13,8 @@ class QuexAi {
     _gemmaService = service;
   }
 
-  /// Build a quiz with optional LLM enhancement.
-  /// Uses Gemma E4B when available, otherwise falls back to rule-based generation.
-  static Future<List<Question>> buildQuiz({
-    required Session session,
-    required List<StudyMaterial> materials,
-    required int questionCount,
-  }) async {
-    // Try LLM-powered quiz generation if service is available
-    if (_gemmaService != null && _gemmaService!.isInitialized) {
-      try {
-        return await _gemmaService!.generateQuiz(
-          session: session,
-          materials: materials,
-          questionCount: questionCount,
-        );
-      } catch (_) {
-        // Fall back to rule-based on error
-      }
-    }
-
-    // Rule-based fallback
-    return _buildQuizRuleBased(
-      session: session,
-      materials: materials,
-      questionCount: questionCount,
-    );
-  }
-
-  static List<Question> _buildQuizRuleBased({
+  /// Build a rule-based quiz from study materials.
+  static List<Question> buildQuizRuleBased({
     required Session session,
     required List<StudyMaterial> materials,
     required int questionCount,
@@ -68,10 +41,7 @@ class QuexAi {
         sessionTitle: session.title,
       );
 
-      final options = <String>[
-        correct,
-        ...distractors.take(3),
-      ];
+      final options = <String>[correct, ...distractors.take(3)];
       options.shuffle(rng);
 
       final correctLetter = ['A', 'B', 'C', 'D'][options.indexOf(correct)];
@@ -79,12 +49,10 @@ class QuexAi {
         Question(
           quizId: -1,
           source: QuestionSource.generated,
+          type: QuestionType.multipleChoice,
           questionText: templates[index % templates.length],
-          optionA: options[0],
-          optionB: options[1],
-          optionC: options[2],
-          optionD: options[3],
-          correctOption: correctLetter,
+          options: options,
+          correctAnswer: correctLetter,
           explanation: 'This option best reflects the material on "${session.title}".',
           orderIndex: index,
         ),

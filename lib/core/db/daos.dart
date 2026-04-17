@@ -191,6 +191,10 @@ class QuizDAO {
     );
   }
 
+  Future<void> delete(int id) async {
+    await (await _db).delete('quizzes', where: 'id = ?', whereArgs: [id]);
+  }
+
   Future<void> deleteCompletedByProfile(int profileId) async {
     final db = await _db;
     await db.rawDelete('''

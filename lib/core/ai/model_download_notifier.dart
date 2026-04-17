@@ -25,6 +25,7 @@ class ModelDownloadNotifier extends Notifier<ModelDownloadState> {
     final ready = await ModelManager.isReady();
     final savedProgress = await ModelManager.progress();
     if (ready) {
+      await ModelManager.activateModel();
       state = const ModelDownloadState(
         status: DownloadStatus.completed,
         progress: 1.0,
