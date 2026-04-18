@@ -40,6 +40,14 @@ final chatMessagesProvider = FutureProvider.family<List<ChatMessage>, int>(
   (ref, sessionId) => ChatDAO().getBySession(sessionId),
 );
 
+final questionProvider = FutureProvider.family<Question?, int>(
+  (ref, questionId) => QuestionDAO().getById(questionId),
+);
+
+final questionMessagesProvider = FutureProvider.family<List<QuestionMessage>, int>(
+  (ref, questionId) => QuestionMessageDAO().getByQuestion(questionId),
+);
+
 Future<int?> readActiveProfileId() async {
   final prefs = await SharedPreferences.getInstance();
   return prefs.getInt(activeProfileIdKey);

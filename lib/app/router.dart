@@ -14,6 +14,8 @@ import '../features/profile/profile_screen.dart';
 import '../features/session_new/new_session_screen.dart';
 import '../features/profile_selection/create_first_profile_screen.dart';
 import '../features/profile_selection/profile_selection_screen.dart';
+import '../features/quiz/question_chat_screen.dart';
+import '../features/quiz/quiz_detail_screen.dart';
 import '../features/quiz/quiz_screen.dart';
 import '../features/session_detail/session_detail_screen.dart';
 import '../features/splash/splash_screen.dart';
@@ -29,9 +31,11 @@ class Routes {
   static const materialDetail = '/session/:sessionId/material/:materialId';
   static const quiz = '/session/:sessionId/quiz/:quizId';
   static const chat = '/session/:sessionId/chat';
+  static const quizDetail = '/session/:sessionId/quiz/:quizId/detail';
+  static const questionChat = '/session/:sessionId/quiz/:quizId/question/:questionId';
   static const summary = '/session/:sessionId/quiz/:quizId/summary';
   static const profile = '/profile';
-  }
+}
 
 final appRouter = GoRouter(
   initialLocation: Routes.splash,
@@ -125,6 +129,29 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final sessionId = int.parse(state.pathParameters['sessionId']!);
         return ChatScreen(sessionId: sessionId);
+      },
+    ),
+    GoRoute(
+      path: Routes.quizDetail,
+      name: 'quiz-detail',
+      builder: (context, state) {
+        final sessionId = int.parse(state.pathParameters['sessionId']!);
+        final quizId = int.parse(state.pathParameters['quizId']!);
+        return QuizDetailScreen(sessionId: sessionId, quizId: quizId);
+      },
+    ),
+    GoRoute(
+      path: Routes.questionChat,
+      name: 'question-chat',
+      builder: (context, state) {
+        final sessionId = int.parse(state.pathParameters['sessionId']!);
+        final quizId = int.parse(state.pathParameters['quizId']!);
+        final questionId = int.parse(state.pathParameters['questionId']!);
+        return QuestionChatScreen(
+          sessionId: sessionId,
+          quizId: quizId,
+          questionId: questionId,
+        );
       },
     ),
     GoRoute(

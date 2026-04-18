@@ -242,8 +242,53 @@ class QuestionDAO {
     );
   }
 
+  Future<Question?> getById(int id) async {
+    final rows = await (await _db).query(
+      'questions',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (rows.isEmpty) return null;
+    return Question.fromMap(rows.first);
+  }
+
+  Future<void> saveScore(int questionId, double score) async {
+    await (await _db).update(
+      'questions',
+      {'score': score},
+      where: 'id = ?',
+      whereArgs: [questionId],
+    );
+  }
+
   Future<void> deleteByQuiz(int quizId) async {
     await (await _db).delete('questions', where: 'quiz_id = ?', whereArgs: [quizId]);
+  }
+}
+
+class QuestionMessageDAO {
+  Future<Database> get _db => QuexDatabase.instance;
+
+  Future<int> insert(QuestionMessage message) async {
+    return (await _db).insert('question_messages', message.toMap());
+  }
+
+  Future<List<QuestionMessage>> getByQuestion(int questionId) async {
+    final rows = await (await _db).query(
+      'question_messages',
+      where: 'question_id = ?',
+      whereArgs: [questionId],
+      orderBy: 'created_at ASC',
+    );
+    return rows.map(QuestionMessage.fromMap).toList();
+  }
+
+  Future<void> deleteByQuestion(int questionId) async {
+    await (await _db).delete(
+      'question_messages',
+      where: 'question_id = ?',
+      whereArgs: [questionId],
+    );
   }
 }
 

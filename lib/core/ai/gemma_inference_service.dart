@@ -382,6 +382,82 @@ Coach response:''';
     return await sendMessage(prompt);
   }
 
+  /// Get a tutoring reply for a specific quiz question.
+  /// Creates a fresh session focused on question + study materials context.
+  Future<String> getQuestionTutorReply({
+    required Question question,
+    required List<StudyMaterial> materials,
+    required List<QuestionMessage> history,
+    required String userMessage,
+  }) async {
+    final optionsText = question.type == QuestionType.multipleChoice
+        ? question.options.asMap().entries
+            .map((e) => '${String.fromCharCode(65 + e.key)}) ${e.value}')
+            .join('\n')
+        : '';
+
+    final materialsContext = materials
+        .map((m) => '${m.title}:\n${m.content}')
+        .join('\n\n');
+
+    final historyText = history.map((m) {
+      final role = m.role == QuestionMessageRole.user ? 'Student' : 'Tutor';
+      return '$role: ${m.content}';
+    }).join('\n');
+
+    final systemInstruction =
+        'You are a friendly tutor helping an elementary student answer a quiz question. '
+        'Guide them with hints and encouragement — do NOT reveal the answer directly until '
+        'they demonstrate understanding. Keep responses short and simple.';
+
+    await createSession(systemInstruction: systemInstruction, temperature: 0.7);
+
+    final prompt = '${materialsContext.isNotEmpty ? 'Study materials:\n$materialsContext\n\n' : ''}'
+        'Question: ${question.questionText}\n'
+        '${optionsText.isNotEmpty ? 'Options:\n$optionsText\n' : ''}'
+        'Correct answer: ${question.correctAnswer}\n'
+        'Explanation: ${question.explanation}\n\n'
+        '${historyText.isNotEmpty ? 'Conversation so far:\n$historyText\n\n' : ''}'
+        'Student: $userMessage\n\nTutor:';
+
+    return await sendMessage(prompt);
+  }
+
+  /// Evaluate student understanding for a question (0.0–1.0).
+  /// Returns null if score cannot be determined.
+  Future<double?> evaluateQuestionScore({
+    required Question question,
+    required List<StudyMaterial> materials,
+    required List<QuestionMessage> history,
+  }) async {
+    if (history.isEmpty) return null;
+
+    final materialsContext = materials
+        .map((m) => '${m.title}:\n${m.content}')
+        .join('\n\n');
+
+    final historyText = history.map((m) {
+      final role = m.role == QuestionMessageRole.user ? 'Student' : 'Tutor';
+      return '$role: ${m.content}';
+    }).join('\n');
+
+    const systemInstruction =
+        'You are an evaluator. Rate student understanding on a scale from 0.0 to 1.0. '
+        'Respond with ONLY a single decimal number. Nothing else.';
+
+    await createSession(systemInstruction: systemInstruction, temperature: 0.1, topK: 1);
+
+    final prompt = '${materialsContext.isNotEmpty ? 'Study materials:\n$materialsContext\n\n' : ''}'
+        'Question: ${question.questionText}\n'
+        'Correct answer: ${question.correctAnswer}\n\n'
+        'Conversation:\n$historyText\n\n'
+        'Rate the student\'s understanding (0.0 = wrong, 0.5 = partial, 1.0 = correct). '
+        'Reply with ONLY a number:';
+
+    final raw = await sendMessage(prompt);
+    return double.tryParse(raw.trim().replaceAll(RegExp(r'[^0-9.]'), ''));
+  }
+
   /// Generate a summary of study materials.
   Future<String> generateSummary({
     required Session session,

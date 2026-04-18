@@ -116,6 +116,47 @@ class QuexAi {
         'I can also make a quiz or summary if you want.';
   }
 
+  /// Get tutor reply for a specific question, plus an AI-evaluated score (0.0–1.0).
+  /// Uses two separate Gemma calls: one for reply, one for evaluation.
+  /// Throws [StateError] if Gemma service is not initialized.
+  static Future<({String reply, double? score})> questionCoachReply({
+    required Question question,
+    required List<StudyMaterial> materials,
+    required List<QuestionMessage> history,
+    required String userMessage,
+  }) async {
+    if (_gemmaService == null || !_gemmaService!.isInitialized) {
+      throw StateError('Gemma service not initialized.');
+    }
+    final reply = await _gemmaService!.getQuestionTutorReply(
+      question: question,
+      materials: materials,
+      history: history,
+      userMessage: userMessage,
+    );
+    final updatedHistory = [
+      ...history,
+      QuestionMessage(
+        questionId: question.id!,
+        role: QuestionMessageRole.user,
+        content: userMessage,
+        createdAt: DateTime.now(),
+      ),
+      QuestionMessage(
+        questionId: question.id!,
+        role: QuestionMessageRole.assistant,
+        content: reply,
+        createdAt: DateTime.now(),
+      ),
+    ];
+    final score = await _gemmaService!.evaluateQuestionScore(
+      question: question,
+      materials: materials,
+      history: updatedHistory,
+    );
+    return (reply: reply, score: score);
+  }
+
   static String sessionSummary(Session session, List<StudyMaterial> materials) {
     return _sessionSummary(session, materials);
   }

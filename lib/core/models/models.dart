@@ -271,6 +271,7 @@ class Question {
   final String explanation;
   final String? userAnswer;
   final int orderIndex;
+  final double? score; // 0.0–1.0, null = not yet evaluated
 
   const Question({
     this.id,
@@ -283,6 +284,7 @@ class Question {
     required this.explanation,
     this.userAnswer,
     required this.orderIndex,
+    this.score,
   });
 
   bool? get isCorrect => userAnswer == null ? null : userAnswer == correctAnswer;
@@ -311,6 +313,7 @@ class Question {
     String? explanation,
     String? userAnswer,
     int? orderIndex,
+    double? score,
   }) {
     return Question(
       id: id ?? this.id,
@@ -323,6 +326,7 @@ class Question {
       explanation: explanation ?? this.explanation,
       userAnswer: userAnswer ?? this.userAnswer,
       orderIndex: orderIndex ?? this.orderIndex,
+      score: score ?? this.score,
     );
   }
 
@@ -337,6 +341,7 @@ class Question {
         'explanation': explanation,
         'user_answer': userAnswer,
         'order_index': orderIndex,
+        'score': score,
       };
 
   factory Question.fromMap(Map<String, dynamic> map) {
@@ -359,6 +364,63 @@ class Question {
       explanation: map['explanation'] as String,
       userAnswer: map['user_answer'] as String?,
       orderIndex: map['order_index'] as int,
+      score: map['score'] as double?,
+    );
+  }
+}
+
+enum QuestionMessageRole { user, assistant }
+
+@immutable
+class QuestionMessage {
+  final int? id;
+  final int questionId;
+  final QuestionMessageRole role;
+  final String content;
+  final DateTime createdAt;
+
+  const QuestionMessage({
+    this.id,
+    required this.questionId,
+    required this.role,
+    required this.content,
+    required this.createdAt,
+  });
+
+  QuestionMessage copyWith({
+    int? id,
+    int? questionId,
+    QuestionMessageRole? role,
+    String? content,
+    DateTime? createdAt,
+  }) {
+    return QuestionMessage(
+      id: id ?? this.id,
+      questionId: questionId ?? this.questionId,
+      role: role ?? this.role,
+      content: content ?? this.content,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        if (id != null) 'id': id,
+        'question_id': questionId,
+        'role': role.name,
+        'content': content,
+        'created_at': createdAt.millisecondsSinceEpoch,
+      };
+
+  factory QuestionMessage.fromMap(Map<String, dynamic> map) {
+    return QuestionMessage(
+      id: map['id'] as int?,
+      questionId: map['question_id'] as int,
+      role: QuestionMessageRole.values.firstWhere(
+        (v) => v.name == map['role'],
+        orElse: () => QuestionMessageRole.assistant,
+      ),
+      content: map['content'] as String,
+      createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
     );
   }
 }

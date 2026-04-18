@@ -4,7 +4,7 @@ import 'package:sqflite/sqflite.dart';
 class QuexDatabase {
   static Database? _db;
   static const String _dbName = 'quex.db';
-  static const int _version = 2;
+  static const int _version = 3;
 
   static Future<Database> get instance async {
     if (_db != null) return _db!;
@@ -86,7 +86,18 @@ class QuexDatabase {
         correct_answer TEXT NOT NULL,
         explanation TEXT NOT NULL,
         user_answer TEXT,
-        order_index INTEGER NOT NULL DEFAULT 0
+        order_index INTEGER NOT NULL DEFAULT 0,
+        score REAL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE question_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL
       )
     ''');
 
@@ -105,6 +116,7 @@ class QuexDatabase {
     await db.execute('CREATE INDEX idx_materials_session ON materials(session_id, page_index)');
     await db.execute('CREATE INDEX idx_quizzes_session ON quizzes(session_id, created_at DESC)');
     await db.execute('CREATE INDEX idx_questions_quiz_order ON questions(quiz_id, order_index)');
+    await db.execute('CREATE INDEX idx_question_messages_question ON question_messages(question_id, created_at)');
     await db.execute('CREATE INDEX idx_chat_session ON chat_messages(session_id, created_at)');
 
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -152,6 +164,19 @@ class QuexDatabase {
       await db.execute('DROP TABLE questions');
       await db.execute('ALTER TABLE questions_v2 RENAME TO questions');
       await db.execute('CREATE INDEX idx_questions_quiz_order ON questions(quiz_id, order_index)');
+    }
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE questions ADD COLUMN score REAL');
+      await db.execute('''
+        CREATE TABLE question_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          question_id INTEGER NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+          role TEXT NOT NULL,
+          content TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        )
+      ''');
+      await db.execute('CREATE INDEX idx_question_messages_question ON question_messages(question_id, created_at)');
     }
   }
 

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
 import '../../core/ai/gemma_inference_service.dart';
@@ -10,7 +11,6 @@ import '../../core/ai/quex_ai.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
-import 'quiz_results_debug_screen.dart';
 
 class QuizGenerationModal extends ConsumerStatefulWidget {
   final int sessionId;
@@ -165,14 +165,9 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
     Navigator.of(context).pop();
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => QuizResultsDebugScreen(
-          sessionId: widget.sessionId,
-          quizId: qid,
-          questions: withId,
-        ),
-      ),
+    if (!mounted) return;
+    context.push(
+      '/session/${widget.sessionId}/quiz/$qid/detail',
     );
   }
 
