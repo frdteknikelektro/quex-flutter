@@ -157,6 +157,24 @@ class QuexAi {
     return (reply: reply, score: score);
   }
 
+  /// Streaming coach reply for session-level chat.
+  /// Yields [TutorThinking] then [TutorReply] tokens.
+  /// Throws [StateError] if Gemma service is not initialized.
+  static Stream<TutorEvent> coachReplyStream({
+    required Session session,
+    required List<StudyMaterial> materials,
+    required List<ChatMessage> history,
+    required String message,
+  }) {
+    if (!isReady) throw StateError('Gemma service not initialized.');
+    return _gemmaService!.getCoachReplyStreaming(
+      session: session,
+      materials: materials,
+      history: history,
+      message: message,
+    );
+  }
+
   /// Streaming tutor reply with thinking mode and multimodal image support.
   /// Yields [TutorThinking] tokens first, then [TutorReply] tokens.
   /// Throws [StateError] if Gemma service is not initialized.

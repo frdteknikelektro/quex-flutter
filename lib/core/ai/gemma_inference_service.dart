@@ -428,6 +428,69 @@ Coach response:''';
     return await sendMessage(prompt);
   }
 
+  /// Streaming coach reply for session-level chat.
+  /// Yields [TutorThinking] tokens then [TutorReply] tokens.
+  /// Supports multimodal materials (images sent as chunks).
+  Stream<TutorEvent> getCoachReplyStreaming({
+    required Session session,
+    required List<StudyMaterial> materials,
+    required List<ChatMessage> history,
+    required String message,
+  }) async* {
+    final prepared = await MaterialPreprocessor.prepare(materials);
+    final hasImages = prepared.any((p) => p.images.isNotEmpty);
+
+    final textContext = prepared
+        .where((p) => p.textChunk.isNotEmpty)
+        .map((p) => p.textChunk)
+        .join('\n\n');
+
+    final systemInstruction = StringBuffer(
+      'You are Quex, a friendly study coach for "${session.title}". '
+      'Answer questions about the study material, offer study tips, and suggest topics to explore. '
+      'Keep responses short, encouraging, and kid-friendly.',
+    );
+    if (textContext.isNotEmpty) {
+      systemInstruction
+        ..writeln()
+        ..writeln()
+        ..writeln('--- STUDY MATERIALS ---')
+        ..write(textContext);
+    }
+
+    await createSession(
+      systemInstruction: systemInstruction.toString(),
+      temperature: 0.7,
+      supportImage: hasImages,
+    );
+
+    for (final p in prepared) {
+      for (final imageBytes in p.images) {
+        await _chat!.addQueryChunk(
+          gemma.Message.imageOnly(imageBytes: imageBytes, isUser: true),
+        );
+      }
+    }
+
+    final historyText = history.map((m) {
+      final role = m.role == ChatRole.user ? 'Student' : 'Coach';
+      return '$role: ${m.content}';
+    }).join('\n');
+
+    final userTurn = '${historyText.isNotEmpty ? '$historyText\n\n' : ''}'
+        'Student: $message\n\nCoach:';
+
+    await _chat!.addQueryChunk(gemma.Message.text(text: userTurn, isUser: true));
+
+    await for (final response in _chat!.generateChatResponseAsync()) {
+      if (response is gemma.ThinkingResponse) {
+        yield TutorThinking(response.content);
+      } else if (response is gemma.TextResponse) {
+        yield TutorReply(response.token);
+      }
+    }
+  }
+
   /// Get a tutoring reply for a specific quiz question.
   /// Creates a fresh session focused on question + study materials context.
   Future<String> getQuestionTutorReply({

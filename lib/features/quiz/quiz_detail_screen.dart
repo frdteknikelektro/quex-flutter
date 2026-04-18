@@ -60,8 +60,10 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
 
   @override
   void dispose() {
-    _gemmaService?.dispose();
-    QuexAi.setGemmaService(null);
+    if (_gemmaService != null) {
+      _gemmaService!.dispose();
+      QuexAi.setGemmaService(null);
+    }
     super.dispose();
   }
 

@@ -310,9 +310,11 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   void _cancel() {
     _subscription?.cancel();
     _subscription = null;
-    _gemmaService?.dispose();
-    _gemmaService = null;
-    QuexAi.setGemmaService(null);
+    if (_gemmaService != null) {
+      _gemmaService!.dispose();
+      _gemmaService = null;
+      QuexAi.setGemmaService(null);
+    }
     if (mounted) Navigator.of(context).pop();
   }
 
