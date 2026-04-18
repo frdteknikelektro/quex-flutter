@@ -111,7 +111,6 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
         title: title,
         emoji: _emoji,
         gradeOverride: _grade,
-        questionCount: 20,
         createdAt: DateTime.now(),
       ),
     );

@@ -18,12 +18,12 @@ class QuexAi {
   /// Whether the Gemma service is initialized and ready for inference.
   static bool get isReady => _gemmaService != null && _gemmaService!.isInitialized;
 
-  /// Build a rule-based quiz from study materials.
+  /// Build a rule-based quiz from study materials (fallback when AI unavailable).
   static List<Question> buildQuizRuleBased({
     required Session session,
     required List<StudyMaterial> materials,
-    required int questionCount,
   }) {
+    const questionCount = 10;
     final snippets = _snippets(materials);
     final focus = snippets.isEmpty
         ? [session.title, 'study skills', 'important ideas']
@@ -49,7 +49,6 @@ class QuexAi {
       final options = <String>[correct, ...distractors.take(3)];
       options.shuffle(rng);
 
-      final correctLetter = ['A', 'B', 'C', 'D'][options.indexOf(correct)];
       questions.add(
         Question(
           quizId: -1,
@@ -57,8 +56,6 @@ class QuexAi {
           type: QuestionType.multipleChoice,
           questionText: templates[index % templates.length],
           options: options,
-          correctAnswer: correctLetter,
-          explanation: 'This option best reflects the material on "${session.title}".',
           orderIndex: index,
         ),
       );

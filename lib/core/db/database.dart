@@ -4,7 +4,7 @@ import 'package:sqflite/sqflite.dart';
 class QuexDatabase {
   static Database? _db;
   static const String _dbName = 'quex.db';
-  static const int _version = 3;
+  static const int _version = 4;
 
   static Future<Database> get instance async {
     if (_db != null) return _db!;
@@ -47,7 +47,6 @@ class QuexDatabase {
         title TEXT NOT NULL,
         emoji TEXT NOT NULL DEFAULT '📘',
         grade_override INTEGER NOT NULL,
-        question_count INTEGER NOT NULL DEFAULT 20,
         created_at INTEGER NOT NULL
       )
     ''');
@@ -83,8 +82,6 @@ class QuexDatabase {
         type TEXT NOT NULL DEFAULT 'multipleChoice',
         question_text TEXT NOT NULL,
         options TEXT NOT NULL DEFAULT '[]',
-        correct_answer TEXT NOT NULL,
-        explanation TEXT NOT NULL,
         user_answer TEXT,
         order_index INTEGER NOT NULL DEFAULT 0,
         score REAL
@@ -177,6 +174,49 @@ class QuexDatabase {
         )
       ''');
       await db.execute('CREATE INDEX idx_question_messages_question ON question_messages(question_id, created_at)');
+    }
+    if (oldVersion < 4) {
+      // Remove question_count from sessions
+      await db.execute('''
+        CREATE TABLE sessions_v4 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+          title TEXT NOT NULL,
+          emoji TEXT NOT NULL DEFAULT '📘',
+          grade_override INTEGER NOT NULL,
+          created_at INTEGER NOT NULL
+        )
+      ''');
+      await db.execute('''
+        INSERT INTO sessions_v4 (id, profile_id, title, emoji, grade_override, created_at)
+        SELECT id, profile_id, title, emoji, grade_override, created_at FROM sessions
+      ''');
+      await db.execute('DROP TABLE sessions');
+      await db.execute('ALTER TABLE sessions_v4 RENAME TO sessions');
+      await db.execute('CREATE INDEX idx_sessions_profile ON sessions(profile_id)');
+      await db.execute('CREATE INDEX idx_sessions_created ON sessions(created_at DESC)');
+
+      // Remove correct_answer + explanation from questions
+      await db.execute('''
+        CREATE TABLE questions_v4 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          quiz_id INTEGER NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+          source_type TEXT NOT NULL,
+          type TEXT NOT NULL DEFAULT 'multipleChoice',
+          question_text TEXT NOT NULL,
+          options TEXT NOT NULL DEFAULT '[]',
+          user_answer TEXT,
+          order_index INTEGER NOT NULL DEFAULT 0,
+          score REAL
+        )
+      ''');
+      await db.execute('''
+        INSERT INTO questions_v4 (id, quiz_id, source_type, type, question_text, options, user_answer, order_index, score)
+        SELECT id, quiz_id, source_type, type, question_text, options, user_answer, order_index, score FROM questions
+      ''');
+      await db.execute('DROP TABLE questions');
+      await db.execute('ALTER TABLE questions_v4 RENAME TO questions');
+      await db.execute('CREATE INDEX idx_questions_quiz_order ON questions(quiz_id, order_index)');
     }
   }
 

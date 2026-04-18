@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/breakpoints.dart';
@@ -166,7 +167,14 @@ class _ChatPanel extends StatelessWidget {
                           : Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(18),
                     ),
-                    child: Text(message.content),
+                    child: message.role == ChatRole.user
+                        ? Text(message.content)
+                        : MarkdownBody(
+                            data: message.content,
+                            styleSheet: MarkdownStyleSheet.fromTheme(Theme.of(context)).copyWith(
+                              p: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ),
                   ),
                 ),
               ),

@@ -179,6 +179,15 @@ class QuizDAO {
     return Quiz.fromMap(rows.first);
   }
 
+  Future<void> updateQuestionCount(int quizId, int count) async {
+    await (await _db).update(
+      'quizzes',
+      {'question_count': count},
+      where: 'id = ?',
+      whereArgs: [quizId],
+    );
+  }
+
   Future<void> complete(int quizId, int score) async {
     await (await _db).update(
       'quizzes',

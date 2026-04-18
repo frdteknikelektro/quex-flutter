@@ -39,7 +39,7 @@ class SummaryScreen extends ConsumerWidget {
         }
 
         final score = bundle.quiz.score ??
-            bundle.questions.where((q) => q.isCorrect == true).length;
+            bundle.questions.where((q) => (q.score ?? 0) >= 0.5).length;
 
         return sessionAsync.when(
           loading: () => const Scaffold(
@@ -253,7 +253,7 @@ class _MissedQuestions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final missed = questions.where((q) => q.isCorrect == false).toList();
+    final missed = questions.where((q) => q.score != null && q.score! < 0.5).toList();
 
     return QuexPanel(
       child: Column(
@@ -282,9 +282,13 @@ class _MissedQuestions extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       Text('Your answer: ${question.userAnswerText ?? question.userAnswer ?? '—'}'),
-                      Text('Correct answer: ${question.correctOptionText ?? question.correctAnswer}'),
-                      const SizedBox(height: 10),
-                      Text(question.explanation),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Chat with Quex to learn more.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
                     ],
                   ),
                 ),

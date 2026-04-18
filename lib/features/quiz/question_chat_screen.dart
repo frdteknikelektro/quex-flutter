@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:open_filex/open_filex.dart';
@@ -111,7 +112,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     setState(() {
       _sending = true;
       _streamingContent = '';
-      _thinkingContent = '';
+      _thinkingContent = null;
       _thinkingExpanded = false;
     });
     _controller.clear();
@@ -651,10 +652,10 @@ class _MessageList extends StatelessWidget {
                 ),
                 child: streamingContent!.isEmpty
                     ? _TypingIndicator(scheme: scheme)
-                    : Text(
-                        streamingContent!,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurface,
+                    : MarkdownBody(
+                        data: streamingContent!,
+                        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                          p: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface),
                         ),
                       ),
               ),
@@ -684,12 +685,19 @@ class _MessageList extends StatelessWidget {
                   bottomRight: Radius.circular(isUser ? 4 : 18),
                 ),
               ),
-              child: Text(
-                msg.content,
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: isUser ? scheme.onPrimaryContainer : scheme.onSurface,
-                ),
-              ),
+              child: isUser
+                  ? Text(
+                      msg.content,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onPrimaryContainer,
+                      ),
+                    )
+                  : MarkdownBody(
+                      data: msg.content,
+                      styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                        p: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface),
+                      ),
+                    ),
             ),
           ),
         );

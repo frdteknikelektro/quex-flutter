@@ -155,6 +155,59 @@ class GemmaInferenceService {
     }
   }
 
+  /// Scan materials for existing quiz questions.
+  /// Returns verbatim question texts found, or empty list if none detected.
+  Future<List<String>> detectQuestionsInMaterials({
+    required List<StudyMaterial> materials,
+  }) async {
+    if (!_isInitialized) throw StateError('Service not initialized');
+
+    final prepared = await MaterialPreprocessor.prepare(materials);
+    final hasImages = prepared.any((p) => p.images.isNotEmpty);
+    final textContext = prepared
+        .map((p) => p.textChunk)
+        .where((t) => t.isNotEmpty)
+        .join('\n\n');
+
+    const systemInstruction =
+        'You are a question extractor. Scan the study materials provided. '
+        'If there are quiz questions already written in them, list each one EXACTLY as written, '
+        'one per line, with no extra text or numbering. '
+        'If there are no questions in the materials, respond with exactly: NONE';
+
+    await createSession(
+      systemInstruction: systemInstruction,
+      temperature: 0.1,
+      topK: 1,
+      supportImage: hasImages,
+    );
+
+    final prompt = 'Extract all quiz questions from these materials. '
+        'One per line, or NONE if none exist.\n\n$textContext';
+
+    await _chat!.addQueryChunk(gemma.Message.text(text: prompt, isUser: true));
+
+    for (final prep in prepared) {
+      for (final imgBytes in prep.images) {
+        await _chat!.addQueryChunk(
+          gemma.Message.imageOnly(imageBytes: imgBytes, isUser: true),
+        );
+      }
+    }
+
+    final response = await _chat!.generateChatResponse();
+    final raw = response is gemma.TextResponse ? response.token : '';
+
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty || trimmed.toUpperCase() == 'NONE') return [];
+
+    return trimmed
+        .split('\n')
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty && line.toUpperCase() != 'NONE')
+        .toList();
+  }
+
   static const _questionTool = gemma.Tool(
     name: 'generate_question',
     description: 'Submit one quiz question. You must call this once per question.',
@@ -171,13 +224,8 @@ class GemmaInferenceService {
           'items': {'type': 'string'},
           'description': 'Required for multipleChoice (3-4 items). Omit for textAnswer.',
         },
-        'correctAnswer': {
-          'type': 'string',
-          'description': 'For multipleChoice: letter A-D. For textAnswer: exact answer text.',
-        },
-        'explanation': {'type': 'string'},
       },
-      'required': ['type', 'questionText', 'correctAnswer', 'explanation'],
+      'required': ['type', 'questionText'],
     },
   );
 
@@ -189,7 +237,7 @@ class GemmaInferenceService {
   Stream<QuizGenerationEvent> generateQuizStreaming({
     required Session session,
     required List<StudyMaterial> materials,
-    required int questionCount,
+    int questionCount = 10,
   }) async* {
     if (!_isInitialized) {
       throw StateError('Service not initialized');
@@ -334,8 +382,7 @@ class GemmaInferenceService {
       if (type == QuestionType.multipleChoice && options.length < 2) return null;
 
       final questionText = args['questionText'] as String?;
-      final correctAnswer = args['correctAnswer'] as String?;
-      if (questionText == null || correctAnswer == null) return null;
+      if (questionText == null) return null;
 
       return Question(
         quizId: -1,
@@ -343,8 +390,6 @@ class GemmaInferenceService {
         type: type,
         questionText: questionText,
         options: type == QuestionType.multipleChoice ? options : [],
-        correctAnswer: correctAnswer,
-        explanation: args['explanation'] as String? ?? '',
         orderIndex: orderIndex,
       );
     } catch (_) {
@@ -415,9 +460,7 @@ Coach response:''';
 
     final prompt = '${materialsContext.isNotEmpty ? 'Study materials:\n$materialsContext\n\n' : ''}'
         'Question: ${question.questionText}\n'
-        '${optionsText.isNotEmpty ? 'Options:\n$optionsText\n' : ''}'
-        'Correct answer: ${question.correctAnswer}\n'
-        'Explanation: ${question.explanation}\n\n'
+        '${optionsText.isNotEmpty ? 'Options:\n$optionsText\n\n' : ''}'
         '${historyText.isNotEmpty ? 'Conversation so far:\n$historyText\n\n' : ''}'
         'Student: $userMessage\n\nTutor:';
 
@@ -462,9 +505,6 @@ Coach response:''';
     if (optionsText.isNotEmpty) {
       systemInstruction.writeln('Options:\n$optionsText');
     }
-    systemInstruction
-      ..writeln('Correct answer: ${question.correctAnswer}')
-      ..writeln('Explanation: ${question.explanation}');
     if (materialsContext.isNotEmpty) {
       systemInstruction
         ..writeln()
@@ -476,7 +516,7 @@ Coach response:''';
       systemInstruction: systemInstruction.toString(),
       temperature: 0.7,
       supportImage: hasImages,
-      isThinking: true,
+      isThinking: false,
     );
 
     // Send images first (visual context)
@@ -533,8 +573,7 @@ Coach response:''';
     await createSession(systemInstruction: systemInstruction, temperature: 0.1, topK: 1);
 
     final prompt = '${materialsContext.isNotEmpty ? 'Study materials:\n$materialsContext\n\n' : ''}'
-        'Question: ${question.questionText}\n'
-        'Correct answer: ${question.correctAnswer}\n\n'
+        'Question: ${question.questionText}\n\n'
         'Conversation:\n$historyText\n\n'
         'Rate the student\'s understanding (0.0 = wrong, 0.5 = partial, 1.0 = correct). '
         'Reply with ONLY a number:';

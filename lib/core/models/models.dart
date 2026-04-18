@@ -66,7 +66,6 @@ class Session {
   final String title;
   final String emoji;
   final int gradeOverride;
-  final int questionCount;
   final DateTime createdAt;
 
   const Session({
@@ -75,7 +74,6 @@ class Session {
     required this.title,
     required this.emoji,
     required this.gradeOverride,
-    required this.questionCount,
     required this.createdAt,
   });
 
@@ -85,7 +83,6 @@ class Session {
     String? title,
     String? emoji,
     int? gradeOverride,
-    int? questionCount,
     DateTime? createdAt,
   }) {
     return Session(
@@ -94,7 +91,6 @@ class Session {
       title: title ?? this.title,
       emoji: emoji ?? this.emoji,
       gradeOverride: gradeOverride ?? this.gradeOverride,
-      questionCount: questionCount ?? this.questionCount,
       createdAt: createdAt ?? this.createdAt,
     );
   }
@@ -105,7 +101,6 @@ class Session {
         'title': title,
         'emoji': emoji,
         'grade_override': gradeOverride,
-        'question_count': questionCount,
         'created_at': createdAt.millisecondsSinceEpoch,
       };
 
@@ -116,7 +111,6 @@ class Session {
       title: map['title'] as String,
       emoji: map['emoji'] as String,
       gradeOverride: map['grade_override'] as int,
-      questionCount: map['question_count'] as int,
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
     );
   }
@@ -266,12 +260,10 @@ class Question {
   final QuestionSource source;
   final QuestionType type;
   final String questionText;
-  final List<String> options; // 2-6 items for MCQ, empty for textAnswer
-  final String correctAnswer; // letter (A-F) for MCQ, actual text for textAnswer
-  final String explanation;
+  final List<String> options;
   final String? userAnswer;
   final int orderIndex;
-  final double? score; // 0.0–1.0, null = not yet evaluated
+  final double? score;
 
   const Question({
     this.id,
@@ -280,20 +272,10 @@ class Question {
     this.type = QuestionType.multipleChoice,
     required this.questionText,
     required this.options,
-    required this.correctAnswer,
-    required this.explanation,
     this.userAnswer,
     required this.orderIndex,
     this.score,
   });
-
-  bool? get isCorrect => userAnswer == null ? null : userAnswer == correctAnswer;
-
-  String? get correctOptionText {
-    if (type == QuestionType.textAnswer) return correctAnswer;
-    final idx = correctAnswer.codeUnitAt(0) - 'A'.codeUnitAt(0);
-    return idx < options.length ? options[idx] : null;
-  }
 
   String? get userAnswerText {
     if (userAnswer == null) return null;
@@ -309,8 +291,6 @@ class Question {
     QuestionType? type,
     String? questionText,
     List<String>? options,
-    String? correctAnswer,
-    String? explanation,
     String? userAnswer,
     int? orderIndex,
     double? score,
@@ -322,8 +302,6 @@ class Question {
       type: type ?? this.type,
       questionText: questionText ?? this.questionText,
       options: options ?? this.options,
-      correctAnswer: correctAnswer ?? this.correctAnswer,
-      explanation: explanation ?? this.explanation,
       userAnswer: userAnswer ?? this.userAnswer,
       orderIndex: orderIndex ?? this.orderIndex,
       score: score ?? this.score,
@@ -337,8 +315,6 @@ class Question {
         'type': type.name,
         'question_text': questionText,
         'options': jsonEncode(options),
-        'correct_answer': correctAnswer,
-        'explanation': explanation,
         'user_answer': userAnswer,
         'order_index': orderIndex,
         'score': score,
@@ -360,8 +336,6 @@ class Question {
       ),
       questionText: map['question_text'] as String,
       options: optionsList,
-      correctAnswer: map['correct_answer'] as String,
-      explanation: map['explanation'] as String,
       userAnswer: map['user_answer'] as String?,
       orderIndex: map['order_index'] as int,
       score: map['score'] as double?,

@@ -16,7 +16,6 @@ import '../features/profile_selection/create_first_profile_screen.dart';
 import '../features/profile_selection/profile_selection_screen.dart';
 import '../features/quiz/question_chat_screen.dart';
 import '../features/quiz/quiz_detail_screen.dart';
-import '../features/quiz/quiz_screen.dart';
 import '../features/session_detail/session_detail_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../features/summary/summary_screen.dart';
@@ -29,7 +28,6 @@ class Routes {
   static const session = '/session/:sessionId';
   static const addMaterial = '/session/:sessionId/material';
   static const materialDetail = '/session/:sessionId/material/:materialId';
-  static const quiz = '/session/:sessionId/quiz/:quizId';
   static const chat = '/session/:sessionId/chat';
   static const quizDetail = '/session/:sessionId/quiz/:quizId/detail';
   static const questionChat = '/session/:sessionId/quiz/:quizId/question/:questionId';
@@ -112,15 +110,6 @@ final appRouter = GoRouter(
           sessionId: sessionId,
           materialId: materialId,
         );
-      },
-    ),
-    GoRoute(
-      path: Routes.quiz,
-      name: 'quiz',
-      builder: (context, state) {
-        final sessionId = int.parse(state.pathParameters['sessionId']!);
-        final quizId = int.parse(state.pathParameters['quizId']!);
-        return QuizScreen(sessionId: sessionId, quizId: quizId);
       },
     ),
     GoRoute(

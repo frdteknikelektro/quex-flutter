@@ -105,22 +105,13 @@ class QuizResultsDebugScreen extends StatelessWidget {
                           final optIdx = entry.key;
                           final opt = entry.value;
                           final letter = String.fromCharCode(65 + optIdx);
-                          final isCorrect = q.correctAnswer == letter;
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 8),
                             child: Container(
                               padding: const EdgeInsets.all(10),
                               decoration: BoxDecoration(
-                                color: isCorrect
-                                    ? scheme.primaryContainer
-                                    : scheme.surfaceContainerHighest,
+                                color: scheme.surfaceContainerHighest,
                                 borderRadius: BorderRadius.circular(8),
-                                border: isCorrect
-                                    ? Border.all(
-                                        color: scheme.primary,
-                                        width: 1.5,
-                                      )
-                                    : null,
                               ),
                               child: Row(
                                 children: [
@@ -128,9 +119,7 @@ class QuizResultsDebugScreen extends StatelessWidget {
                                     letter,
                                     style: theme.textTheme.labelMedium?.copyWith(
                                       fontWeight: FontWeight.w700,
-                                      color: isCorrect
-                                          ? scheme.primary
-                                          : scheme.onSurface,
+                                      color: scheme.onSurface,
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -138,63 +127,16 @@ class QuizResultsDebugScreen extends StatelessWidget {
                                     child: Text(
                                       opt,
                                       style: theme.textTheme.bodySmall?.copyWith(
-                                        color: isCorrect
-                                            ? scheme.primary
-                                            : scheme.onSurface,
+                                        color: scheme.onSurface,
                                       ),
                                     ),
                                   ),
-                                  if (isCorrect)
-                                    Icon(
-                                      Icons.check_circle,
-                                      size: 16,
-                                      color: scheme.primary,
-                                    ),
                                 ],
                               ),
                             ),
                           );
                         }),
-                      ] else ...[
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: scheme.primaryContainer,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: scheme.primary,
-                              width: 1.5,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Correct answer:',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: scheme.primary,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                q.correctAnswer,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: scheme.primary,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
                       ],
-                      const SizedBox(height: 10),
-                      Text(
-                        q.explanation,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
                     ],
                   ),
                 ),
@@ -206,9 +148,9 @@ class QuizResultsDebugScreen extends StatelessWidget {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () =>
-            context.go('/session/$sessionId/quiz/$quizId'),
+            context.go('/session/$sessionId/quiz/$quizId/detail'),
         icon: const Icon(Icons.arrow_forward),
-        label: const Text('Start Quiz'),
+        label: const Text('View Quiz'),
       ),
     );
   }

@@ -13,6 +13,8 @@ import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 
+enum _ModalStep { materialSelection, detecting, generating, complete }
+
 class QuizGenerationModal extends ConsumerStatefulWidget {
   final int sessionId;
 
@@ -28,9 +30,13 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   final _generatedQuestions = <String>[];
   final _scrollController = ScrollController();
 
+  _ModalStep _step = _ModalStep.materialSelection;
+  List<StudyMaterial> _allMaterials = [];
+  Set<int> _selectedIds = {};
+
   bool _isThinking = false;
   bool _isComplete = false;
-  bool _isLoading = false;
+  bool _isLoadingModel = false;
   bool _generationCompleted = false;
   int _generatedCount = 0;
   int _totalCount = 0;
@@ -38,62 +44,42 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   StreamSubscription<QuizGenerationEvent>? _subscription;
   int? _quizId;
   GemmaInferenceService? _gemmaService;
+  Session? _session;
 
   @override
   void initState() {
     super.initState();
-    _startGeneration();
+    _loadMaterials();
   }
 
   @override
   void dispose() {
     _subscription?.cancel();
-    // Only dispose model if generation didn't complete — keep alive for question chat
     if (!_generationCompleted) _gemmaService?.dispose();
     _scrollController.dispose();
     super.dispose();
   }
 
-  String _extractQuestionTextFromJson(String jsonBuffer) {
-    // Path 1: full JSON parse (complete)
-    try {
-      final parsed = jsonDecode(jsonBuffer) as Map<String, dynamic>;
-      return parsed['args']?['questionText'] as String? ?? '';
-    } catch (_) {}
-
-    // Path 2: complete questionText string via regex (has closing quote)
-    final completeMatch = RegExp(r'"questionText"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"')
-        .firstMatch(jsonBuffer);
-    if (completeMatch != null) return completeMatch.group(1) ?? '';
-
-    // Path 3: partial questionText — still streaming, no closing quote yet
-    final partialMatch = RegExp(r'"questionText"\s*:\s*"(.*)')
-        .firstMatch(jsonBuffer);
-    if (partialMatch != null) return partialMatch.group(1) ?? '';
-
-    return '';
-  }
-
-  Future<void> _startGeneration() async {
+  Future<void> _loadMaterials() async {
     final bundle = await ref.read(sessionBundleProvider(widget.sessionId).future);
     if (!mounted || bundle == null) return;
     if (bundle.materials.isEmpty) {
       _showErrorAndPop('Add study materials first.');
       return;
     }
+    setState(() {
+      _allMaterials = bundle.materials;
+      _selectedIds = {};
+      _session = bundle.session;
+    });
 
-    if (_quizId == null) {
-      final quizId = await QuizDAO().insert(Quiz(
-        sessionId: bundle.session.id!,
-        questionCount: bundle.session.questionCount,
-        createdAt: DateTime.now(),
-      ));
-      if (!mounted) return;
-      setState(() => _quizId = quizId);
-    }
+    // Start loading model in background while user selects materials
+    _initModelBackground();
+  }
 
+  Future<void> _initModelBackground() async {
+    setState(() => _isLoadingModel = true);
     try {
-      setState(() => _isLoading = true);
       final service = GemmaInferenceService();
       await service.initialize();
       if (!mounted) {
@@ -102,12 +88,134 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       }
       _gemmaService = service;
       QuexAi.setGemmaService(service);
-      setState(() => _isLoading = false);
+    } catch (_) {
+      // Generation will fall back to rule-based if model fails
+    } finally {
+      if (mounted) setState(() => _isLoadingModel = false);
+    }
+  }
 
-      final stream = service.generateQuizStreaming(
-        session: bundle.session,
-        materials: bundle.materials,
-        questionCount: bundle.session.questionCount,
+  String _extractQuestionTextFromJson(String jsonBuffer) {
+    try {
+      final parsed = jsonDecode(jsonBuffer) as Map<String, dynamic>;
+      return parsed['args']?['questionText'] as String? ?? '';
+    } catch (_) {}
+
+    final completeMatch = RegExp(r'"questionText"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"')
+        .firstMatch(jsonBuffer);
+    if (completeMatch != null) return completeMatch.group(1) ?? '';
+
+    final partialMatch = RegExp(r'"questionText"\s*:\s*"(.*)')
+        .firstMatch(jsonBuffer);
+    if (partialMatch != null) return partialMatch.group(1) ?? '';
+
+    return '';
+  }
+
+  Future<void> _onGenerateTapped() async {
+    final session = _session;
+    if (session == null) return;
+
+    final selected = _allMaterials.where((m) => _selectedIds.contains(m.id)).toList();
+    if (selected.isEmpty) return;
+
+    // Create quiz row before detection so we have an ID ready
+    if (_quizId == null) {
+      final quizId = await QuizDAO().insert(Quiz(
+        sessionId: session.id!,
+        questionCount: 10, // placeholder; updated after detection
+        createdAt: DateTime.now(),
+      ));
+      if (!mounted) return;
+      setState(() => _quizId = quizId);
+    }
+
+    // Detection phase
+    setState(() => _step = _ModalStep.detecting);
+
+    List<String> detected = [];
+    if (_gemmaService != null) {
+      try {
+        detected = await _gemmaService!.detectQuestionsInMaterials(materials: selected);
+      } catch (_) {
+        detected = [];
+      }
+    }
+
+    if (!mounted) return;
+
+    setState(() => _step = _ModalStep.generating);
+
+    if (detected.isNotEmpty) {
+      await _runExtractionPath(detected, session);
+    } else {
+      await _startAiGeneration(selected, session);
+    }
+  }
+
+  Future<void> _runExtractionPath(List<String> detectedTexts, Session session) async {
+    final qid = _quizId;
+    if (qid == null || !mounted) return;
+
+    // Update quiz with actual question count
+    await QuizDAO().updateQuestionCount(qid, detectedTexts.length);
+
+    setState(() {
+      _totalCount = detectedTexts.length;
+      _generatedCount = 0;
+    });
+
+    final questions = <Question>[];
+    for (var i = 0; i < detectedTexts.length; i++) {
+      final q = Question(
+        quizId: -1,
+        source: QuestionSource.extracted,
+        type: QuestionType.textAnswer,
+        questionText: detectedTexts[i],
+        options: const [],
+        orderIndex: i,
+      );
+      questions.add(q);
+
+      if (mounted) {
+        setState(() {
+          _generatedCount = i + 1;
+          _generatedQuestions.add('Q${i + 1}: ${detectedTexts[i]}');
+        });
+        _scrollToBottom();
+      }
+      await Future.delayed(const Duration(milliseconds: 80));
+    }
+
+    await _saveAndNavigate(questions);
+  }
+
+  Future<void> _startAiGeneration(List<StudyMaterial> selected, Session session) async {
+    const questionCount = 10;
+    final qid = _quizId;
+    if (qid == null) return;
+
+    // Update quiz with actual question count
+    await QuizDAO().updateQuestionCount(qid, questionCount);
+
+    try {
+      if (_gemmaService == null) {
+        setState(() => _isLoadingModel = true);
+        final service = GemmaInferenceService();
+        await service.initialize();
+        if (!mounted) {
+          await service.dispose();
+          return;
+        }
+        _gemmaService = service;
+        QuexAi.setGemmaService(service);
+        setState(() => _isLoadingModel = false);
+      }
+
+      final stream = _gemmaService!.generateQuizStreaming(
+        session: session,
+        materials: selected,
+        questionCount: questionCount,
       );
 
       _subscription = stream.listen(
@@ -116,9 +224,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       );
     } catch (e) {
       if (!mounted) return;
-      setState(() => _isLoading = false);
+      setState(() => _isLoadingModel = false);
       _showErrorAndPop(e.toString());
-      return;
     }
   }
 
@@ -185,9 +292,10 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     await QuestionDAO().insertAll(withId);
     if (!mounted) return;
 
-    setState(() => _isComplete = true);
-
-    // Keep model alive for question chat — don't dispose here
+    setState(() {
+      _isComplete = true;
+      _step = _ModalStep.complete;
+    });
     _generationCompleted = true;
 
     ref.invalidate(sessionBundleProvider(widget.sessionId));
@@ -196,9 +304,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     if (!mounted) return;
     Navigator.of(context).pop();
     if (!mounted) return;
-    context.push(
-      '/session/${widget.sessionId}/quiz/$qid/detail',
-    );
+    context.push('/session/${widget.sessionId}/quiz/$qid/detail');
   }
 
   void _cancel() {
@@ -211,7 +317,9 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   }
 
   String _statusText() {
-    if (_isLoading) return 'Loading brain...';
+    if (_step == _ModalStep.materialSelection) return 'Pick your materials';
+    if (_step == _ModalStep.detecting) return 'Scanning materials…';
+    if (_isLoadingModel) return 'Loading brain...';
     if (_isComplete) return 'Quiz is ready! 🎉';
     if (_totalCount > 0) return 'Question $_generatedCount of $_totalCount';
     if (_isThinking) return 'Quex is thinking...';
@@ -221,43 +329,179 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final theme = Theme.of(context);
-    final hasStream = _thinkingBuffer.isNotEmpty || _generatedQuestions.isNotEmpty || (_totalCount > 0 && _generatedCount < _totalCount && !_isComplete);
 
     return Scaffold(
       backgroundColor: scheme.surface,
       body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // [A] Close row — single cancel control
-            Align(
-              alignment: Alignment.centerLeft,
-              child: IconButton(
-                icon: const Icon(Icons.close),
-                onPressed: _cancel,
-              ),
-            ),
+        child: switch (_step) {
+          _ModalStep.materialSelection => _buildMaterialSelection(scheme),
+          _ => _buildGeneratingView(scheme),
+        },
+      ),
+    );
+  }
 
-            const Spacer(flex: 1),
+  Widget _buildMaterialSelection(ColorScheme scheme) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Close button
+        Align(
+          alignment: Alignment.centerLeft,
+          child: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: _cancel,
+          ),
+        ),
 
-            // [B] Brain/Pencil + status
-            Column(
-              children: [
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 400),
-                  switchInCurve: Curves.easeOutCubic,
-                  switchOutCurve: Curves.easeInCubic,
-                  transitionBuilder: (child, anim) => ScaleTransition(
-                    scale: anim,
-                    child: FadeTransition(opacity: anim, child: child),
+
+        // Material list
+        Expanded(
+          child: ListView.builder(
+            itemCount: _allMaterials.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Padding(
+                  padding: const EdgeInsets.fromLTRB(Sp.md, Sp.md, Sp.md, Sp.sm),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Which materials to quiz on?',
+                        style: theme.textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Quex will scan these for existing questions.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
-                  child: _isComplete
-                      ? Icon(
-                          Icons.check_circle_rounded,
-                          key: const ValueKey('check'),
-                          size: 64,
-                          color: scheme.primary,
+                );
+              }
+              final m = _allMaterials[index - 1];
+              final selected = _selectedIds.contains(m.id);
+              final emoji = switch (m.kind) {
+                MaterialKind.text => '📝',
+                MaterialKind.document => '📄',
+                MaterialKind.photo => '🖼️',
+              };
+              final kindLabel = switch (m.kind) {
+                MaterialKind.text => 'Text',
+                MaterialKind.document => 'Document',
+                MaterialKind.photo => 'Photo',
+              };
+
+              return CheckboxListTile(
+                controlAffinity: ListTileControlAffinity.leading,
+                value: selected,
+                onChanged: (val) {
+                  setState(() {
+                    if (val == true) {
+                      _selectedIds.add(m.id!);
+                    } else {
+                      _selectedIds.remove(m.id);
+                    }
+                  });
+                },
+                title: Text(
+                  m.title,
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  '$emoji $kindLabel',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+
+
+        // Generate button
+        Padding(
+          padding: const EdgeInsets.all(Sp.md),
+          child: FilledButton(
+            onPressed: _selectedIds.isEmpty ? null : _onGenerateTapped,
+            child: _isLoadingModel
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: scheme.onPrimary,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text('Loading model…'),
+                    ],
+                  )
+                : Text(
+                    _selectedIds.isEmpty
+                        ? 'Select materials first'
+                        : 'Generate quiz  (${_selectedIds.length})',
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGeneratingView(ColorScheme scheme) {
+    final theme = Theme.of(context);
+    final hasStream = _thinkingBuffer.isNotEmpty ||
+        _generatedQuestions.isNotEmpty ||
+        (_totalCount > 0 && _generatedCount < _totalCount && !_isComplete);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: _cancel,
+          ),
+        ),
+
+        const Spacer(flex: 1),
+
+        Column(
+          children: [
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, anim) => ScaleTransition(
+                scale: anim,
+                child: FadeTransition(opacity: anim, child: child),
+              ),
+              child: _isComplete
+                  ? Icon(
+                      Icons.check_circle_rounded,
+                      key: const ValueKey('check'),
+                      size: 64,
+                      color: scheme.primary,
+                    )
+                  : _step == _ModalStep.detecting
+                      ? const _PulsingIcon(
+                          key: ValueKey('scan'),
+                          emoji: '🔍',
                         )
                       : _totalCount > 0
                           ? const _PulsingIcon(
@@ -267,110 +511,106 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           : const _PulsingBrain(
                               key: ValueKey('brain'),
                             ),
-                ),
-                const SizedBox(height: 16),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 300),
-                  child: Text(
-                    _statusText(),
-                    key: ValueKey(_statusText()),
-                    style: theme.textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: scheme.onSurface,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ],
             ),
-
-            const SizedBox(height: 32),
-
-            // [C] Streaming panel — fixed 240dp, terminal-style scroll
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: Sp.md),
-              child: AnimatedOpacity(
-                opacity: hasStream ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 300),
-                child: SizedBox(
-                  height: 240,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest,
-                      borderRadius: Br.md,
-                    ),
-                    child: ListView(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.all(12),
-                      children: [
-                        if (_thinkingBuffer.isNotEmpty)
-                          Text(
-                            _thinkingBuffer.toString(),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              fontStyle: FontStyle.italic,
-                            ),
-                          ),
-                        if (_thinkingBuffer.isNotEmpty && (_generatedQuestions.isNotEmpty || _extractedQuestionText.isNotEmpty))
-                          const Divider(height: 16),
-                        ..._generatedQuestions.map(
-                          (q) => Padding(
-                            padding: const EdgeInsets.only(bottom: 6),
-                            child: Text(
-                              q,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: scheme.onSurface,
-                              ),
-                            ),
-                          ),
-                        ),
-                        if (_totalCount > 0 && _generatedCount < _totalCount && !_isComplete)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    'Writing Q${_generatedCount + 1} of $_totalCount',
-                                    style: theme.textTheme.bodyMedium?.copyWith(
-                                      color: scheme.primary,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                ),
-                                const _AnimatedEllipsis(),
-                              ],
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
+            const SizedBox(height: 16),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              child: Text(
+                _statusText(),
+                key: ValueKey(_statusText()),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface,
                 ),
+                textAlign: TextAlign.center,
               ),
             ),
-
-            const SizedBox(height: 20),
-
-            // [D] Progress bar — primary colors, dark-mode safe
-            if (!_isComplete)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: Sp.md),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
-                  child: LinearProgressIndicator(
-                    minHeight: 6,
-                    value: _totalCount > 0 ? _generatedCount / _totalCount : null,
-                    backgroundColor: scheme.primaryContainer,
-                    valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
-                  ),
-                ),
-              ),
-
-            const Spacer(flex: 1),
           ],
         ),
-      ),
+
+        const SizedBox(height: 32),
+
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: Sp.md),
+          child: AnimatedOpacity(
+            opacity: hasStream ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 300),
+            child: SizedBox(
+              height: 240,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  borderRadius: Br.md,
+                ),
+                child: ListView(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(12),
+                  children: [
+                    if (_thinkingBuffer.isNotEmpty)
+                      Text(
+                        _thinkingBuffer.toString(),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    if (_thinkingBuffer.isNotEmpty && (_generatedQuestions.isNotEmpty || _extractedQuestionText.isNotEmpty))
+                      const Divider(height: 16),
+                    ..._generatedQuestions.map(
+                      (q) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          q,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (_totalCount > 0 && _generatedCount < _totalCount && !_isComplete)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                'Writing Q${_generatedCount + 1} of $_totalCount',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: scheme.primary,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                            const _AnimatedEllipsis(),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        if (!_isComplete)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Sp.md),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                minHeight: 6,
+                value: _totalCount > 0 ? _generatedCount / _totalCount : null,
+                backgroundColor: scheme.primaryContainer,
+                valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
+              ),
+            ),
+          ),
+
+        const Spacer(flex: 1),
+      ],
     );
   }
 }
