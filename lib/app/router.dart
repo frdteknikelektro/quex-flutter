@@ -117,7 +117,8 @@ final appRouter = GoRouter(
       name: 'chat',
       builder: (context, state) {
         final sessionId = int.parse(state.pathParameters['sessionId']!);
-        return ChatScreen(sessionId: sessionId);
+        final preselectedIds = state.extra as List<int>?;
+        return ChatScreen(sessionId: sessionId, preselectedMaterialIds: preselectedIds);
       },
     ),
     GoRoute(

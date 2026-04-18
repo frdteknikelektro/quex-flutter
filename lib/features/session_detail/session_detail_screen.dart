@@ -157,6 +157,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
                   _NavigationCard(
                     sessionId: widget.sessionId,
                     materialCount: bundle.materials.length,
+                    materials: bundle.materials,
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -223,23 +224,48 @@ class _SessionHeader extends StatelessWidget {
   }
 }
 
-class _NavigationCard extends StatelessWidget {
+class _NavigationCard extends StatefulWidget {
   final int sessionId;
   final int materialCount;
+  final List<StudyMaterial> materials;
 
   const _NavigationCard({
     required this.sessionId,
     required this.materialCount,
+    required this.materials,
   });
+
+  @override
+  State<_NavigationCard> createState() => _NavigationCardState();
+}
+
+class _NavigationCardState extends State<_NavigationCard> {
+  Future<void> _onChatTap() async {
+    if (widget.materials.isEmpty) {
+      context.push('/session/${widget.sessionId}/chat');
+      return;
+    }
+    final selectedIds = await showModalBottomSheet<List<int>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ChatMaterialPickerSheet(
+        materials: widget.materials,
+        sessionId: widget.sessionId,
+      ),
+    );
+    if (!mounted || selectedIds == null) return;
+    context.push('/session/${widget.sessionId}/chat', extra: selectedIds);
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final subtitle = materialCount == 0
+    final subtitle = widget.materialCount == 0
         ? 'Add notes and references'
-        : materialCount == 1
+        : widget.materialCount == 1
             ? '1 study material'
-            : '$materialCount study materials';
+            : '${widget.materialCount} study materials';
 
     return Card(
       elevation: 0,
@@ -251,7 +277,7 @@ class _NavigationCard extends StatelessWidget {
             title: const Text('Study Materials'),
             subtitle: Text(subtitle),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push('/session/$sessionId/material'),
+            onTap: () => context.push('/session/${widget.sessionId}/material'),
           ),
           const Divider(height: 1, indent: 16, endIndent: 16),
           ListTile(
@@ -259,7 +285,150 @@ class _NavigationCard extends StatelessWidget {
             title: const Text('Chat with AI'),
             subtitle: const Text('Ask questions about your notes'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.go('/session/$sessionId/chat'),
+            onTap: _onChatTap,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChatMaterialPickerSheet extends StatefulWidget {
+  final List<StudyMaterial> materials;
+  final int sessionId;
+
+  const _ChatMaterialPickerSheet({
+    required this.materials,
+    required this.sessionId,
+  });
+
+  @override
+  State<_ChatMaterialPickerSheet> createState() =>
+      _ChatMaterialPickerSheetState();
+}
+
+class _ChatMaterialPickerSheetState extends State<_ChatMaterialPickerSheet> {
+  late Set<int> _selectedIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = widget.materials.map((m) => m.id!).toSet();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom +
+            MediaQuery.of(context).padding.bottom,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(top: Sp.sm, bottom: Sp.md),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(Sp.md, 0, Sp.md, Sp.sm),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Which materials to chat about?',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Quex will use only these in the conversation.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.4,
+            ),
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: widget.materials.length,
+              itemBuilder: (context, index) {
+                final m = widget.materials[index];
+                final selected = _selectedIds.contains(m.id);
+                final emoji = switch (m.kind) {
+                  MaterialKind.text => '📝',
+                  MaterialKind.document => '📄',
+                  MaterialKind.photo => '🖼️',
+                };
+                final kindLabel = switch (m.kind) {
+                  MaterialKind.text => 'Text',
+                  MaterialKind.document => 'Document',
+                  MaterialKind.photo => 'Photo',
+                };
+                return CheckboxListTile(
+                  controlAffinity: ListTileControlAffinity.leading,
+                  value: selected,
+                  onChanged: (val) {
+                    setState(() {
+                      if (val == true) {
+                        _selectedIds.add(m.id!);
+                      } else {
+                        _selectedIds.remove(m.id);
+                      }
+                    });
+                  },
+                  title: Text(
+                    m.title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    '$emoji $kindLabel',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(Sp.md),
+            child: FilledButton(
+              onPressed: _selectedIds.isEmpty
+                  ? null
+                  : () => Navigator.of(context).pop(_selectedIds.toList()),
+              child: Text(
+                _selectedIds.isEmpty
+                    ? 'Select at least one material'
+                    : 'Start chat (${_selectedIds.length})',
+              ),
+            ),
           ),
         ],
       ),
