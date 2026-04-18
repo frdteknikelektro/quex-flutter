@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'gemma_inference_service.dart';
+import 'tutor_event.dart';
 import '../models/models.dart';
 
 class QuexAi {
@@ -12,6 +14,9 @@ class QuexAi {
   static void setGemmaService(GemmaInferenceService? service) {
     _gemmaService = service;
   }
+
+  /// Whether the Gemma service is initialized and ready for inference.
+  static bool get isReady => _gemmaService != null && _gemmaService!.isInitialized;
 
   /// Build a rule-based quiz from study materials.
   static List<Question> buildQuizRuleBased({
@@ -125,9 +130,7 @@ class QuexAi {
     required List<QuestionMessage> history,
     required String userMessage,
   }) async {
-    if (_gemmaService == null || !_gemmaService!.isInitialized) {
-      throw StateError('Gemma service not initialized.');
-    }
+    if (!isReady) throw StateError('Gemma service not initialized.');
     final reply = await _gemmaService!.getQuestionTutorReply(
       question: question,
       materials: materials,
@@ -155,6 +158,39 @@ class QuexAi {
       history: updatedHistory,
     );
     return (reply: reply, score: score);
+  }
+
+  /// Streaming tutor reply with thinking mode and multimodal image support.
+  /// Yields [TutorThinking] tokens first, then [TutorReply] tokens.
+  /// Throws [StateError] if Gemma service is not initialized.
+  static Stream<TutorEvent> questionCoachReplyStream({
+    required Question question,
+    required List<StudyMaterial> materials,
+    required List<QuestionMessage> history,
+    required String userMessage,
+  }) {
+    if (!isReady) throw StateError('Gemma service not initialized.');
+    return _gemmaService!.getQuestionTutorReplyStreaming(
+      question: question,
+      materials: materials,
+      history: history,
+      userMessage: userMessage,
+    );
+  }
+
+  /// Evaluate student understanding after a completed exchange (0.0–1.0).
+  /// Returns null if service unavailable or history is empty.
+  static Future<double?> evaluateScore({
+    required Question question,
+    required List<StudyMaterial> materials,
+    required List<QuestionMessage> history,
+  }) async {
+    if (!isReady) return null;
+    return await _gemmaService!.evaluateQuestionScore(
+      question: question,
+      materials: materials,
+      history: history,
+    );
   }
 
   static String sessionSummary(Session session, List<StudyMaterial> materials) {

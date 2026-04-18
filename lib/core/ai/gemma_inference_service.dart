@@ -6,6 +6,7 @@ import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 import '../models/models.dart';
 import 'material_preprocessor.dart';
 import 'quiz_generation_event.dart';
+import 'tutor_event.dart';
 
 /// Service for running inference using Gemma 4 E4B model.
 ///
@@ -405,7 +406,7 @@ Coach response:''';
       return '$role: ${m.content}';
     }).join('\n');
 
-    final systemInstruction =
+    const systemInstruction =
         'You are a friendly tutor helping an elementary student answer a quiz question. '
         'Guide them with hints and encouragement — do NOT reveal the answer directly until '
         'they demonstrate understanding. Keep responses short and simple.';
@@ -421,6 +422,90 @@ Coach response:''';
         'Student: $userMessage\n\nTutor:';
 
     return await sendMessage(prompt);
+  }
+
+  /// Streaming tutoring reply with thinking mode and multimodal image support.
+  ///
+  /// Context separation: stable context (question + materials) goes into the
+  /// system instruction; the user turn carries only conversation history +
+  /// the student's new message. Yields [TutorEvent] — either [TutorThinking]
+  /// or [TutorReply] tokens so the UI can display them distinctly.
+  Stream<TutorEvent> getQuestionTutorReplyStreaming({
+    required Question question,
+    required List<StudyMaterial> materials,
+    required List<QuestionMessage> history,
+    required String userMessage,
+  }) async* {
+    final prepared = await MaterialPreprocessor.prepare(materials);
+    final hasImages = prepared.any((p) => p.images.isNotEmpty);
+
+    final optionsText = question.type == QuestionType.multipleChoice
+        ? question.options.asMap().entries
+            .map((e) => '${String.fromCharCode(65 + e.key)}) ${e.value}')
+            .join('\n')
+        : '';
+
+    // Text chunks only (photo paths → title label; actual images sent as chunks)
+    final materialsContext = prepared
+        .where((p) => p.textChunk.isNotEmpty)
+        .map((p) => p.textChunk)
+        .join('\n\n');
+
+    // System instruction = stable context: role + question + materials
+    final systemInstruction = StringBuffer(
+      'You are a friendly tutor helping an elementary student answer a quiz question. '
+      'Guide them with hints and encouragement — do NOT reveal the answer directly until '
+      'they demonstrate understanding. Keep responses short and simple.\n\n'
+      '--- QUIZ QUESTION ---\n'
+      'Question: ${question.questionText}\n',
+    );
+    if (optionsText.isNotEmpty) {
+      systemInstruction.writeln('Options:\n$optionsText');
+    }
+    systemInstruction
+      ..writeln('Correct answer: ${question.correctAnswer}')
+      ..writeln('Explanation: ${question.explanation}');
+    if (materialsContext.isNotEmpty) {
+      systemInstruction
+        ..writeln()
+        ..writeln('--- STUDY MATERIALS ---')
+        ..write(materialsContext);
+    }
+
+    await createSession(
+      systemInstruction: systemInstruction.toString(),
+      temperature: 0.7,
+      supportImage: hasImages,
+      isThinking: true,
+    );
+
+    // Send images first (visual context)
+    for (final p in prepared) {
+      for (final imageBytes in p.images) {
+        await _chat!.addQueryChunk(
+          gemma.Message.imageOnly(imageBytes: imageBytes, isUser: true),
+        );
+      }
+    }
+
+    // User turn = conversation history + new student message only
+    final historyText = history.map((m) {
+      final role = m.role == QuestionMessageRole.user ? 'Student' : 'Tutor';
+      return '$role: ${m.content}';
+    }).join('\n');
+
+    final userTurn = '${historyText.isNotEmpty ? '$historyText\n\n' : ''}'
+        'Student: $userMessage';
+
+    await _chat!.addQueryChunk(gemma.Message.text(text: userTurn, isUser: true));
+
+    await for (final response in _chat!.generateChatResponseAsync()) {
+      if (response is gemma.ThinkingResponse) {
+        yield TutorThinking(response.content);
+      } else if (response is gemma.TextResponse) {
+        yield TutorReply(response.token);
+      }
+    }
   }
 
   /// Evaluate student understanding for a question (0.0–1.0).

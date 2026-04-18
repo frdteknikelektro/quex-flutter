@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,14 +24,17 @@ class QuizGenerationModal extends ConsumerStatefulWidget {
 
 class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   final _thinkingBuffer = StringBuffer();
+  final _currentQuestionBuffer = StringBuffer();
   final _generatedQuestions = <String>[];
   final _scrollController = ScrollController();
 
   bool _isThinking = false;
   bool _isComplete = false;
   bool _isLoading = false;
+  bool _generationCompleted = false;
   int _generatedCount = 0;
   int _totalCount = 0;
+  String _extractedQuestionText = '';
   StreamSubscription<QuizGenerationEvent>? _subscription;
   int? _quizId;
   GemmaInferenceService? _gemmaService;
@@ -44,9 +48,30 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   @override
   void dispose() {
     _subscription?.cancel();
-    _gemmaService?.dispose();
+    // Only dispose model if generation didn't complete — keep alive for question chat
+    if (!_generationCompleted) _gemmaService?.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  String _extractQuestionTextFromJson(String jsonBuffer) {
+    // Path 1: full JSON parse (complete)
+    try {
+      final parsed = jsonDecode(jsonBuffer) as Map<String, dynamic>;
+      return parsed['args']?['questionText'] as String? ?? '';
+    } catch (_) {}
+
+    // Path 2: complete questionText string via regex (has closing quote)
+    final completeMatch = RegExp(r'"questionText"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"')
+        .firstMatch(jsonBuffer);
+    if (completeMatch != null) return completeMatch.group(1) ?? '';
+
+    // Path 3: partial questionText — still streaming, no closing quote yet
+    final partialMatch = RegExp(r'"questionText"\s*:\s*"(.*)')
+        .firstMatch(jsonBuffer);
+    if (partialMatch != null) return partialMatch.group(1) ?? '';
+
+    return '';
   }
 
   Future<void> _startGeneration() async {
@@ -126,9 +151,12 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
           _thinkingBuffer.write(token);
         });
         _scrollToBottom();
-      case QuizTextToken():
-        // text tokens not displayed — thinking + question list is sufficient
-        break;
+      case QuizTextToken(:final token):
+        setState(() {
+          _currentQuestionBuffer.write(token);
+          _extractedQuestionText = _extractQuestionTextFromJson(_currentQuestionBuffer.toString());
+        });
+        _scrollToBottom();
       case QuizGenerationStarted(:final total):
         setState(() => _totalCount = total);
       case QuizQuestionGenerated(:final question, :final index, :final total):
@@ -136,7 +164,10 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
           _isThinking = false;
           _generatedCount = index;
           _totalCount = total;
-          _generatedQuestions.add('Q$index: ${question.questionText}');
+          final finalText = _extractedQuestionText.isEmpty ? question.questionText : _extractedQuestionText;
+          _generatedQuestions.add('Q$index: $finalText');
+          _currentQuestionBuffer.clear();
+          _extractedQuestionText = '';
         });
         _scrollToBottom();
       case QuizGenerationComplete(:final questions):
@@ -156,9 +187,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
 
     setState(() => _isComplete = true);
 
-    _gemmaService?.dispose();
-    _gemmaService = null;
-    QuexAi.setGemmaService(null);
+    // Keep model alive for question chat — don't dispose here
+    _generationCompleted = true;
 
     ref.invalidate(sessionBundleProvider(widget.sessionId));
 
@@ -192,7 +222,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final theme = Theme.of(context);
-    final hasStream = _thinkingBuffer.isNotEmpty || _generatedQuestions.isNotEmpty;
+    final hasStream = _thinkingBuffer.isNotEmpty || _generatedQuestions.isNotEmpty || (_totalCount > 0 && _generatedCount < _totalCount && !_isComplete);
 
     return Scaffold(
       backgroundColor: scheme.surface,
@@ -211,7 +241,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
 
             const Spacer(flex: 1),
 
-            // [B] Brain + status
+            // [B] Brain/Pencil + status
             Column(
               children: [
                 AnimatedSwitcher(
@@ -229,10 +259,14 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           size: 64,
                           color: scheme.primary,
                         )
-                      : _PulsingBrain(
-                          key: const ValueKey('brain'),
-                          isComplete: _isComplete,
-                        ),
+                      : _totalCount > 0
+                          ? const _PulsingIcon(
+                              key: ValueKey('pencil'),
+                              emoji: '✏️',
+                            )
+                          : const _PulsingBrain(
+                              key: ValueKey('brain'),
+                            ),
                 ),
                 const SizedBox(height: 16),
                 AnimatedSwitcher(
@@ -277,7 +311,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                               fontStyle: FontStyle.italic,
                             ),
                           ),
-                        if (_thinkingBuffer.isNotEmpty && _generatedQuestions.isNotEmpty)
+                        if (_thinkingBuffer.isNotEmpty && (_generatedQuestions.isNotEmpty || _extractedQuestionText.isNotEmpty))
                           const Divider(height: 16),
                         ..._generatedQuestions.map(
                           (q) => Padding(
@@ -290,6 +324,25 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                             ),
                           ),
                         ),
+                        if (_totalCount > 0 && _generatedCount < _totalCount && !_isComplete)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Writing Q${_generatedCount + 1} of $_totalCount',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: scheme.primary,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  ),
+                                ),
+                                const _AnimatedEllipsis(),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -323,16 +376,16 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
 }
 
 
-class _PulsingBrain extends StatefulWidget {
-  final bool isComplete;
+class _PulsingIcon extends StatefulWidget {
+  final String emoji;
 
-  const _PulsingBrain({super.key, required this.isComplete});
+  const _PulsingIcon({super.key, required this.emoji});
 
   @override
-  State<_PulsingBrain> createState() => _PulsingBrainState();
+  State<_PulsingIcon> createState() => _PulsingIconState();
 }
 
-class _PulsingBrainState extends State<_PulsingBrain>
+class _PulsingIconState extends State<_PulsingIcon>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _scale;
@@ -350,11 +403,43 @@ class _PulsingBrainState extends State<_PulsingBrain>
   }
 
   @override
-  void didUpdateWidget(_PulsingBrain oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.isComplete && !oldWidget.isComplete) {
-      _controller.stop();
-    }
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scale,
+      child: Text(widget.emoji, style: const TextStyle(fontSize: 64)),
+    );
+  }
+}
+
+class _PulsingBrain extends _PulsingIcon {
+  const _PulsingBrain({super.key})
+      : super(emoji: '🧠');
+}
+
+class _AnimatedEllipsis extends StatefulWidget {
+  const _AnimatedEllipsis();
+
+  @override
+  State<_AnimatedEllipsis> createState() => _AnimatedEllipsisState();
+}
+
+class _AnimatedEllipsisState extends State<_AnimatedEllipsis>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 1200),
+      vsync: this,
+    )..repeat()..addListener(() => setState(() {}));
   }
 
   @override
@@ -365,9 +450,13 @@ class _PulsingBrainState extends State<_PulsingBrain>
 
   @override
   Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: _scale,
-      child: const Text('🧠', style: TextStyle(fontSize: 64)),
+    final dots = '.' * ((_controller.value * 3).floor() + 1);
+    return Text(
+      dots,
+      style: TextStyle(
+        color: Theme.of(context).colorScheme.primary,
+        fontStyle: FontStyle.italic,
+      ),
     );
   }
 }
