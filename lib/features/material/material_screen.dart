@@ -937,9 +937,9 @@ class _GenerateQuizBar extends StatelessWidget {
       child: SizedBox(
         width: double.infinity,
         child: FilledButton.icon(
-          onPressed: onPressed,
+          onPressed: null,
           icon: const Icon(Icons.auto_fix_high),
-          label: const Text('Generate Quiz →'),
+          label: const Text('Generate Quiz (Coming Soon)'),
         ),
       ),
     );

@@ -3,10 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../app/router.dart';
 import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../core/state/wiki_state.dart';
 import '../../widgets/quex_ui.dart';
 import '../processing/quiz_generation_modal.dart';
 
@@ -102,6 +104,8 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
   @override
   Widget build(BuildContext context) {
     final bundleAsync = ref.watch(sessionBundleProvider(widget.sessionId));
+    final wikiHasContentAsync =
+        ref.watch(wikiHasContentProvider(widget.sessionId));
 
     return bundleAsync.when(
       loading: () => const Scaffold(
@@ -117,6 +121,11 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
           );
         }
 
+        final hasWiki = wikiHasContentAsync.maybeWhen(
+          data: (value) => value,
+          orElse: () => false,
+        );
+
         return Scaffold(
           appBar: AppBar(
             title: const Text('Session'),
@@ -131,15 +140,10 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
             ],
           ),
           floatingActionButton: bundle.quizzes.isNotEmpty
-              ? FloatingActionButton.extended(
-                  onPressed: () => showDialog(
-                    context: context,
-                    barrierDismissible: false,
-                    builder: (_) =>
-                        QuizGenerationModal(sessionId: widget.sessionId),
-                  ),
-                  icon: const Icon(Icons.auto_fix_high),
-                  label: const Text('Generate quiz'),
+              ? const FloatingActionButton.extended(
+                  onPressed: null,
+                  icon: Icon(Icons.auto_fix_high),
+                  label: Text('Generate quiz (Coming Soon)'),
                 )
               : null,
           body: SingleChildScrollView(
@@ -158,6 +162,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
                     sessionId: widget.sessionId,
                     materialCount: bundle.materials.length,
                     materials: bundle.materials,
+                    hasWiki: hasWiki,
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -228,11 +233,13 @@ class _NavigationCard extends StatefulWidget {
   final int sessionId;
   final int materialCount;
   final List<StudyMaterial> materials;
+  final bool hasWiki;
 
   const _NavigationCard({
     required this.sessionId,
     required this.materialCount,
     required this.materials,
+    required this.hasWiki,
   });
 
   @override
@@ -278,6 +285,23 @@ class _NavigationCardState extends State<_NavigationCard> {
             subtitle: Text(subtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/session/${widget.sessionId}/material'),
+          ),
+          const Divider(height: 1, indent: 16, endIndent: 16),
+          ListTile(
+            leading: Icon(Icons.auto_stories_outlined, color: scheme.primary),
+            title: const Text('Wiki'),
+            subtitle: Text(
+              widget.hasWiki
+                  ? 'Browse index, pages, and reviews'
+                  : 'Build a knowledge wiki',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => context.push(
+              Routes.sessionWiki.replaceFirst(
+                ':sessionId',
+                '${widget.sessionId}',
+              ),
+            ),
           ),
           const Divider(height: 1, indent: 16, endIndent: 16),
           ListTile(
@@ -468,7 +492,8 @@ class _QuizSectionState extends State<_QuizSection> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final visible = widget.quizzes.where((q) => !_deletedIds.contains(q.id)).toList();
+    final visible =
+        widget.quizzes.where((q) => !_deletedIds.contains(q.id)).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -494,7 +519,8 @@ class _QuizSectionState extends State<_QuizSection> {
                     color: scheme.errorContainer,
                     borderRadius: BorderRadius.circular(24),
                   ),
-                  child: Icon(Icons.delete_outline, color: scheme.onErrorContainer),
+                  child: Icon(Icons.delete_outline,
+                      color: scheme.onErrorContainer),
                 ),
                 onDismissed: (_) {
                   setState(() => _deletedIds.add(quiz.id!));
@@ -519,8 +545,8 @@ class _QuizSectionState extends State<_QuizSection> {
                       ),
                     ),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap: () =>
-                        context.go('/session/${widget.sessionId}/quiz/${quiz.id}'),
+                    onTap: () => context
+                        .go('/session/${widget.sessionId}/quiz/${quiz.id}'),
                   ),
                 ),
               ),
@@ -580,9 +606,9 @@ class _QuizEmptyStateState extends State<_QuizEmptyState> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: widget.onGenerate,
+                onPressed: null,
                 icon: const Icon(Icons.auto_fix_high),
-                label: const Text('Generate quiz'),
+                label: const Text('Generate quiz (Coming Soon)'),
               ),
             ),
           ],

@@ -21,7 +21,8 @@ class QuizGenerationModal extends ConsumerStatefulWidget {
   const QuizGenerationModal({super.key, required this.sessionId});
 
   @override
-  ConsumerState<QuizGenerationModal> createState() => _QuizGenerationModalState();
+  ConsumerState<QuizGenerationModal> createState() =>
+      _QuizGenerationModalState();
 }
 
 class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
@@ -29,6 +30,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   final _currentQuestionBuffer = StringBuffer();
   final _generatedQuestions = <String>[];
   final _scrollController = ScrollController();
+  final Object _gemmaOwnerToken = Object();
 
   _ModalStep _step = _ModalStep.materialSelection;
   List<StudyMaterial> _allMaterials = [];
@@ -37,13 +39,12 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   bool _isThinking = false;
   bool _isComplete = false;
   bool _isLoadingModel = false;
-  bool _generationCompleted = false;
   int _generatedCount = 0;
   int _totalCount = 0;
   String _extractedQuestionText = '';
   StreamSubscription<QuizGenerationEvent>? _subscription;
   int? _quizId;
-  GemmaInferenceService? _gemmaService;
+  Future<GemmaInferenceService>? _modelFuture;
   Session? _session;
 
   @override
@@ -55,13 +56,14 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   @override
   void dispose() {
     _subscription?.cancel();
-    if (!_generationCompleted) _gemmaService?.dispose();
+    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
     _scrollController.dispose();
     super.dispose();
   }
 
   Future<void> _loadMaterials() async {
-    final bundle = await ref.read(sessionBundleProvider(widget.sessionId).future);
+    final bundle =
+        await ref.read(sessionBundleProvider(widget.sessionId).future);
     if (!mounted || bundle == null) return;
     if (bundle.materials.isEmpty) {
       _showErrorAndPop('Add study materials first.');
@@ -80,19 +82,35 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   Future<void> _initModelBackground() async {
     setState(() => _isLoadingModel = true);
     try {
-      final service = GemmaInferenceService();
-      await service.initialize();
-      if (!mounted) {
-        await service.dispose();
-        return;
-      }
-      _gemmaService = service;
-      QuexAi.setGemmaService(service);
+      await _ensureModel();
     } catch (_) {
       // Generation will fall back to rule-based if model fails
     } finally {
       if (mounted) setState(() => _isLoadingModel = false);
     }
+  }
+
+  Future<GemmaInferenceService> _ensureModel() {
+    final current = QuexAi.gemmaService;
+    if (current != null &&
+        current.isInitialized &&
+        QuexAi.isCurrentGemmaOwner(_gemmaOwnerToken)) {
+      return Future.value(current);
+    }
+
+    final existingFuture = _modelFuture;
+    if (existingFuture != null) return existingFuture;
+
+    final future = _loadModel();
+    _modelFuture = future;
+    future.whenComplete(() {
+      if (mounted) _modelFuture = null;
+    });
+    return future;
+  }
+
+  Future<GemmaInferenceService> _loadModel() async {
+    return await QuexAi.acquireGemmaService(_gemmaOwnerToken);
   }
 
   String _extractQuestionTextFromJson(String jsonBuffer) {
@@ -101,12 +119,13 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       return parsed['args']?['questionText'] as String? ?? '';
     } catch (_) {}
 
-    final completeMatch = RegExp(r'"questionText"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"')
-        .firstMatch(jsonBuffer);
+    final completeMatch =
+        RegExp(r'"questionText"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"')
+            .firstMatch(jsonBuffer);
     if (completeMatch != null) return completeMatch.group(1) ?? '';
 
-    final partialMatch = RegExp(r'"questionText"\s*:\s*"(.*)')
-        .firstMatch(jsonBuffer);
+    final partialMatch =
+        RegExp(r'"questionText"\s*:\s*"(.*)').firstMatch(jsonBuffer);
     if (partialMatch != null) return partialMatch.group(1) ?? '';
 
     return '';
@@ -116,7 +135,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     final session = _session;
     if (session == null) return;
 
-    final selected = _allMaterials.where((m) => _selectedIds.contains(m.id)).toList();
+    final selected =
+        _allMaterials.where((m) => _selectedIds.contains(m.id)).toList();
     if (selected.isEmpty) return;
 
     // Create quiz row before detection so we have an ID ready
@@ -134,12 +154,11 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     setState(() => _step = _ModalStep.detecting);
 
     List<String> detected = [];
-    if (_gemmaService != null) {
-      try {
-        detected = await _gemmaService!.detectQuestionsInMaterials(materials: selected);
-      } catch (_) {
-        detected = [];
-      }
+    try {
+      final service = await _ensureModel();
+      detected = await service.detectQuestionsInMaterials(materials: selected);
+    } catch (_) {
+      detected = [];
     }
 
     if (!mounted) return;
@@ -153,7 +172,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     }
   }
 
-  Future<void> _runExtractionPath(List<String> detectedTexts, Session session) async {
+  Future<void> _runExtractionPath(
+      List<String> detectedTexts, Session session) async {
     final qid = _quizId;
     if (qid == null || !mounted) return;
 
@@ -190,7 +210,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     await _saveAndNavigate(questions);
   }
 
-  Future<void> _startAiGeneration(List<StudyMaterial> selected, Session session) async {
+  Future<void> _startAiGeneration(
+      List<StudyMaterial> selected, Session session) async {
     const questionCount = 10;
     final qid = _quizId;
     if (qid == null) return;
@@ -199,20 +220,9 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     await QuizDAO().updateQuestionCount(qid, questionCount);
 
     try {
-      if (_gemmaService == null) {
-        setState(() => _isLoadingModel = true);
-        final service = GemmaInferenceService();
-        await service.initialize();
-        if (!mounted) {
-          await service.dispose();
-          return;
-        }
-        _gemmaService = service;
-        QuexAi.setGemmaService(service);
-        setState(() => _isLoadingModel = false);
-      }
+      final service = await _ensureModel();
 
-      final stream = _gemmaService!.generateQuizStreaming(
+      final stream = service.generateQuizStreaming(
         session: session,
         materials: selected,
         questionCount: questionCount,
@@ -261,7 +271,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       case QuizTextToken(:final token):
         setState(() {
           _currentQuestionBuffer.write(token);
-          _extractedQuestionText = _extractQuestionTextFromJson(_currentQuestionBuffer.toString());
+          _extractedQuestionText =
+              _extractQuestionTextFromJson(_currentQuestionBuffer.toString());
         });
         _scrollToBottom();
       case QuizGenerationStarted(:final total):
@@ -271,7 +282,9 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
           _isThinking = false;
           _generatedCount = index;
           _totalCount = total;
-          final finalText = _extractedQuestionText.isEmpty ? question.questionText : _extractedQuestionText;
+          final finalText = _extractedQuestionText.isEmpty
+              ? question.questionText
+              : _extractedQuestionText;
           _generatedQuestions.add('Q$index: $finalText');
           _currentQuestionBuffer.clear();
           _extractedQuestionText = '';
@@ -296,8 +309,6 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       _isComplete = true;
       _step = _ModalStep.complete;
     });
-    _generationCompleted = true;
-
     ref.invalidate(sessionBundleProvider(widget.sessionId));
 
     await Future.delayed(const Duration(milliseconds: 500));
@@ -310,11 +321,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   void _cancel() {
     _subscription?.cancel();
     _subscription = null;
-    if (_gemmaService != null) {
-      _gemmaService!.dispose();
-      _gemmaService = null;
-      QuexAi.setGemmaService(null);
-    }
+    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -357,7 +364,6 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
           ),
         ),
 
-
         // Material list
         Expanded(
           child: ListView.builder(
@@ -365,7 +371,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
             itemBuilder: (context, index) {
               if (index == 0) {
                 return Padding(
-                  padding: const EdgeInsets.fromLTRB(Sp.md, Sp.md, Sp.md, Sp.sm),
+                  padding:
+                      const EdgeInsets.fromLTRB(Sp.md, Sp.md, Sp.md, Sp.sm),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -431,7 +438,6 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
           ),
         ),
 
-
         // Generate button
         Padding(
           padding: const EdgeInsets.all(Sp.md),
@@ -480,9 +486,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
             onPressed: _cancel,
           ),
         ),
-
         const Spacer(flex: 1),
-
         Column(
           children: [
             AnimatedSwitcher(
@@ -529,9 +533,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
             ),
           ],
         ),
-
         const SizedBox(height: 32),
-
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: Sp.md),
           child: AnimatedOpacity(
@@ -556,7 +558,9 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           fontStyle: FontStyle.italic,
                         ),
                       ),
-                    if (_thinkingBuffer.isNotEmpty && (_generatedQuestions.isNotEmpty || _extractedQuestionText.isNotEmpty))
+                    if (_thinkingBuffer.isNotEmpty &&
+                        (_generatedQuestions.isNotEmpty ||
+                            _extractedQuestionText.isNotEmpty))
                       const Divider(height: 16),
                     ..._generatedQuestions.map(
                       (q) => Padding(
@@ -569,7 +573,9 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                         ),
                       ),
                     ),
-                    if (_totalCount > 0 && _generatedCount < _totalCount && !_isComplete)
+                    if (_totalCount > 0 &&
+                        _generatedCount < _totalCount &&
+                        !_isComplete)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Row(
@@ -594,9 +600,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
             ),
           ),
         ),
-
         const SizedBox(height: 20),
-
         if (!_isComplete)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: Sp.md),
@@ -610,13 +614,11 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
               ),
             ),
           ),
-
         const Spacer(flex: 1),
       ],
     );
   }
 }
-
 
 class _PulsingIcon extends StatefulWidget {
   final String emoji;
@@ -660,8 +662,7 @@ class _PulsingIconState extends State<_PulsingIcon>
 }
 
 class _PulsingBrain extends _PulsingIcon {
-  const _PulsingBrain({super.key})
-      : super(emoji: '🧠');
+  const _PulsingBrain({super.key}) : super(emoji: '🧠');
 }
 
 class _AnimatedEllipsis extends StatefulWidget {
@@ -681,7 +682,9 @@ class _AnimatedEllipsisState extends State<_AnimatedEllipsis>
     _controller = AnimationController(
       duration: const Duration(milliseconds: 1200),
       vsync: this,
-    )..repeat()..addListener(() => setState(() {}));
+    )
+      ..repeat()
+      ..addListener(() => setState(() {}));
   }
 
   @override

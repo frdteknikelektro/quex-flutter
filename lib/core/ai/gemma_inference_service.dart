@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
 import '../models/models.dart';
@@ -54,7 +54,8 @@ class GemmaInferenceService {
     bool supportsFunctionCalls = false,
   }) async {
     if (_model == null) {
-      throw StateError('GemmaInferenceService not initialized. Call initialize() first.');
+      throw StateError(
+          'GemmaInferenceService not initialized. Call initialize() first.');
     }
 
     // Close existing chat if any
@@ -94,11 +95,50 @@ class GemmaInferenceService {
     } else if (response is gemma.FunctionCallResponse) {
       return 'Function call: ${response.name}(${response.args})';
     } else if (response is gemma.ParallelFunctionCallResponse) {
-      final calls = response.calls.map((c) => '${c.name}(${c.args})').join(', ');
+      final calls =
+          response.calls.map((c) => '${c.name}(${c.args})').join(', ');
       return 'Function calls: $calls';
     }
 
     return '';
+  }
+
+  Future<void> addTextQuery(
+    String message, {
+    bool noTool = false,
+  }) async {
+    if (_chat == null) {
+      throw StateError('No active chat. Call createSession() first.');
+    }
+
+    await _chat!.addQueryChunk(
+      gemma.Message.text(text: message, isUser: true),
+      noTool,
+    );
+  }
+
+  Future<void> addImageQuery(Uint8List imageBytes) async {
+    if (_chat == null) {
+      throw StateError('No active chat. Call createSession() first.');
+    }
+
+    await _chat!.addQueryChunk(
+      gemma.Message.imageOnly(imageBytes: imageBytes, isUser: true),
+    );
+  }
+
+  Future<gemma.ModelResponse> generateResponse() async {
+    if (_chat == null) {
+      throw StateError('No active chat. Call createSession() first.');
+    }
+    return _chat!.generateChatResponse();
+  }
+
+  Stream<gemma.ModelResponse> generateResponses() async* {
+    if (_chat == null) {
+      throw StateError('No active chat. Call createSession() first.');
+    }
+    yield* _chat!.generateChatResponseAsync();
   }
 
   /// Send a multimodal message with image and get a synchronous response.
@@ -210,7 +250,8 @@ class GemmaInferenceService {
 
   static const _questionTool = gemma.Tool(
     name: 'generate_question',
-    description: 'Submit one quiz question. You must call this once per question.',
+    description:
+        'Submit one quiz question. You must call this once per question.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -222,7 +263,8 @@ class GemmaInferenceService {
         'options': {
           'type': 'array',
           'items': {'type': 'string'},
-          'description': 'Required for multipleChoice (3-4 items). Omit for textAnswer.',
+          'description':
+              'Required for multipleChoice (3-4 items). Omit for textAnswer.',
         },
       },
       'required': ['type', 'questionText'],
@@ -277,7 +319,8 @@ class GemmaInferenceService {
         'Start now: call generate_question for question 1 of $questionCount.\n\n'
         '$textContext';
 
-    await _chat!.addQueryChunk(gemma.Message.text(text: initialPrompt, isUser: true));
+    await _chat!
+        .addQueryChunk(gemma.Message.text(text: initialPrompt, isUser: true));
 
     for (final prep in prepared) {
       for (final imgBytes in prep.images) {
@@ -309,15 +352,16 @@ class GemmaInferenceService {
             }
           }
         } catch (e) {
-          print('Turn $i error during generation: $e');
+          debugPrint('Turn $i error during generation: $e');
           retries++;
         }
 
         if (!gotCall) retries++;
 
         if (parsed == null && retries < 2) {
-          final prompt = 'Please call generate_question for question $i of $questionCount now.';
-          print('Turn $i retry #$retries: $prompt');
+          final prompt =
+              'Please call generate_question for question $i of $questionCount now.';
+          debugPrint('Turn $i retry #$retries: $prompt');
           await _chat!.addQueryChunk(gemma.Message.text(
             text: prompt,
             isUser: true,
@@ -330,14 +374,16 @@ class GemmaInferenceService {
         if (retries < 2 && i == questionCount - 1) {
           // Last question: be very explicit
           await _chat!.addQueryChunk(gemma.Message.text(
-            text: 'Last question: Call generate_question for question $questionCount of $questionCount. '
+            text:
+                'Last question: Call generate_question for question $questionCount of $questionCount. '
                 'This is the final question.',
             isUser: true,
           ));
           // One more attempt
           await for (final response in _chat!.generateChatResponseAsync()) {
             if (response is gemma.FunctionCallResponse) {
-              parsed = _parseToolCallQuestion(response.args, orderIndex: questionCount - 1);
+              parsed = _parseToolCallQuestion(response.args,
+                  orderIndex: questionCount - 1);
               break;
             }
           }
@@ -349,7 +395,8 @@ class GemmaInferenceService {
           }
         }
 
-        yield QuizGenerationError('Failed to generate question $i after retries');
+        yield QuizGenerationError(
+            'Failed to generate question $i after retries');
         return;
       }
 
@@ -375,11 +422,14 @@ class GemmaInferenceService {
   }) {
     try {
       final typeStr = args['type'] as String? ?? 'multipleChoice';
-      final type =
-          typeStr == 'textAnswer' ? QuestionType.textAnswer : QuestionType.multipleChoice;
+      final type = typeStr == 'textAnswer'
+          ? QuestionType.textAnswer
+          : QuestionType.multipleChoice;
       final options = (args['options'] as List<dynamic>?)?.cast<String>() ?? [];
 
-      if (type == QuestionType.multipleChoice && options.length < 2) return null;
+      if (type == QuestionType.multipleChoice && options.length < 2) {
+        return null;
+      }
 
       final questionText = args['questionText'] as String?;
       if (questionText == null) return null;
@@ -408,8 +458,9 @@ class GemmaInferenceService {
       throw StateError('No active chat. Call createSession() first.');
     }
 
-    final context = materials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
-    
+    final context =
+        materials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
+
     final prompt = '''You are a helpful study coach for "${session.title}".
 
 Study materials context:
@@ -480,7 +531,8 @@ Coach response:''';
     final userTurn = '${historyText.isNotEmpty ? '$historyText\n\n' : ''}'
         'Student: $message\n\nCoach:';
 
-    await _chat!.addQueryChunk(gemma.Message.text(text: userTurn, isUser: true));
+    await _chat!
+        .addQueryChunk(gemma.Message.text(text: userTurn, isUser: true));
 
     await for (final response in _chat!.generateChatResponseAsync()) {
       if (response is gemma.ThinkingResponse) {
@@ -500,14 +552,15 @@ Coach response:''';
     required String userMessage,
   }) async {
     final optionsText = question.type == QuestionType.multipleChoice
-        ? question.options.asMap().entries
+        ? question.options
+            .asMap()
+            .entries
             .map((e) => '${String.fromCharCode(65 + e.key)}) ${e.value}')
             .join('\n')
         : '';
 
-    final materialsContext = materials
-        .map((m) => '${m.title}:\n${m.content}')
-        .join('\n\n');
+    final materialsContext =
+        materials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
 
     final historyText = history.map((m) {
       final role = m.role == QuestionMessageRole.user ? 'Student' : 'Tutor';
@@ -521,7 +574,8 @@ Coach response:''';
 
     await createSession(systemInstruction: systemInstruction, temperature: 0.7);
 
-    final prompt = '${materialsContext.isNotEmpty ? 'Study materials:\n$materialsContext\n\n' : ''}'
+    final prompt =
+        '${materialsContext.isNotEmpty ? 'Study materials:\n$materialsContext\n\n' : ''}'
         'Question: ${question.questionText}\n'
         '${optionsText.isNotEmpty ? 'Options:\n$optionsText\n\n' : ''}'
         '${historyText.isNotEmpty ? 'Conversation so far:\n$historyText\n\n' : ''}'
@@ -546,7 +600,9 @@ Coach response:''';
     final hasImages = prepared.any((p) => p.images.isNotEmpty);
 
     final optionsText = question.type == QuestionType.multipleChoice
-        ? question.options.asMap().entries
+        ? question.options
+            .asMap()
+            .entries
             .map((e) => '${String.fromCharCode(65 + e.key)}) ${e.value}')
             .join('\n')
         : '';
@@ -600,7 +656,8 @@ Coach response:''';
     final userTurn = '${historyText.isNotEmpty ? '$historyText\n\n' : ''}'
         'Student: $userMessage';
 
-    await _chat!.addQueryChunk(gemma.Message.text(text: userTurn, isUser: true));
+    await _chat!
+        .addQueryChunk(gemma.Message.text(text: userTurn, isUser: true));
 
     await for (final response in _chat!.generateChatResponseAsync()) {
       if (response is gemma.ThinkingResponse) {
@@ -620,9 +677,8 @@ Coach response:''';
   }) async {
     if (history.isEmpty) return null;
 
-    final materialsContext = materials
-        .map((m) => '${m.title}:\n${m.content}')
-        .join('\n\n');
+    final materialsContext =
+        materials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
 
     final historyText = history.map((m) {
       final role = m.role == QuestionMessageRole.user ? 'Student' : 'Tutor';
@@ -633,9 +689,11 @@ Coach response:''';
         'You are an evaluator. Rate student understanding on a scale from 0.0 to 1.0. '
         'Respond with ONLY a single decimal number. Nothing else.';
 
-    await createSession(systemInstruction: systemInstruction, temperature: 0.1, topK: 1);
+    await createSession(
+        systemInstruction: systemInstruction, temperature: 0.1, topK: 1);
 
-    final prompt = '${materialsContext.isNotEmpty ? 'Study materials:\n$materialsContext\n\n' : ''}'
+    final prompt =
+        '${materialsContext.isNotEmpty ? 'Study materials:\n$materialsContext\n\n' : ''}'
         'Question: ${question.questionText}\n\n'
         'Conversation:\n$historyText\n\n'
         'Rate the student\'s understanding (0.0 = wrong, 0.5 = partial, 1.0 = correct). '
@@ -654,9 +712,11 @@ Coach response:''';
       throw StateError('No active chat. Call createSession() first.');
     }
 
-    final context = materials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
-    
-    final prompt = '''Summarize the following study materials for "${session.title}" in 3-5 key points:
+    final context =
+        materials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
+
+    final prompt =
+        '''Summarize the following study materials for "${session.title}" in 3-5 key points:
 
 $context
 
@@ -678,5 +738,4 @@ Summary:''';
     _model = null;
     _isInitialized = false;
   }
-
 }

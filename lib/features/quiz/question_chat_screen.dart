@@ -34,17 +34,19 @@ class QuestionChatScreen extends ConsumerStatefulWidget {
 class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
+  final Object _gemmaOwnerToken = Object();
   bool _sending = false;
-  String? _streamingContent;   // reply tokens accumulating
-  String? _thinkingContent;    // thinking tokens accumulating (null = not thinking)
+  String? _streamingContent; // reply tokens accumulating
+  String?
+      _thinkingContent; // thinking tokens accumulating (null = not thinking)
   bool _thinkingExpanded = false;
   StreamSubscription<TutorEvent>? _streamSub;
-  GemmaInferenceService? _ownedServiceInstance;
+  Future<GemmaInferenceService>? _modelFuture;
 
   @override
   void initState() {
     super.initState();
-    _initModel();
+    unawaited(_warmModel());
   }
 
   @override
@@ -52,21 +54,39 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     _streamSub?.cancel();
     _controller.dispose();
     _scrollController.dispose();
-    final owned = _ownedServiceInstance;
-    if (owned != null) {
-      owned.dispose();
-      QuexAi.setGemmaService(null);
-    }
+    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
     super.dispose();
   }
 
-  Future<void> _initModel() async {
-    if (QuexAi.isReady) return;
-    final service = GemmaInferenceService();
-    await service.initialize();
-    QuexAi.setGemmaService(service);
-    _ownedServiceInstance = service;
-    if (mounted) setState(() {});
+  Future<GemmaInferenceService> _ensureModel() {
+    final current = QuexAi.gemmaService;
+    if (current != null &&
+        current.isInitialized &&
+        QuexAi.isCurrentGemmaOwner(_gemmaOwnerToken)) {
+      return Future.value(current);
+    }
+
+    final existingFuture = _modelFuture;
+    if (existingFuture != null) return existingFuture;
+
+    final future = _loadModel();
+    _modelFuture = future;
+    future.whenComplete(() {
+      if (mounted) _modelFuture = null;
+    });
+    return future;
+  }
+
+  Future<GemmaInferenceService> _loadModel() async {
+    return await QuexAi.acquireGemmaService(_gemmaOwnerToken);
+  }
+
+  Future<void> _warmModel() async {
+    try {
+      await _ensureModel();
+    } catch (_) {
+      // Send path will surface model load failure if needed.
+    }
   }
 
   Future<void> _stopGeneration() async {
@@ -93,16 +113,20 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     });
   }
 
-  Future<void> _sendMessage(Question question, List<QuestionMessage> history) async {
+  Future<void> _sendMessage(
+      Question question, List<QuestionMessage> history) async {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
 
-    if (!QuexAi.isReady) {
+    late final GemmaInferenceService service;
+    try {
+      service = await _ensureModel();
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Quex is loading… wait a moment.'),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Text('Could not load model: $error'),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -134,7 +158,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final accumulatedThinking = StringBuffer();
 
     try {
-      final stream = QuexAi.questionCoachReplyStream(
+      final stream = service.getQuestionTutorReplyStreaming(
         question: question,
         materials: materials,
         history: history,
@@ -202,7 +226,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
         ),
       ];
 
-      final score = await QuexAi.evaluateScore(
+      final score = await service.evaluateQuestionScore(
         question: question,
         materials: materials,
         history: updatedHistory,
@@ -236,11 +260,13 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final scheme = theme.colorScheme;
 
     final questionAsync = ref.watch(questionProvider(widget.questionId));
-    final messagesAsync = ref.watch(questionMessagesProvider(widget.questionId));
+    final messagesAsync =
+        ref.watch(questionMessagesProvider(widget.questionId));
     final materialsAsync = ref.watch(materialsProvider(widget.sessionId));
 
     return questionAsync.when(
-      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
       data: (question) {
         if (question == null) {
@@ -258,21 +284,23 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
             ),
             title: Text(
               'Question ${question.orderIndex + 1}',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
             ),
           ),
           body: Column(
             children: [
               // Materials thumbnail strip
               materialsAsync.whenData((materials) {
-                if (materials.isEmpty) return const SizedBox.shrink();
-                return _MaterialsStrip(
-                  materials: materials,
-                  sessionId: widget.sessionId,
-                  scheme: scheme,
-                  theme: theme,
-                );
-              }).value ?? const SizedBox.shrink(),
+                    if (materials.isEmpty) return const SizedBox.shrink();
+                    return _MaterialsStrip(
+                      materials: materials,
+                      sessionId: widget.sessionId,
+                      scheme: scheme,
+                      theme: theme,
+                    );
+                  }).value ??
+                  const SizedBox.shrink(),
 
               // Question card
               _QuestionCard(question: question, scheme: scheme, theme: theme),
@@ -285,16 +313,20 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
               // Messages
               Expanded(
                 child: messagesAsync.when(
-                  loading: () => const Center(child: CircularProgressIndicator()),
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
                   error: (e, _) => Center(child: Text('Error: $e')),
-                  data: (messages) => (messages.isEmpty && _streamingContent == null && _thinkingContent == null)
+                  data: (messages) => (messages.isEmpty &&
+                          _streamingContent == null &&
+                          _thinkingContent == null)
                       ? _EmptyChat(scheme: scheme, theme: theme)
                       : _MessageList(
                           messages: messages,
                           streamingContent: _streamingContent,
                           thinkingContent: _thinkingContent,
                           thinkingExpanded: _thinkingExpanded,
-                          onThinkingToggle: () => setState(() => _thinkingExpanded = !_thinkingExpanded),
+                          onThinkingToggle: () => setState(
+                              () => _thinkingExpanded = !_thinkingExpanded),
                           isSending: _sending,
                           scrollController: _scrollController,
                           scheme: scheme,
@@ -338,10 +370,13 @@ class _MaterialsStrip extends StatelessWidget {
   });
 
   static ({String emoji, Color color}) _kindMeta(
-      MaterialKind kind, ColorScheme scheme) =>
+          MaterialKind kind, ColorScheme scheme) =>
       switch (kind) {
         MaterialKind.text => (emoji: '📝', color: scheme.primaryContainer),
-        MaterialKind.document => (emoji: '📄', color: scheme.secondaryContainer),
+        MaterialKind.document => (
+            emoji: '📄',
+            color: scheme.secondaryContainer
+          ),
         MaterialKind.photo => (emoji: '🖼️', color: scheme.tertiaryContainer),
       };
 
@@ -350,9 +385,9 @@ class _MaterialsStrip extends StatelessWidget {
   Widget _buildThumbnail(StudyMaterial m, ColorScheme scheme) {
     if (m.kind == MaterialKind.photo && m.content.isNotEmpty) {
       final firstPath = m.content.split('\n').firstWhere(
-        (p) => p.isNotEmpty,
-        orElse: () => '',
-      );
+            (p) => p.isNotEmpty,
+            orElse: () => '',
+          );
       if (firstPath.isNotEmpty) {
         return ClipRRect(
           borderRadius: Br.sm,
@@ -404,7 +439,8 @@ class _MaterialsStrip extends StatelessWidget {
                   final result = await OpenFilex.open(m.content);
                   if (result.type != ResultType.done && context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Could not open: ${result.message}')),
+                      SnackBar(
+                          content: Text('Could not open: ${result.message}')),
                     );
                   }
                 } else {
@@ -620,7 +656,7 @@ class _MessageList extends StatelessWidget {
               content: thinkingContent!,
               expanded: thinkingExpanded,
               isStreaming: isSending && streamingContent != null
-                  ? false  // reply started — thinking done
+                  ? false // reply started — thinking done
                   : isSending, // still thinking if sending and no reply yet
               onToggle: onThinkingToggle,
               scheme: scheme,
@@ -640,7 +676,8 @@ class _MessageList extends StatelessWidget {
                 constraints: BoxConstraints(
                   maxWidth: MediaQuery.sizeOf(context).width * 0.78,
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: scheme.surfaceContainerHighest,
                   borderRadius: const BorderRadius.only(
@@ -654,8 +691,10 @@ class _MessageList extends StatelessWidget {
                     ? _TypingIndicator(scheme: scheme)
                     : MarkdownBody(
                         data: streamingContent!,
-                        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                          p: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface),
+                        styleSheet:
+                            MarkdownStyleSheet.fromTheme(theme).copyWith(
+                          p: theme.textTheme.bodyMedium
+                              ?.copyWith(color: scheme.onSurface),
                         ),
                       ),
               ),
@@ -695,7 +734,8 @@ class _MessageList extends StatelessWidget {
                   : MarkdownBody(
                       data: msg.content,
                       styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                        p: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface),
+                        p: theme.textTheme.bodyMedium
+                            ?.copyWith(color: scheme.onSurface),
                       ),
                     ),
             ),
@@ -749,9 +789,12 @@ class _ThinkingBubble extends StatelessWidget {
             // Header — always visible, tap to toggle
             InkWell(
               onTap: content.isEmpty ? null : onToggle,
-              borderRadius: expanded ? const BorderRadius.vertical(top: Radius.circular(16)) : Br.md,
+              borderRadius: expanded
+                  ? const BorderRadius.vertical(top: Radius.circular(16))
+                  : Br.md,
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -763,7 +806,8 @@ class _ThinkingBubble extends StatelessWidget {
                     else
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
-                        child: Icon(Icons.psychology_outlined, size: 14, color: labelColor),
+                        child: Icon(Icons.psychology_outlined,
+                            size: 14, color: labelColor),
                       ),
                     Text(
                       isStreaming ? 'Thinking…' : 'Thought process',
@@ -946,8 +990,7 @@ class _InputBar extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 enabled: !sending,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => onSend(),
+                textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
                   hintText: 'Talk to Quex…',
                   hintStyle: TextStyle(color: scheme.onSurfaceVariant),
@@ -961,11 +1004,10 @@ class _InputBar extends StatelessWidget {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide:
-                        BorderSide(color: scheme.primary, width: 1.5),
+                    borderSide: BorderSide(color: scheme.primary, width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   isDense: true,
                 ),
               ),
@@ -977,7 +1019,8 @@ class _InputBar extends StatelessWidget {
                   ? IconButton(
                       key: const ValueKey('stop'),
                       onPressed: onStop,
-                      icon: Icon(Icons.stop_rounded, color: scheme.onErrorContainer),
+                      icon: Icon(Icons.stop_rounded,
+                          color: scheme.onErrorContainer),
                       style: IconButton.styleFrom(
                         backgroundColor: scheme.errorContainer,
                         minimumSize: const Size(44, 44),

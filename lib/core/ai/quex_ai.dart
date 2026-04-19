@@ -1,22 +1,45 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
+
+import 'gemma_service_manager.dart';
 import 'gemma_inference_service.dart';
 import 'tutor_event.dart';
 import '../models/models.dart';
 
 class QuexAi {
-  /// Optional Gemma inference service for LLM-powered features.
-  /// When null, falls back to rule-based generation.
-  static GemmaInferenceService? _gemmaService;
+  static GemmaServiceManager _gemmaServiceManager =
+      GemmaServiceManager.instance;
 
-  /// Set the Gemma inference service to enable LLM-powered features.
-  static void setGemmaService(GemmaInferenceService? service) {
-    _gemmaService = service;
+  @visibleForTesting
+  static void setGemmaServiceManager(GemmaServiceManager manager) {
+    _gemmaServiceManager = manager;
   }
 
+  @visibleForTesting
+  static void resetGemmaServiceManager() {
+    _gemmaServiceManager = GemmaServiceManager.instance;
+  }
+
+  static GemmaInferenceService? get gemmaService =>
+      _gemmaServiceManager.current;
+
   /// Whether the Gemma service is initialized and ready for inference.
-  static bool get isReady => _gemmaService != null && _gemmaService!.isInitialized;
+  static bool get isReady => _gemmaServiceManager.isReady;
+
+  static bool isCurrentGemmaOwner(Object ownerToken) =>
+      _gemmaServiceManager.isCurrentOwner(ownerToken);
+
+  static Future<GemmaInferenceService> acquireGemmaService(
+    Object ownerToken,
+  ) {
+    return _gemmaServiceManager.acquire(ownerToken);
+  }
+
+  static Future<void> releaseGemmaService(Object ownerToken) {
+    return _gemmaServiceManager.release(ownerToken);
+  }
 
   /// Build a rule-based quiz from study materials (fallback when AI unavailable).
   static List<Question> buildQuizRuleBased({
@@ -72,9 +95,10 @@ class QuexAi {
     required String message,
   }) async {
     // Try LLM-powered coach reply if service is available
-    if (_gemmaService != null && _gemmaService!.isInitialized) {
+    final service = gemmaService;
+    if (service != null && service.isInitialized) {
       try {
-        return await _gemmaService!.getCoachReply(
+        return await service.getCoachReply(
           session: session,
           materials: materials,
           history: history,
@@ -128,7 +152,11 @@ class QuexAi {
     required String userMessage,
   }) async {
     if (!isReady) throw StateError('Gemma service not initialized.');
-    final reply = await _gemmaService!.getQuestionTutorReply(
+    final service = gemmaService;
+    if (service == null || !service.isInitialized) {
+      throw StateError('Gemma service not initialized.');
+    }
+    final reply = await service.getQuestionTutorReply(
       question: question,
       materials: materials,
       history: history,
@@ -149,7 +177,7 @@ class QuexAi {
         createdAt: DateTime.now(),
       ),
     ];
-    final score = await _gemmaService!.evaluateQuestionScore(
+    final score = await service.evaluateQuestionScore(
       question: question,
       materials: materials,
       history: updatedHistory,
@@ -167,7 +195,11 @@ class QuexAi {
     required String message,
   }) {
     if (!isReady) throw StateError('Gemma service not initialized.');
-    return _gemmaService!.getCoachReplyStreaming(
+    final service = gemmaService;
+    if (service == null || !service.isInitialized) {
+      throw StateError('Gemma service not initialized.');
+    }
+    return service.getCoachReplyStreaming(
       session: session,
       materials: materials,
       history: history,
@@ -185,7 +217,11 @@ class QuexAi {
     required String userMessage,
   }) {
     if (!isReady) throw StateError('Gemma service not initialized.');
-    return _gemmaService!.getQuestionTutorReplyStreaming(
+    final service = gemmaService;
+    if (service == null || !service.isInitialized) {
+      throw StateError('Gemma service not initialized.');
+    }
+    return service.getQuestionTutorReplyStreaming(
       question: question,
       materials: materials,
       history: history,
@@ -201,7 +237,9 @@ class QuexAi {
     required List<QuestionMessage> history,
   }) async {
     if (!isReady) return null;
-    return await _gemmaService!.evaluateQuestionScore(
+    final service = gemmaService;
+    if (service == null || !service.isInitialized) return null;
+    return await service.evaluateQuestionScore(
       question: question,
       materials: materials,
       history: history,
@@ -212,10 +250,12 @@ class QuexAi {
     return _sessionSummary(session, materials);
   }
 
-  static List<String> highlights(List<StudyMaterial> materials) => _topics(materials);
+  static List<String> highlights(List<StudyMaterial> materials) =>
+      _topics(materials);
 
   static List<String> _snippets(List<StudyMaterial> materials) {
-    final textOnly = materials.where((m) => m.kind == MaterialKind.text).toList();
+    final textOnly =
+        materials.where((m) => m.kind == MaterialKind.text).toList();
     final snippets = <String>[];
     for (final material in textOnly) {
       final parts = material.content
@@ -230,7 +270,8 @@ class QuexAi {
   }
 
   static List<String> _topics(List<StudyMaterial> materials) {
-    final textOnly = materials.where((m) => m.kind == MaterialKind.text).toList();
+    final textOnly =
+        materials.where((m) => m.kind == MaterialKind.text).toList();
     final words = <String>[];
     for (final material in textOnly) {
       words.addAll(
@@ -254,7 +295,8 @@ class QuexAi {
     required String current,
     required String sessionTitle,
   }) {
-    final otherSnippets = focus.where((item) => item != current).map(_shorten).toList();
+    final otherSnippets =
+        focus.where((item) => item != current).map(_shorten).toList();
     final pool = <String>[
       ...otherSnippets,
       'A different idea from the lesson.',
@@ -275,7 +317,8 @@ class QuexAi {
     return value[0].toUpperCase() + value.substring(1);
   }
 
-  static String _sessionSummary(Session session, List<StudyMaterial> materials) {
+  static String _sessionSummary(
+      Session session, List<StudyMaterial> materials) {
     if (materials.isEmpty) {
       return 'No materials yet for "${session.title}". Add notes first, then generate a quiz.';
     }

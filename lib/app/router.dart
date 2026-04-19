@@ -17,8 +17,10 @@ import '../features/profile_selection/profile_selection_screen.dart';
 import '../features/quiz/question_chat_screen.dart';
 import '../features/quiz/quiz_detail_screen.dart';
 import '../features/session_detail/session_detail_screen.dart';
+import '../features/wiki/session_wiki_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../features/summary/summary_screen.dart';
+
 class Routes {
   static const splash = '/splash';
   static const profileSelection = '/profile-selection';
@@ -27,10 +29,12 @@ class Routes {
   static const newSession = '/session/new';
   static const session = '/session/:sessionId';
   static const addMaterial = '/session/:sessionId/material';
+  static const sessionWiki = '/session/:sessionId/wiki';
   static const materialDetail = '/session/:sessionId/material/:materialId';
   static const chat = '/session/:sessionId/chat';
   static const quizDetail = '/session/:sessionId/quiz/:quizId/detail';
-  static const questionChat = '/session/:sessionId/quiz/:quizId/question/:questionId';
+  static const questionChat =
+      '/session/:sessionId/quiz/:quizId/question/:questionId';
   static const summary = '/session/:sessionId/quiz/:quizId/summary';
   static const profile = '/profile';
 }
@@ -101,6 +105,14 @@ final appRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: Routes.sessionWiki,
+      name: 'session-wiki',
+      builder: (context, state) {
+        final sessionId = int.parse(state.pathParameters['sessionId']!);
+        return SessionWikiScreen(sessionId: sessionId);
+      },
+    ),
+    GoRoute(
       path: Routes.materialDetail,
       name: 'material-detail',
       builder: (context, state) {
@@ -118,7 +130,8 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final sessionId = int.parse(state.pathParameters['sessionId']!);
         final preselectedIds = state.extra as List<int>?;
-        return ChatScreen(sessionId: sessionId, preselectedMaterialIds: preselectedIds);
+        return ChatScreen(
+            sessionId: sessionId, preselectedMaterialIds: preselectedIds);
       },
     ),
     GoRoute(
@@ -169,7 +182,8 @@ final appRouter = GoRouter(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text('Quex', style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900)),
+          const Text('Quex',
+              style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900)),
           const SizedBox(height: 12),
           Text('Page not found: ${state.uri}'),
           const SizedBox(height: 12),
@@ -198,11 +212,12 @@ class _AppShellState extends ConsumerState<_AppShell> {
     final compact = MediaQuery.sizeOf(context).width < QuexBreakpoints.tablet;
     final downloadState = ref.watch(modelDownloadProvider);
     final activeProfileId = ref.watch(activeProfileProvider);
-    final hasSessions = ref.watch(recentSessionsProvider(activeProfileId ?? 0)).when(
-          data: (sessions) => sessions.isNotEmpty,
-          loading: () => true,
-          error: (_, __) => true,
-        );
+    final hasSessions =
+        ref.watch(recentSessionsProvider(activeProfileId ?? 0)).when(
+              data: (sessions) => sessions.isNotEmpty,
+              loading: () => true,
+              error: (_, __) => true,
+            );
 
     String getTitle() {
       switch (_currentIndex) {
@@ -321,7 +336,8 @@ class _AppShellState extends ConsumerState<_AppShell> {
                         _DownloadBanner(
                           progress: downloadState.progress,
                           status: downloadState.status,
-                          onCancel: () => ref.read(modelDownloadProvider.notifier).cancel(),
+                          onCancel: () =>
+                              ref.read(modelDownloadProvider.notifier).cancel(),
                         ),
                     ],
                   ),
@@ -373,7 +389,9 @@ class _DownloadBanner extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    isCancelling ? 'Cancelling…' : 'Downloading model  $percent%',
+                    isCancelling
+                        ? 'Cancelling…'
+                        : 'Downloading model  $percent%',
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                           color: scheme.onSecondaryContainer,
                           fontWeight: FontWeight.w600,
@@ -384,7 +402,8 @@ class _DownloadBanner extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                     child: LinearProgressIndicator(
                       value: isCancelling ? null : progress,
-                      backgroundColor: scheme.onSecondaryContainer.withValues(alpha: 0.2),
+                      backgroundColor:
+                          scheme.onSecondaryContainer.withValues(alpha: 0.2),
                       color: scheme.onSecondaryContainer,
                       minHeight: 4,
                     ),

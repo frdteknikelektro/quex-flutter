@@ -1,9 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
-import '../../core/ai/gemma_inference_service.dart';
 import '../../core/ai/quex_ai.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
@@ -24,7 +25,7 @@ class QuizDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
-  GemmaInferenceService? _gemmaService;
+  final Object _gemmaOwnerToken = Object();
   bool _modelLoading = true;
   String? _modelError;
 
@@ -40,14 +41,11 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
       _modelError = null;
     });
     try {
-      final service = GemmaInferenceService();
-      await service.initialize();
+      await QuexAi.acquireGemmaService(_gemmaOwnerToken);
       if (!mounted) {
-        await service.dispose();
+        await QuexAi.releaseGemmaService(_gemmaOwnerToken);
         return;
       }
-      _gemmaService = service;
-      QuexAi.setGemmaService(service);
       setState(() => _modelLoading = false);
     } catch (e) {
       if (!mounted) return;
@@ -60,10 +58,7 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
 
   @override
   void dispose() {
-    if (_gemmaService != null) {
-      _gemmaService!.dispose();
-      QuexAi.setGemmaService(null);
-    }
+    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
     super.dispose();
   }
 
@@ -138,8 +133,7 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
           // Question list
           Expanded(
             child: bundle.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
+              loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Error: $e')),
               data: (b) {
                 if (b == null) {
@@ -151,8 +145,7 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
                 }
 
                 final questions = b.questions;
-                final scored =
-                    questions.where((q) => q.score != null).toList();
+                final scored = questions.where((q) => q.score != null).toList();
                 final totalScore = scored.isEmpty
                     ? null
                     : scored.fold(0.0, (sum, q) => sum + q.score!) /
@@ -162,8 +155,7 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
                   slivers: [
                     SliverToBoxAdapter(
                       child: Padding(
-                        padding:
-                            const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                         child: _ScoreHeader(
                           totalScore: totalScore,
                           answered: scored.length,
@@ -175,13 +167,11 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
                       ),
                     ),
                     SliverPadding(
-                      padding:
-                          const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                       sliver: SliverList(
                         delegate: SliverChildBuilderDelegate(
                           (context, index) => Padding(
-                            padding:
-                                const EdgeInsets.only(bottom: 10),
+                            padding: const EdgeInsets.only(bottom: 10),
                             child: _QuestionTile(
                               question: questions[index],
                               index: index,

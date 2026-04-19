@@ -1,0 +1,27 @@
+import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
+
+import 'package:quex/core/ai/gemma_inference_service.dart';
+
+class FakeGemmaInferenceService extends GemmaInferenceService {
+  int initializeCalls = 0;
+  int disposeCalls = 0;
+  bool _ready = false;
+
+  @override
+  bool get isInitialized => _ready;
+
+  @override
+  Future<void> initialize({
+    int maxTokens = 8192,
+    gemma.PreferredBackend preferredBackend = gemma.PreferredBackend.gpu,
+  }) async {
+    initializeCalls++;
+    _ready = true;
+  }
+
+  @override
+  Future<void> dispose() async {
+    disposeCalls++;
+    _ready = false;
+  }
+}

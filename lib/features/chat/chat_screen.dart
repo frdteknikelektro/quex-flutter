@@ -33,18 +33,19 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
+  final Object _gemmaOwnerToken = Object();
   bool _sending = false;
   bool _modelLoading = false;
   String? _streamingContent;
   String? _thinkingContent;
   bool _thinkingExpanded = false;
   StreamSubscription<TutorEvent>? _streamSub;
-  GemmaInferenceService? _ownedServiceInstance;
+  Future<GemmaInferenceService>? _modelFuture;
 
   @override
   void initState() {
     super.initState();
-    _initModel();
+    unawaited(_warmModel());
   }
 
   @override
@@ -52,22 +53,44 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _streamSub?.cancel();
     _controller.dispose();
     _scrollController.dispose();
-    final owned = _ownedServiceInstance;
-    if (owned != null) {
-      owned.dispose();
-      QuexAi.setGemmaService(null);
-    }
+    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
     super.dispose();
   }
 
-  Future<void> _initModel() async {
-    if (QuexAi.isReady) return;
+  Future<GemmaInferenceService> _ensureModel() {
+    final current = QuexAi.gemmaService;
+    if (current != null &&
+        current.isInitialized &&
+        QuexAi.isCurrentGemmaOwner(_gemmaOwnerToken)) {
+      return Future.value(current);
+    }
+
+    final existingFuture = _modelFuture;
+    if (existingFuture != null) return existingFuture;
+
+    final future = _loadModel();
+    _modelFuture = future;
+    future.whenComplete(() {
+      if (mounted) _modelFuture = null;
+    });
+    return future;
+  }
+
+  Future<GemmaInferenceService> _loadModel() async {
     if (mounted) setState(() => _modelLoading = true);
-    final service = GemmaInferenceService();
-    await service.initialize();
-    QuexAi.setGemmaService(service);
-    _ownedServiceInstance = service;
-    if (mounted) setState(() => _modelLoading = false);
+    try {
+      return await QuexAi.acquireGemmaService(_gemmaOwnerToken);
+    } finally {
+      if (mounted) setState(() => _modelLoading = false);
+    }
+  }
+
+  Future<void> _warmModel() async {
+    try {
+      await _ensureModel();
+    } catch (_) {
+      // Send path will surface model load failure if needed.
+    }
   }
 
   Future<void> _resetChat() async {
@@ -100,16 +123,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  Future<void> _sendMessage(SessionBundle bundle, List<StudyMaterial> chatMaterials) async {
+  Future<void> _sendMessage(
+      SessionBundle bundle, List<StudyMaterial> chatMaterials) async {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
 
-    if (!QuexAi.isReady) {
+    late final GemmaInferenceService service;
+    try {
+      service = await _ensureModel();
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Quex is loading… wait a moment.'),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Text('Could not load model: $error'),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -138,7 +165,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final accumulatedThinking = StringBuffer();
 
     try {
-      final stream = QuexAi.coachReplyStream(
+      final stream = service.getCoachReplyStreaming(
         session: bundle.session,
         materials: chatMaterials,
         history: bundle.messages,
@@ -290,7 +317,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           appBar: AppBar(
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () => context.canPop() ? context.pop() : context.go('/'),
+              onPressed: () =>
+                  context.canPop() ? context.pop() : context.go('/'),
             ),
             title: Text(
               '${bundle.session.emoji} ${bundle.session.title}',
@@ -302,26 +330,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
                   child: TextButton(
-                    onPressed: _sending ? null : () async {
-                      final confirm = await showDialog<bool>(
-                        context: context,
-                        builder: (ctx) => AlertDialog(
-                          title: const Text('Reset chat?'),
-                          content: const Text('All messages will be deleted.'),
-                          actions: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(ctx, false),
-                              child: const Text('Cancel'),
-                            ),
-                            FilledButton(
-                              onPressed: () => Navigator.pop(ctx, true),
-                              child: const Text('Reset'),
-                            ),
-                          ],
-                        ),
-                      );
-                      if (confirm == true) _resetChat();
-                    },
+                    onPressed: _sending
+                        ? null
+                        : () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Reset chat?'),
+                                content:
+                                    const Text('All messages will be deleted.'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  FilledButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text('Reset'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) _resetChat();
+                          },
                     child: const Text('Reset'),
                   ),
                 ),
@@ -370,8 +401,10 @@ class _MaterialsStrip extends StatelessWidget {
           MaterialKind kind, ColorScheme scheme) =>
       switch (kind) {
         MaterialKind.text => (emoji: '📝', color: scheme.primaryContainer),
-        MaterialKind.document =>
-          (emoji: '📄', color: scheme.secondaryContainer),
+        MaterialKind.document => (
+            emoji: '📄',
+            color: scheme.secondaryContainer
+          ),
         MaterialKind.photo => (emoji: '🖼️', color: scheme.tertiaryContainer),
       };
 
@@ -512,9 +545,8 @@ class _MessageList extends StatelessWidget {
             child: _ThinkingBubble(
               content: thinkingContent!,
               expanded: thinkingExpanded,
-              isStreaming: isSending && streamingContent != null
-                  ? false
-                  : isSending,
+              isStreaming:
+                  isSending && streamingContent != null ? false : isSending,
               onToggle: onThinkingToggle,
               scheme: scheme,
               theme: theme,
@@ -568,8 +600,7 @@ class _MessageList extends StatelessWidget {
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.sizeOf(context).width * 0.78,
               ),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: isUser
                     ? scheme.primaryContainer
@@ -590,8 +621,7 @@ class _MessageList extends StatelessWidget {
                     )
                   : MarkdownBody(
                       data: msg.content,
-                      styleSheet:
-                          MarkdownStyleSheet.fromTheme(theme).copyWith(
+                      styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
                         p: theme.textTheme.bodyMedium
                             ?.copyWith(color: scheme.onSurface),
                       ),
@@ -745,8 +775,7 @@ class _TypingIndicatorState extends State<_TypingIndicator>
           animation: _controller,
           builder: (context, _) {
             final t = ((_controller.value + offset) % 1.0);
-            final opacity =
-                (t < 0.5 ? t * 2 : (1 - t) * 2).clamp(0.3, 1.0);
+            final opacity = (t < 0.5 ? t * 2 : (1 - t) * 2).clamp(0.3, 1.0);
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 2),
               child: Opacity(
@@ -835,8 +864,7 @@ class _EmptyChat extends StatelessWidget {
                     .take(4)
                     .map((s) => ActionChip(
                           label: Text('Ask about "$s"'),
-                          onPressed: () =>
-                              onSuggestionTap('Tell me about $s'),
+                          onPressed: () => onSuggestionTap('Tell me about $s'),
                         ))
                     .toList(),
               ),
@@ -952,8 +980,7 @@ class _InputBar extends StatelessWidget {
               child: TextField(
                 controller: controller,
                 enabled: !sending && !modelLoading,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => onSend(),
+                textInputAction: TextInputAction.newline,
                 maxLines: 4,
                 minLines: 1,
                 decoration: InputDecoration(
@@ -971,8 +998,8 @@ class _InputBar extends StatelessWidget {
                     borderRadius: BorderRadius.circular(24),
                     borderSide: BorderSide(color: scheme.primary, width: 1.5),
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 10),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   isDense: true,
                 ),
               ),
