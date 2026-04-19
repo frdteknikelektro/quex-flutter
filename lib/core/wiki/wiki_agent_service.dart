@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 import 'package:intl/intl.dart';
 
@@ -30,7 +30,7 @@ class WikiAgentService {
 
   static const _listPagesTool = gemma.Tool(
     name: 'list_existing_pages',
-    description: 'List existing markdown pages in current session wiki.',
+    description: 'List all existing markdown pages in the current session wiki. Call this first to understand what already exists before writing or updating.',
     parameters: {
       'type': 'object',
       'properties': {},
@@ -39,11 +39,14 @@ class WikiAgentService {
 
   static const _readPageTool = gemma.Tool(
     name: 'read_existing_page',
-    description: 'Read one existing markdown page by relative path.',
+    description: 'Read the full content of one existing wiki page. Use this before updating a page to avoid overwriting useful content.',
     parameters: {
       'type': 'object',
       'properties': {
-        'path': {'type': 'string'},
+        'path': {
+          'type': 'string',
+          'description': 'Relative path to the wiki page, e.g. sources/chapter1.md or concepts/photosynthesis.md',
+        },
       },
       'required': ['path'],
     },
@@ -51,13 +54,18 @@ class WikiAgentService {
 
   static const _writePageTool = gemma.Tool(
     name: 'write_markdown_file',
-    description:
-        'Create or update one markdown file under allowed wiki paths only.',
+    description: 'Create or fully overwrite one markdown wiki page. Include complete YAML frontmatter and markdown content. Only write to allowed paths: index.md, log.md, sources/*.md, concepts/*.md, entities/*.md, syntheses/*.md, reviews/*.md.',
     parameters: {
       'type': 'object',
       'properties': {
-        'path': {'type': 'string'},
-        'content': {'type': 'string'},
+        'path': {
+          'type': 'string',
+          'description': 'Relative path for the wiki file, e.g. sources/chapter1.md',
+        },
+        'content': {
+          'type': 'string',
+          'description': 'Complete markdown content including YAML frontmatter block',
+        },
       },
       'required': ['path', 'content'],
     },
@@ -65,11 +73,14 @@ class WikiAgentService {
 
   static const _deletePageTool = gemma.Tool(
     name: 'delete_markdown_file',
-    description: 'Delete one obsolete markdown file by relative path.',
+    description: 'Delete one obsolete or duplicate wiki page. Only use when a page is truly redundant or superseded.',
     parameters: {
       'type': 'object',
       'properties': {
-        'path': {'type': 'string'},
+        'path': {
+          'type': 'string',
+          'description': 'Relative path of the wiki file to delete, e.g. sources/old_draft.md',
+        },
       },
       'required': ['path'],
     },
@@ -77,11 +88,14 @@ class WikiAgentService {
 
   static const _finishTool = gemma.Tool(
     name: 'finish_run',
-    description: 'Finish current wiki task after all file work is complete.',
+    description: 'Signal that the wiki task is fully complete. Call this only after all necessary files have been written, updated, and index.md/log.md have been updated.',
     parameters: {
       'type': 'object',
       'properties': {
-        'summary': {'type': 'string'},
+        'summary': {
+          'type': 'string',
+          'description': 'One-sentence summary of what was done, e.g. "Ingested 3 materials into sources/, updated index.md and log.md."',
+        },
       },
       'required': ['summary'],
     },
@@ -134,6 +148,8 @@ class WikiAgentService {
   }) async {
     final prepared = await MaterialPreprocessor.prepare(materials);
     final hasImages = prepared.any((item) => item.images.isNotEmpty);
+    final totalImages = prepared.fold(0, (sum, p) => sum + p.images.length);
+    debugPrint('[WikiAgent] start: materials=${materials.length} images=$totalImages hasImages=$hasImages');
 
     await service.createSession(
       systemInstruction: systemInstruction,
@@ -148,15 +164,16 @@ class WikiAgentService {
         _finishTool,
       ],
       supportsFunctionCalls: true,
-      isThinking: true,
+      isThinking: false,
     );
 
-    await service.addTextQuery(prompt);
     for (final item in prepared) {
       for (final image in item.images) {
         await service.addImageQuery(image);
       }
     }
+    await service.addTextQuery(prompt);
+    debugPrint('[WikiAgent] session ready, generating (turn 0)');
 
     final touchedPaths = <String>{};
     final deletedPaths = <String>{};
@@ -169,11 +186,11 @@ class WikiAgentService {
 
       await for (final response in service.generateResponses()) {
         if (response is gemma.ThinkingResponse) {
-          _emitLine(onLine, response.content);
+          // per-token thinking — skip
         } else if (response is gemma.TextResponse) {
-          final text = response.token.trim();
-          if (text.isNotEmpty) _emitLine(onLine, text);
+          // per-token text — skip
         } else if (response is gemma.FunctionCallResponse) {
+          debugPrint('[WikiAgent] tool: ${response.name} args=${response.args}');
           sawToolCall = true;
           final result = await _executeToolCall(
             sessionId: sessionId,
@@ -227,10 +244,10 @@ class WikiAgentService {
       }
 
       plainTextRetry = 0;
-      await service.addTextQuery(
-        'Tool results:\n${const JsonEncoder.withIndent('  ').convert(toolResults)}\nContinue with more tools if needed. Call finish_run only when the wiki is complete for this task.',
-        noTool: true,
-      );
+      for (final result in toolResults) {
+        final toolName = result['tool'] as String? ?? 'unknown';
+        await service.addToolResponse(toolName: toolName, response: result);
+      }
     }
 
     throw StateError('Wiki agent exceeded step limit before finish_run.');
@@ -360,9 +377,9 @@ Allowed categories: $categories
   }
 
   String _buildIngestPrompt(Session session, List<StudyMaterial> materials) {
+    final hasPhotos = materials.any((m) => m.kind == MaterialKind.photo);
     final buffer = StringBuffer()
-      ..writeln(
-          'Ingest all session materials into the wiki. Update existing pages when appropriate instead of duplicating them.')
+      ..writeln('Ingest all session materials into the wiki. Update existing pages when appropriate instead of duplicating them.')
       ..writeln()
       ..writeln('Session: ${session.title}')
       ..writeln('Grade: ${session.gradeOverride}')
@@ -370,9 +387,12 @@ Allowed categories: $categories
       ..writeln()
       ..writeln('Materials:')
       ..writeln(_materialsContext(materials))
-      ..writeln()
-      ..writeln(
-          'Start by listing existing pages if needed. Then read any page you need, write/update wiki pages, update index.md and log.md, and finish.');
+      ..writeln();
+    if (hasPhotos) {
+      buffer.writeln('Note: Image attachments for photo materials are included above. Use them to extract content for wiki pages.');
+      buffer.writeln();
+    }
+    buffer.writeln('Start by listing existing pages if needed. Then read any page you need, write/update wiki pages, update index.md and log.md, and finish.');
     return buffer.toString();
   }
 
@@ -396,8 +416,7 @@ When safe, fix wiki pages directly. Also write one lint report under reviews/ wi
     final buffer = StringBuffer();
     for (final material in materials) {
       buffer
-        ..writeln(
-            '- [${material.id}] ${material.title} (${material.kind.name})')
+        ..writeln('- [${material.id}] ${material.title} (${material.kind.name})')
         ..writeln('  Preview: ${material.preview}');
       if (material.kind == MaterialKind.text) {
         final trimmed = material.content.trim();
@@ -405,6 +424,9 @@ When safe, fix wiki pages directly. Also write one lint report under reviews/ wi
             ? '${trimmed.substring(0, 1400)}...'
             : trimmed;
         buffer.writeln('  Content: $snippet');
+      } else if (material.kind == MaterialKind.photo) {
+        final imageCount = material.content.split('\n').where((p) => p.isNotEmpty).length;
+        buffer.writeln('  Images: $imageCount image(s) attached');
       }
     }
     return buffer.toString().trim();

@@ -127,6 +127,22 @@ class GemmaInferenceService {
     );
   }
 
+  Future<void> addToolResponse({
+    required String toolName,
+    required Map<String, Object?> response,
+  }) async {
+    if (_chat == null) {
+      throw StateError('No active chat. Call createSession() first.');
+    }
+
+    await _chat!.addQueryChunk(
+      gemma.Message.toolResponse(
+        toolName: toolName,
+        response: Map<String, dynamic>.from(response),
+      ),
+    );
+  }
+
   Future<gemma.ModelResponse> generateResponse() async {
     if (_chat == null) {
       throw StateError('No active chat. Call createSession() first.');
@@ -225,17 +241,15 @@ class GemmaInferenceService {
     final prompt = 'Extract all quiz questions from these materials. '
         'One per line, or NONE if none exist.\n\n$textContext';
 
-    await _chat!.addQueryChunk(gemma.Message.text(text: prompt, isUser: true));
-
     for (final prep in prepared) {
       for (final imgBytes in prep.images) {
-        await _chat!.addQueryChunk(
-          gemma.Message.imageOnly(imageBytes: imgBytes, isUser: true),
-        );
+        await addImageQuery(imgBytes);
       }
     }
 
-    final response = await _chat!.generateChatResponse();
+    await addTextQuery(prompt);
+
+    final response = await generateResponse();
     final raw = response is gemma.TextResponse ? response.token : '';
 
     final trimmed = raw.trim();
@@ -319,9 +333,6 @@ class GemmaInferenceService {
         'Start now: call generate_question for question 1 of $questionCount.\n\n'
         '$textContext';
 
-    await _chat!
-        .addQueryChunk(gemma.Message.text(text: initialPrompt, isUser: true));
-
     for (final prep in prepared) {
       for (final imgBytes in prep.images) {
         await _chat!.addQueryChunk(
@@ -329,6 +340,9 @@ class GemmaInferenceService {
         );
       }
     }
+
+    await _chat!
+        .addQueryChunk(gemma.Message.text(text: initialPrompt, isUser: true));
 
     final questions = <Question>[];
 
@@ -454,27 +468,40 @@ class GemmaInferenceService {
     required List<ChatMessage> history,
     required String message,
   }) async {
-    if (_chat == null) {
-      throw StateError('No active chat. Call createSession() first.');
+    if (!_isInitialized) throw StateError('Service not initialized');
+
+    final prepared = await MaterialPreprocessor.prepare(materials);
+    final hasImages = prepared.any((p) => p.images.isNotEmpty);
+    final textContext = prepared
+        .where((p) => p.textChunk.isNotEmpty)
+        .map((p) => p.textChunk)
+        .join('\n\n');
+
+    const systemInstruction =
+        'You are Quex, a friendly study coach. Answer questions about the study material, '
+        'offer study tips, and suggest topics to explore. Keep responses short and kid-friendly.';
+
+    await createSession(
+      systemInstruction: textContext.isNotEmpty
+          ? '$systemInstruction\n\nStudy materials:\n$textContext'
+          : systemInstruction,
+      temperature: 0.7,
+      supportImage: hasImages,
+    );
+
+    for (final p in prepared) {
+      for (final imageBytes in p.images) {
+        await addImageQuery(imageBytes);
+      }
     }
 
-    final context =
-        materials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
+    final historyText = history.map((m) {
+      final role = m.role == ChatRole.user ? 'Student' : 'Coach';
+      return '$role: ${m.content}';
+    }).join('\n');
 
-    final prompt = '''You are a helpful study coach for "${session.title}".
-
-Study materials context:
-$context
-
-User message: $message
-
-Provide a helpful, encouraging response that:
-- Answers questions about the study material
-- Offers study tips and strategies
-- Suggests related topics to explore
-- Keeps responses concise and actionable
-
-Coach response:''';
+    final prompt = '${historyText.isNotEmpty ? '$historyText\n\n' : ''}'
+        'Student: $message\n\nCoach:';
 
     return await sendMessage(prompt);
   }
@@ -551,6 +578,13 @@ Coach response:''';
     required List<QuestionMessage> history,
     required String userMessage,
   }) async {
+    final prepared = await MaterialPreprocessor.prepare(materials);
+    final hasImages = prepared.any((p) => p.images.isNotEmpty);
+    final materialsContext = prepared
+        .where((p) => p.textChunk.isNotEmpty)
+        .map((p) => p.textChunk)
+        .join('\n\n');
+
     final optionsText = question.type == QuestionType.multipleChoice
         ? question.options
             .asMap()
@@ -559,20 +593,27 @@ Coach response:''';
             .join('\n')
         : '';
 
-    final materialsContext =
-        materials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
-
-    final historyText = history.map((m) {
-      final role = m.role == QuestionMessageRole.user ? 'Student' : 'Tutor';
-      return '$role: ${m.content}';
-    }).join('\n');
-
     const systemInstruction =
         'You are a friendly tutor helping an elementary student answer a quiz question. '
         'Guide them with hints and encouragement — do NOT reveal the answer directly until '
         'they demonstrate understanding. Keep responses short and simple.';
 
-    await createSession(systemInstruction: systemInstruction, temperature: 0.7);
+    await createSession(
+      systemInstruction: systemInstruction,
+      temperature: 0.7,
+      supportImage: hasImages,
+    );
+
+    for (final p in prepared) {
+      for (final imageBytes in p.images) {
+        await addImageQuery(imageBytes);
+      }
+    }
+
+    final historyText = history.map((m) {
+      final role = m.role == QuestionMessageRole.user ? 'Student' : 'Tutor';
+      return '$role: ${m.content}';
+    }).join('\n');
 
     final prompt =
         '${materialsContext.isNotEmpty ? 'Study materials:\n$materialsContext\n\n' : ''}'
@@ -641,9 +682,7 @@ Coach response:''';
     // Send images first (visual context)
     for (final p in prepared) {
       for (final imageBytes in p.images) {
-        await _chat!.addQueryChunk(
-          gemma.Message.imageOnly(imageBytes: imageBytes, isUser: true),
-        );
+        await addImageQuery(imageBytes);
       }
     }
 
@@ -656,10 +695,9 @@ Coach response:''';
     final userTurn = '${historyText.isNotEmpty ? '$historyText\n\n' : ''}'
         'Student: $userMessage';
 
-    await _chat!
-        .addQueryChunk(gemma.Message.text(text: userTurn, isUser: true));
+    await addTextQuery(userTurn);
 
-    await for (final response in _chat!.generateChatResponseAsync()) {
+    await for (final response in generateResponses()) {
       if (response is gemma.ThinkingResponse) {
         yield TutorThinking(response.content);
       } else if (response is gemma.TextResponse) {
@@ -677,20 +715,34 @@ Coach response:''';
   }) async {
     if (history.isEmpty) return null;
 
-    final materialsContext =
-        materials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
-
-    final historyText = history.map((m) {
-      final role = m.role == QuestionMessageRole.user ? 'Student' : 'Tutor';
-      return '$role: ${m.content}';
-    }).join('\n');
+    final prepared = await MaterialPreprocessor.prepare(materials);
+    final hasImages = prepared.any((p) => p.images.isNotEmpty);
+    final materialsContext = prepared
+        .where((p) => p.textChunk.isNotEmpty)
+        .map((p) => p.textChunk)
+        .join('\n\n');
 
     const systemInstruction =
         'You are an evaluator. Rate student understanding on a scale from 0.0 to 1.0. '
         'Respond with ONLY a single decimal number. Nothing else.';
 
     await createSession(
-        systemInstruction: systemInstruction, temperature: 0.1, topK: 1);
+      systemInstruction: systemInstruction,
+      temperature: 0.1,
+      topK: 1,
+      supportImage: hasImages,
+    );
+
+    for (final p in prepared) {
+      for (final imageBytes in p.images) {
+        await addImageQuery(imageBytes);
+      }
+    }
+
+    final historyText = history.map((m) {
+      final role = m.role == QuestionMessageRole.user ? 'Student' : 'Tutor';
+      return '$role: ${m.content}';
+    }).join('\n');
 
     final prompt =
         '${materialsContext.isNotEmpty ? 'Study materials:\n$materialsContext\n\n' : ''}'
@@ -708,19 +760,30 @@ Coach response:''';
     required Session session,
     required List<StudyMaterial> materials,
   }) async {
-    if (_chat == null) {
-      throw StateError('No active chat. Call createSession() first.');
+    if (!_isInitialized) throw StateError('Service not initialized');
+
+    final prepared = await MaterialPreprocessor.prepare(materials);
+    final hasImages = prepared.any((p) => p.images.isNotEmpty);
+    final textContext = prepared
+        .where((p) => p.textChunk.isNotEmpty)
+        .map((p) => p.textChunk)
+        .join('\n\n');
+
+    await createSession(
+      systemInstruction: 'You are a concise summarizer for elementary students.',
+      temperature: 0.3,
+      topK: 1,
+      supportImage: hasImages,
+    );
+
+    for (final p in prepared) {
+      for (final imageBytes in p.images) {
+        await addImageQuery(imageBytes);
+      }
     }
 
-    final context =
-        materials.map((m) => '${m.title}:\n${m.content}').join('\n\n');
-
-    final prompt =
-        '''Summarize the following study materials for "${session.title}" in 3-5 key points:
-
-$context
-
-Summary:''';
+    final prompt = 'Summarize the following study materials for '
+        '"${session.title}" in 3-5 key points:\n\n$textContext\n\nSummary:';
 
     return await sendMessage(prompt);
   }
