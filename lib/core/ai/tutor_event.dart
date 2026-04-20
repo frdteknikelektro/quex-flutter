@@ -1,11 +1,18 @@
-sealed class TutorEvent {}
+sealed class TutorEvent {
+  const TutorEvent();
+}
 
 class TutorThinking extends TutorEvent {
   final String token;
-  TutorThinking(this.token);
+  const TutorThinking(this.token);
 }
 
 class TutorReply extends TutorEvent {
   final String token;
-  TutorReply(this.token);
+  const TutorReply(this.token);
+}
+
+class TutorEvaluation extends TutorEvent {
+  final double score;
+  const TutorEvaluation({required this.score});
 }

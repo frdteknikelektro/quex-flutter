@@ -1,12 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 import 'package:intl/intl.dart';
 
-import '../ai/gemma_inference_service.dart';
-import '../ai/material_preprocessor.dart';
 import '../models/models.dart';
+import 'gemma_inference_service.dart';
+import 'material_preprocessor.dart';
 import 'wiki_storage_service.dart';
 
 typedef WikiAgentLineCallback = void Function(String line);
@@ -23,8 +24,8 @@ class WikiAgentResult {
   });
 }
 
-class WikiAgentService {
-  WikiAgentService(this._storage);
+class GemmaWikiService {
+  GemmaWikiService(this._storage);
 
   final WikiStorageService _storage;
 
@@ -54,17 +55,17 @@ class WikiAgentService {
 
   static const _writePageTool = gemma.Tool(
     name: 'write_markdown_file',
-    description: 'Create or fully overwrite one markdown wiki page. Include complete YAML frontmatter and markdown content. Only write to allowed paths: index.md, log.md, sources/*.md, concepts/*.md, entities/*.md, syntheses/*.md, reviews/*.md.',
+    description: 'Write a wiki page. Include YAML frontmatter and markdown. Allowed: index.md, log.md, sources/*.md, concepts/*.md, entities/*.md, syntheses/*.md, reviews/*.md.',
     parameters: {
       'type': 'object',
       'properties': {
         'path': {
           'type': 'string',
-          'description': 'Relative path for the wiki file, e.g. sources/chapter1.md',
+          'description': 'Relative wiki path, e.g. sources/intro.md',
         },
         'content': {
           'type': 'string',
-          'description': 'Complete markdown content including YAML frontmatter block',
+          'description': 'Markdown content including YAML frontmatter.',
         },
       },
       'required': ['path', 'content'],
@@ -88,13 +89,13 @@ class WikiAgentService {
 
   static const _finishTool = gemma.Tool(
     name: 'finish_run',
-    description: 'Signal that the wiki task is fully complete. Call this only after all necessary files have been written, updated, and index.md/log.md have been updated.',
+    description: 'Call when all wiki changes are done. Provide a one-line summary.',
     parameters: {
       'type': 'object',
       'properties': {
         'summary': {
           'type': 'string',
-          'description': 'One-sentence summary of what was done, e.g. "Ingested 3 materials into sources/, updated index.md and log.md."',
+          'description': 'One-line summary of changes made.',
         },
       },
       'required': ['summary'],
@@ -179,8 +180,10 @@ class WikiAgentService {
     final deletedPaths = <String>{};
     var summary = '';
     var plainTextRetry = 0;
+    var lastPlainText = '';
 
-    for (var turn = 0; turn < 24; turn++) {
+    for (var turn = 0; turn < 48; turn++) {
+      lastPlainText = ''; // reset per turn
       var sawToolCall = false;
       final toolResults = <Map<String, Object?>>[];
 
@@ -188,9 +191,32 @@ class WikiAgentService {
         if (response is gemma.ThinkingResponse) {
           // per-token thinking — skip
         } else if (response is gemma.TextResponse) {
-          // per-token text — skip
+          lastPlainText += response.token;
+          // Try to recover flushed tool calls from partial JSON
+          final recovered = _tryRecoverToolCall(lastPlainText);
+          if (recovered != null) {
+            debugPrint('[WikiAgent] recovered flushed tool call: ${recovered.name}');
+            sawToolCall = true;
+            final result = await _executeToolCall(
+              sessionId: sessionId,
+              response: recovered,
+              touchedPaths: touchedPaths,
+              deletedPaths: deletedPaths,
+            );
+            toolResults.add(result);
+            _emitLine(onLine, result['message'] as String? ?? recovered.name);
+            lastPlainText = '';
+            if (recovered.name == 'finish_run') {
+              summary = (recovered.args['summary'] as String?)?.trim() ?? '';
+              return WikiAgentResult(
+                touchedPaths: touchedPaths.toList()..sort(),
+                deletedPaths: deletedPaths.toList()..sort(),
+                summary: summary,
+              );
+            }
+          }
         } else if (response is gemma.FunctionCallResponse) {
-          debugPrint('[WikiAgent] tool: ${response.name} args=${response.args}');
+          debugPrint('[WikiAgent] tool call: name=${response.name} args=${response.args}');
           sawToolCall = true;
           final result = await _executeToolCall(
             sessionId: sessionId,
@@ -201,6 +227,7 @@ class WikiAgentService {
           toolResults.add(result);
           _emitLine(onLine, result['message'] as String? ?? response.name);
           if (response.name == 'finish_run') {
+            debugPrint('[WikiAgent] finish_run called. summary=$summary');
             summary = (response.args['summary'] as String?)?.trim() ?? '';
             return WikiAgentResult(
               touchedPaths: touchedPaths.toList()..sort(),
@@ -233,11 +260,24 @@ class WikiAgentService {
 
       if (!sawToolCall) {
         plainTextRetry++;
-        if (plainTextRetry >= 3) {
-          throw StateError('Wiki agent stopped without calling finish_run.');
+        if (plainTextRetry >= 5) {
+          final preview = lastPlainText.isEmpty
+              ? '<empty stream or no text emitted>'
+              : '"${lastPlainText.substring(0, lastPlainText.length.clamp(0, 100))}"';
+          debugPrint('[WikiAgent] FAILURE after $plainTextRetry text-only turns. '
+              'Last text: $preview. Touched: ${touchedPaths.length}, deleted: ${deletedPaths.length}. '
+              'Touched paths: ${touchedPaths.toList()}. Deleted paths: ${deletedPaths.toList()}.');
+          throw StateError(
+            'Wiki agent stopped without calling finish_run after $plainTextRetry text-only turns. '
+            'Last text: $preview. '
+            'Touched: ${touchedPaths.length}, deleted: ${deletedPaths.length}.',
+          );
         }
+        debugPrint('[WikiAgent] text-only turn $plainTextRetry, nudging with noTool query. '
+            'lastTextPreview: "${lastPlainText.substring(0, lastPlainText.length.clamp(0, 80))}"');
         await service.addTextQuery(
-          'Use available tools to continue. Write or update wiki files as needed, then call finish_run.',
+          'You must call a tool now. Call list_existing_pages or write_markdown_file with valid arguments. '
+          'Example: {"name": "list_existing_pages", "args": {}}',
           noTool: true,
         );
         continue;
@@ -246,11 +286,17 @@ class WikiAgentService {
       plainTextRetry = 0;
       for (final result in toolResults) {
         final toolName = result['tool'] as String? ?? 'unknown';
+        debugPrint('[WikiAgent] tool result: $toolName -> ${result['message']}');
         await service.addToolResponse(toolName: toolName, response: result);
       }
     }
 
-    throw StateError('Wiki agent exceeded step limit before finish_run.');
+    debugPrint('[WikiAgent] FAILURE: exceeded 48 steps. '
+        'Touched: ${touchedPaths.toList()}. Deleted: ${deletedPaths.toList()}.');
+    throw StateError(
+      'Wiki agent exceeded step limit (48) before finish_run. '
+      'Touched: ${touchedPaths.length}, deleted: ${deletedPaths.length}.',
+    );
   }
 
   Future<Map<String, Object?>> _executeToolCall({
@@ -275,7 +321,14 @@ class WikiAgentService {
           'message': 'Listed ${entries.length} wiki pages.',
         };
       case 'read_existing_page':
-        final path = response.args['path'] as String? ?? '';
+        final rawPath = response.args['path'] as String? ?? '';
+        final path = _cleanPath(rawPath);
+        if (path.isEmpty) {
+          return {
+            'tool': response.name,
+            'message': 'Path is required. Got: "$rawPath"',
+          };
+        }
         final entry = await _storage.readEntry(sessionId, path);
         return {
           'tool': response.name,
@@ -288,10 +341,17 @@ class WikiAgentService {
         };
       case 'write_markdown_file':
         final path = response.args['path'] as String? ?? '';
+        final cleanPath = _cleanPath(path);
+        if (cleanPath.isEmpty) {
+          return {
+            'tool': response.name,
+            'message': 'Path is required and must be a valid wiki path. Got: "$path"',
+          };
+        }
         final content = response.args['content'] as String? ?? '';
         final entry = await _storage.writeMarkdownFile(
           sessionId: sessionId,
-          relativePath: path,
+          relativePath: cleanPath,
           content: content,
         );
         touchedPaths.add(entry.relativePath);
@@ -303,7 +363,14 @@ class WikiAgentService {
         };
       case 'delete_markdown_file':
         final path = response.args['path'] as String? ?? '';
-        final normalized = _storage.normalizeRelativePath(path);
+        final cleanPath = _cleanPath(path);
+        if (cleanPath.isEmpty) {
+          return {
+            'tool': response.name,
+            'message': 'Path is required and must be a valid wiki path. Got: "$path"',
+          };
+        }
+        final normalized = _storage.normalizeRelativePath(cleanPath);
         await _storage.deleteMarkdownFile(
           sessionId: sessionId,
           relativePath: normalized,
@@ -345,33 +412,31 @@ class WikiAgentService {
     ].join(', ');
 
     return '''
-You are a disciplined wiki maintainer for session "${session.title}" (Grade ${session.gradeOverride}).
+You are a wiki maintenance agent. Your job is to build, update, and lint study wikis by calling tools exactly as instructed. Output ONLY tool calls. Never emit free text, reasoning, or explanations.
 
-Write only markdown files through tools. Never answer with final prose instead of tools.
-Allowed wiki structure:
-- index.md
-- log.md
-- sources/*.md
-- concepts/*.md
-- entities/*.md
-- syntheses/*.md
-- reviews/*.md
+RULES — follow these exactly:
 
-Every category page should include YAML frontmatter with title, category, slug, sessionId, materialIds, updatedAt.
-Use markdown links between related pages when helpful.
-For index.md, group links by category and include reviews.
-For log.md, append a new dated section for this $mode run with timestamp, touched pages, and short notes.
-For sources/, create or update one source page per study material.
-For concepts/, write shared ideas and recurring themes.
-For entities/, create pages only for concrete named entities that matter.
-For syntheses/, write cross-material summaries, comparisons, or evolving thesis pages.
-For reviews/, write lint reports only.
+1. ALWAYS call list_existing_pages FIRST before writing any new page. Check what already exists.
+2. Call read_existing_page BEFORE updating an existing page. Read it first to avoid losing content.
+3. Call write_markdown_file to create or overwrite wiki pages. Include YAML frontmatter (title, category, slug, materialIds) and markdown body.
+4. Call delete_markdown_file only for truly redundant or superseded pages.
+5. Call finish_run ONLY after all file changes are done. Provide a one-line summary.
+6. NEVER produce free text as a response. If you cannot decide, call a tool.
 
-Do not write outside these categories.
-Do not invent facts not grounded in provided materials or existing wiki pages.
-After all file changes are complete, call finish_run with a one-line summary.
+WIKI STRUCTURE:
+- index.md  — category index with links grouped by category
+- log.md    — append a new dated section for this run
+- sources/*.md  — one page per study material
+- concepts/*.md — shared ideas and recurring themes
+- entities/*.md — concrete named entities only
+- syntheses/*.md — cross-material summaries and comparisons
+- reviews/*.md  — lint reports only
 
-Current date: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}
+PATH FORMAT — path arguments must be plain strings. CORRECT: "sources/chapter1.md". WRONG: "\"sources/chapter1.md\"" or "sources/<tag>" or any wrapper. No extra quotes, no tags, no brackets.
+
+OUTPUT RULE: You MUST output a tool call response for every user message. Do not explain what you are doing. Do not output thinking, reasoning, or intermediate text. Only structured tool calls are valid responses.
+
+Current date: ${DateFormat('yyyy/MM/dd HH:mm z').format(DateTime.now())} (use YYYY/MM/DD HH:MM format in log entries)
 Allowed categories: $categories
 ''';
   }
@@ -410,6 +475,119 @@ Look for:
 
 When safe, fix wiki pages directly. Also write one lint report under reviews/ with findings, fixes applied, unresolved issues, and suggested next targets. Update index.md and log.md. Finish when done.
 ''';
+  }
+
+  String _cleanPath(String raw) {
+    if (raw.isEmpty) return '';
+    // Strip XML artifacts that flutter_gemma can emit
+    var cleaned = raw.replaceAll('<|"|>', '"').replaceAll('<|"|', '"');
+    // Strip any angle-bracket sequences the model might hallucinate
+    cleaned = cleaned.replaceAll(RegExp(r'<\|[^>]*>'), '');
+    // Collapse repeated slashes
+    cleaned = cleaned.replaceAll(RegExp(r'/+'), '/');
+    // Strip trailing whitespace around the whole thing
+    cleaned = cleaned.trim();
+    // Reject: empty, or contains obviously bad chars (no angle brackets, no pipe tags)
+    if (cleaned.isEmpty || cleaned.contains('<') || cleaned.contains('>|') || !RegExp(r'^[a-zA-Z0-9_/.\-]+$').hasMatch(cleaned)) {
+      debugPrint('[WikiAgent] _cleanPath rejecting: "$raw" -> "$cleaned"');
+      return '';
+    }
+    return cleaned;
+  }
+
+  /// Attempt to parse a flushed text blob as a JSON tool call.
+  /// flutter_gemma flushes raw tokens as TextResponse when the function buffer
+  /// exceeds 1024 chars. The flushed text may contain partial JSON.
+  gemma.FunctionCallResponse? _tryRecoverToolCall(String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return null;
+
+    // Strip Gemma raw token artifacts
+    var clean = trimmed
+        .replaceAll(RegExp(r'<\|[^>]*>'), '')
+        .replaceAll('call:', '')
+        .replaceAll('call', '')
+        .trim();
+
+    // Try to find JSON object (may be wrapped in backticks or extra text)
+    final jsonStart = clean.indexOf('{');
+    final jsonEnd = clean.lastIndexOf('}');
+    if (jsonStart == -1 || jsonEnd == -1 || jsonEnd <= jsonStart) return null;
+
+    var jsonStr = clean.substring(jsonStart, jsonEnd + 1);
+    if (jsonStr.length < 10) return null;
+
+    // Unescape newlines that break JSON parsing — model embeds raw \n in strings
+    jsonStr = _tryFixJsonNewlines(jsonStr);
+
+    // Extract name from JSON
+    final nameMatch = RegExp(r'"name"\s*:\s*"([^"]+)"').firstMatch(jsonStr);
+    if (nameMatch == null) return null;
+    final name = nameMatch.group(1)!;
+
+    const validNames = {
+      'list_existing_pages',
+      'read_existing_page',
+      'write_markdown_file',
+      'delete_markdown_file',
+      'finish_run',
+    };
+    if (!validNames.contains(name)) return null;
+
+    // Try full JSON parse first
+    try {
+      final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
+      final argsRaw = decoded['args'] as Map<String, dynamic>?;
+      if (argsRaw == null) return gemma.FunctionCallResponse(name: name, args: {});
+      final args = _flattenArgs(argsRaw);
+      debugPrint('[WikiAgent] _tryRecoverToolCall: name=$name args=$args');
+      return gemma.FunctionCallResponse(name: name, args: args);
+    } catch (_) {
+      // Fallback: manual extraction for malformed JSON
+    }
+
+    // Fallback: extract path from the innermost path value
+    final pathMatch = RegExp(r'"path"\s*:\s*"([^"]+)"').firstMatch(jsonStr);
+    final path = pathMatch?.group(1);
+    final contentMatch = RegExp(r'"content"\s*:\s*"([\s\S]*?)"(?:\s*,|\s*\})').firstMatch(jsonStr);
+    final content = contentMatch?.group(1);
+
+    final args = <String, Object?>{};
+    if (path != null) args['path'] = path;
+    if (content != null) args['content'] = content;
+
+    debugPrint('[WikiAgent] _tryRecoverToolCall fallback: name=$name args=$args');
+    return gemma.FunctionCallResponse(name: name, args: args);
+  }
+
+  /// Recursively flatten nested objects — model sometimes wraps args like
+  /// {"path": {"path": "...", "content": "..."}} instead of {"path": "...", "content": "..."}
+  Map<String, Object?> _flattenArgs(Map<String, dynamic> args) {
+    final result = <String, Object?>{};
+    for (final entry in args.entries) {
+      if (entry.value is Map) {
+        result.addAll(_flattenArgs(entry.value as Map<String, dynamic>));
+      } else {
+        result[entry.key] = entry.value;
+      }
+    }
+    return result;
+  }
+
+  /// Replace raw newlines in JSON string values with \n escape sequences.
+  /// The model embeds YAML frontmatter with unescaped newlines, breaking JSON parse.
+  String _tryFixJsonNewlines(String json) {
+    // Strategy: find all "content": "..." or "summary": "..." string values
+    // and escape their inner newlines
+    return json.replaceAllMapped(
+      RegExp(r'("(?:content|summary)"\s*:\s*")([\s\S]*?)"(?=\s*,|\s*\})'),
+      (m) {
+        final openQuote = m.group(1)!;
+        final value = m.group(2)!;
+        final escaped = value.replaceAll('\n', '\\n').replaceAll('\r', '\\r');
+        return '$openQuote$escaped"';
+      },
+    );
   }
 
   String _materialsContext(List<StudyMaterial> materials) {

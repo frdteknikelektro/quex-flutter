@@ -10,10 +10,9 @@ import '../../app/breakpoints.dart';
 import '../../app/router.dart';
 import '../../app/theme.dart';
 import 'wiki_build_modal.dart';
+import '../../core/ai/wiki_storage_service.dart';
 import '../../core/state/app_state.dart';
 import '../../core/state/wiki_state.dart';
-import '../../core/wiki/wiki_markdown_parser.dart';
-import '../../core/wiki/wiki_models.dart';
 
 class SessionWikiScreen extends ConsumerStatefulWidget {
   final int sessionId;

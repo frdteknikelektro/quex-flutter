@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
 import '../../core/ai/gemma_inference_service.dart';
+import '../../core/ai/gemma_quiz_service.dart';
 import '../../core/ai/quiz_generation_event.dart';
 import '../../core/ai/quex_ai.dart';
 import '../../core/db/daos.dart';
@@ -45,6 +46,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   StreamSubscription<QuizGenerationEvent>? _subscription;
   int? _quizId;
   Future<GemmaInferenceService>? _modelFuture;
+  GemmaQuizService? _quizService;
   Session? _session;
 
   @override
@@ -156,7 +158,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     List<String> detected = [];
     try {
       final service = await _ensureModel();
-      detected = await service.detectQuestionsInMaterials(materials: selected);
+      _quizService = GemmaQuizService(service);
+      detected = await _quizService!.detectQuestionsInMaterials(materials: selected);
     } catch (_) {
       detected = [];
     }
@@ -221,11 +224,12 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
 
     try {
       final service = await _ensureModel();
+      _quizService ??= GemmaQuizService(service);
 
-      final stream = service.generateQuizStreaming(
+      final stream = _quizService!.runQuizAgent(
         session: session,
         materials: selected,
-        questionCount: questionCount,
+        maxQuestions: questionCount,
       );
 
       _subscription = stream.listen(
@@ -262,6 +266,22 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   void _handleEvent(QuizGenerationEvent event) {
     if (!mounted) return;
     switch (event) {
+      case QuizPlanned(:final questionCount, :final topics):
+        setState(() {
+          _totalCount = questionCount;
+          _generatedQuestions.add('Plan: ${topics.join(", ")}');
+        });
+        _scrollToBottom();
+      case QuizUnderReview(:final issues):
+        if (issues.isNotEmpty) {
+          _generatedQuestions.add('Review: ${issues.length} issue(s) found');
+        }
+        _scrollToBottom();
+      case QuizRegenerating(:final index):
+        _generatedQuestions.add('Regenerating Q${index + 1}...');
+        _scrollToBottom();
+      case QuizSubmitted(:final summary):
+        debugPrint('Quiz submitted: $summary');
       case QuizThinkingToken(:final token):
         setState(() {
           _isThinking = true;

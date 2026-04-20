@@ -1,9 +1,274 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
-import 'wiki_models.dart';
+// Wiki models — kept here to avoid a separate file for now
+enum WikiNodeType { file, directory }
+
+enum WikiActionStatus { idle, loadingModel, running, success, error }
+
+enum WikiRunType { ingest, lint }
+
+@immutable
+class WikiHeading {
+  final int level;
+  final String title;
+  final String anchor;
+
+  const WikiHeading({
+    required this.level,
+    required this.title,
+    required this.anchor,
+  });
+}
+
+@immutable
+class WikiEntry {
+  final String relativePath;
+  final String title;
+  final String category;
+  final String slug;
+  final String rawContent;
+  final String body;
+  final List<int> materialIds;
+  final DateTime updatedAt;
+  final Map<String, Object?> frontmatter;
+
+  const WikiEntry({
+    required this.relativePath,
+    required this.title,
+    required this.category,
+    required this.slug,
+    required this.rawContent,
+    required this.body,
+    required this.materialIds,
+    required this.updatedAt,
+    required this.frontmatter,
+  });
+}
+
+@immutable
+class WikiTreeNode {
+  final String name;
+  final String relativePath;
+  final String displayTitle;
+  final WikiNodeType type;
+  final List<WikiTreeNode> children;
+
+  const WikiTreeNode({
+    required this.name,
+    required this.relativePath,
+    required this.displayTitle,
+    required this.type,
+    this.children = const [],
+  });
+
+  bool get isDirectory => type == WikiNodeType.directory;
+  bool get isFile => type == WikiNodeType.file;
+}
+
+@immutable
+class WikiActionState {
+  final WikiActionStatus status;
+  final WikiRunType? runType;
+  final List<String> lines;
+  final String? error;
+  final List<String> touchedPaths;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+
+  const WikiActionState({
+    required this.status,
+    this.runType,
+    this.lines = const [],
+    this.error,
+    this.touchedPaths = const [],
+    this.startedAt,
+    this.completedAt,
+  });
+
+  const WikiActionState.idle()
+      : status = WikiActionStatus.idle,
+        runType = null,
+        lines = const [],
+        error = null,
+        touchedPaths = const [],
+        startedAt = null,
+        completedAt = null;
+
+  bool get isBusy =>
+      status == WikiActionStatus.loadingModel ||
+      status == WikiActionStatus.running;
+
+  bool get isSuccess => status == WikiActionStatus.success;
+  bool get hasError => status == WikiActionStatus.error;
+
+  WikiActionState copyWith({
+    WikiActionStatus? status,
+    WikiRunType? runType,
+    List<String>? lines,
+    String? error,
+    List<String>? touchedPaths,
+    DateTime? startedAt,
+    DateTime? completedAt,
+  }) {
+    return WikiActionState(
+      status: status ?? this.status,
+      runType: runType ?? this.runType,
+      lines: lines ?? this.lines,
+      error: error ?? this.error,
+      touchedPaths: touchedPaths ?? this.touchedPaths,
+      startedAt: startedAt ?? this.startedAt,
+      completedAt: completedAt ?? this.completedAt,
+    );
+  }
+}
+
+@immutable
+class WikiPageRequest {
+  final int sessionId;
+  final String relativePath;
+
+  const WikiPageRequest({
+    required this.sessionId,
+    required this.relativePath,
+  });
+
+  @override
+  bool operator ==(Object other) {
+    return other is WikiPageRequest &&
+        other.sessionId == sessionId &&
+        other.relativePath == relativePath;
+  }
+
+  @override
+  int get hashCode => Object.hash(sessionId, relativePath);
+}
+
+// MARK: - Markdown parser
+
+String stripWikiFrontmatter(String content) {
+  final normalized = content.replaceAll('\r\n', '\n');
+  if (!normalized.startsWith('---\n')) return normalized;
+  final endIndex = normalized.indexOf('\n---\n', 4);
+  if (endIndex == -1) return normalized;
+  return normalized.substring(endIndex + 5);
+}
+
+List<WikiHeading> extractWikiHeadings(String content) {
+  final headings = <WikiHeading>[];
+  final seenAnchors = <String, int>{};
+
+  for (final line in stripWikiFrontmatter(content).split('\n')) {
+    final match = RegExp(r'^(#{1,3})\s+(.+?)\s*$').firstMatch(line);
+    if (match == null) continue;
+    final title = match.group(2)!.trim();
+    final baseAnchor = _slugify(title);
+    final seen =
+        seenAnchors.update(baseAnchor, (value) => value + 1, ifAbsent: () => 0);
+    final anchor = seen == 0 ? baseAnchor : '$baseAnchor-$seen';
+    headings.add(
+      WikiHeading(
+        level: match.group(1)!.length,
+        title: title,
+        anchor: anchor,
+      ),
+    );
+  }
+
+  return headings;
+}
+
+String prepareWikiMarkdown(String content) {
+  final stripped = stripWikiFrontmatter(content);
+  final lines = stripped.split('\n');
+  final buffer = StringBuffer();
+  final blockPattern = RegExp(r'^\s*([-*+]|\d+\.|>|```|#{1,6}\s)');
+
+  for (var i = 0; i < lines.length; i++) {
+    buffer.write(lines[i]);
+    if (i < lines.length - 1) {
+      final current = lines[i];
+      final next = lines[i + 1];
+      final currentIsBlock = current.isEmpty || blockPattern.hasMatch(current);
+      final nextIsBlock = next.isEmpty || blockPattern.hasMatch(next);
+      buffer.write(currentIsBlock || nextIsBlock ? '\n' : '\n\n');
+    }
+  }
+
+  return buffer.toString().trim();
+}
+
+List<WikiMarkdownSection> splitWikiSections(String content) {
+  final stripped = stripWikiFrontmatter(content).trim();
+  if (stripped.isEmpty) return const [];
+
+  final lines = stripped.split('\n');
+  final sections = <WikiMarkdownSection>[];
+  final buffer = <String>[];
+  String? currentTitle;
+  int? currentLevel;
+  var currentId = 'overview';
+  var introCount = 0;
+
+  void flush() {
+    if (buffer.isEmpty) return;
+    sections.add(
+      WikiMarkdownSection(
+        id: currentId,
+        title: currentTitle,
+        level: currentLevel,
+        markdown: buffer.join('\n').trim(),
+      ),
+    );
+    buffer.clear();
+  }
+
+  for (final line in lines) {
+    final match = RegExp(r'^(#{1,3})\s+(.+?)\s*$').firstMatch(line);
+    if (match != null) {
+      flush();
+      currentLevel = match.group(1)!.length;
+      currentTitle = match.group(2)!.trim();
+      currentId = _slugify(currentTitle);
+      buffer.add(line);
+      continue;
+    }
+
+    if (currentTitle == null && buffer.isEmpty && line.trim().isNotEmpty) {
+      currentId = introCount == 0 ? 'overview' : 'overview-$introCount';
+      introCount++;
+    }
+    buffer.add(line);
+  }
+
+  flush();
+  return sections;
+}
+
+class WikiMarkdownSection {
+  final String id;
+  final String? title;
+  final int? level;
+  final String markdown;
+
+  const WikiMarkdownSection({
+    required this.id,
+    required this.markdown,
+    this.title,
+    this.level,
+  });
+}
+
+String _slugify(String input) {
+  final lower = input.toLowerCase().trim();
+  final sanitized = lower.replaceAll(RegExp(r'[^a-z0-9]+'), '-');
+  return sanitized.replaceAll(RegExp(r'^-+|-+$'), '').isEmpty
+      ? 'section'
+      : sanitized.replaceAll(RegExp(r'^-+|-+$'), '');
+}
 
 typedef DocumentsDirectoryProvider = Future<Directory> Function();
 

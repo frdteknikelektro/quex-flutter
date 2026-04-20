@@ -5,7 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'gemma_service_manager.dart';
 import 'gemma_inference_service.dart';
-import 'tutor_event.dart';
+import 'gemma_session_service.dart';
 import '../models/models.dart';
 
 class QuexAi {
@@ -98,12 +98,13 @@ class QuexAi {
     final service = gemmaService;
     if (service != null && service.isInitialized) {
       try {
-        return await service.getCoachReply(
+        final sessionService = GemmaSessionService(service);
+        // For sync replies, we create a session and get one response
+        await sessionService.initCoachSession(
           session: session,
           materials: materials,
-          history: history,
-          message: message,
         );
+        return await service.sendMessage(message);
       } catch (_) {
         // Fall back to rule-based on error
       }
@@ -142,111 +143,7 @@ class QuexAi {
         'I can also make a quiz or summary if you want.';
   }
 
-  /// Get tutor reply for a specific question, plus an AI-evaluated score (0.0–1.0).
-  /// Uses two separate Gemma calls: one for reply, one for evaluation.
-  /// Throws [StateError] if Gemma service is not initialized.
-  static Future<({String reply, double? score})> questionCoachReply({
-    required Question question,
-    required List<StudyMaterial> materials,
-    required List<QuestionMessage> history,
-    required String userMessage,
-  }) async {
-    if (!isReady) throw StateError('Gemma service not initialized.');
-    final service = gemmaService;
-    if (service == null || !service.isInitialized) {
-      throw StateError('Gemma service not initialized.');
-    }
-    final reply = await service.getQuestionTutorReply(
-      question: question,
-      materials: materials,
-      history: history,
-      userMessage: userMessage,
-    );
-    final updatedHistory = [
-      ...history,
-      QuestionMessage(
-        questionId: question.id!,
-        role: QuestionMessageRole.user,
-        content: userMessage,
-        createdAt: DateTime.now(),
-      ),
-      QuestionMessage(
-        questionId: question.id!,
-        role: QuestionMessageRole.assistant,
-        content: reply,
-        createdAt: DateTime.now(),
-      ),
-    ];
-    final score = await service.evaluateQuestionScore(
-      question: question,
-      materials: materials,
-      history: updatedHistory,
-    );
-    return (reply: reply, score: score);
-  }
-
-  /// Streaming coach reply for session-level chat.
-  /// Yields [TutorThinking] then [TutorReply] tokens.
-  /// Throws [StateError] if Gemma service is not initialized.
-  static Stream<TutorEvent> coachReplyStream({
-    required Session session,
-    required List<StudyMaterial> materials,
-    required List<ChatMessage> history,
-    required String message,
-  }) {
-    if (!isReady) throw StateError('Gemma service not initialized.');
-    final service = gemmaService;
-    if (service == null || !service.isInitialized) {
-      throw StateError('Gemma service not initialized.');
-    }
-    return service.getCoachReplyStreaming(
-      session: session,
-      materials: materials,
-      history: history,
-      message: message,
-    );
-  }
-
-  /// Streaming tutor reply with thinking mode and multimodal image support.
-  /// Yields [TutorThinking] tokens first, then [TutorReply] tokens.
-  /// Throws [StateError] if Gemma service is not initialized.
-  static Stream<TutorEvent> questionCoachReplyStream({
-    required Question question,
-    required List<StudyMaterial> materials,
-    required List<QuestionMessage> history,
-    required String userMessage,
-  }) {
-    if (!isReady) throw StateError('Gemma service not initialized.');
-    final service = gemmaService;
-    if (service == null || !service.isInitialized) {
-      throw StateError('Gemma service not initialized.');
-    }
-    return service.getQuestionTutorReplyStreaming(
-      question: question,
-      materials: materials,
-      history: history,
-      userMessage: userMessage,
-    );
-  }
-
-  /// Evaluate student understanding after a completed exchange (0.0–1.0).
-  /// Returns null if service unavailable or history is empty.
-  static Future<double?> evaluateScore({
-    required Question question,
-    required List<StudyMaterial> materials,
-    required List<QuestionMessage> history,
-  }) async {
-    if (!isReady) return null;
-    final service = gemmaService;
-    if (service == null || !service.isInitialized) return null;
-    return await service.evaluateQuestionScore(
-      question: question,
-      materials: materials,
-      history: history,
-    );
-  }
-
-  static String sessionSummary(Session session, List<StudyMaterial> materials) {
+static String sessionSummary(Session session, List<StudyMaterial> materials) {
     return _sessionSummary(session, materials);
   }
 

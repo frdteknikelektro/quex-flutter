@@ -9,6 +9,7 @@ import 'package:open_filex/open_filex.dart';
 
 import '../../app/theme.dart';
 import '../../core/ai/gemma_inference_service.dart';
+import '../../core/ai/gemma_session_service.dart';
 import '../../core/ai/quex_ai.dart';
 import '../../core/ai/tutor_event.dart';
 import '../../core/db/daos.dart';
@@ -42,6 +43,12 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   bool _thinkingExpanded = false;
   StreamSubscription<TutorEvent>? _streamSub;
   Future<GemmaInferenceService>? _modelFuture;
+  GemmaSessionService? _sessionService;
+
+  // Persistent session state
+  bool _sessionInitialized = false;
+  bool _sessionInitializing = false;
+  double? _currentScore;
 
   @override
   void initState() {
@@ -89,6 +96,59 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     }
   }
 
+  /// Initialize tutor session with proper guards for concurrent calls and ownership loss.
+  Future<void> _ensureTutorSession(
+    Question question,
+    List<StudyMaterial> materials,
+  ) async {
+    final service = await _ensureModel();
+
+    // Fast path: already ready
+    if (_sessionInitialized && _sessionService != null) return;
+
+    // Guard against concurrent initialization
+    if (_sessionInitializing) {
+      while (_sessionInitializing) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      // After waiting, re-check state
+      if (_sessionInitialized && _sessionService != null) return;
+    }
+
+    _sessionInitializing = true;
+    try {
+      _sessionService = GemmaSessionService(service);
+      await _sessionService!.initQuestionTutorSession(
+        question: question,
+        materials: materials,
+      );
+      if (mounted) {
+        setState(() {
+          _sessionInitialized = true;
+          _currentScore = null;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to init tutor session: $e');
+      rethrow;
+    } finally {
+      if (mounted) {
+        setState(() => _sessionInitializing = false);
+      }
+    }
+  }
+
+  /// Handle score from tool evaluation.
+  Future<void> _handleScore(double score) async {
+    if (!mounted) return;
+
+    setState(() => _currentScore = score);
+
+    await QuestionDAO().saveScore(widget.questionId, score);
+    ref.invalidate(questionProvider(widget.questionId));
+    ref.invalidate(quizBundleProvider(widget.quizId));
+  }
+
   Future<void> _stopGeneration() async {
     await _streamSub?.cancel();
     _streamSub = null;
@@ -133,6 +193,28 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       return;
     }
 
+    // Check if ownership was lost (another screen took Gemma)
+    if (!service.hasActiveSession) {
+      setState(() => _sessionInitialized = false);
+    }
+
+    final materials =
+        ref.read(materialsProvider(widget.sessionId)).valueOrNull ?? [];
+
+    // Initialize session (first time or after ownership loss)
+    try {
+      await _ensureTutorSession(question, materials);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to start chat session. Please try again.'),
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() {
       _sending = true;
       _streamingContent = '';
@@ -140,9 +222,6 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       _thinkingExpanded = false;
     });
     _controller.clear();
-
-    final materials =
-        ref.read(materialsProvider(widget.sessionId)).valueOrNull ?? [];
 
     // Save user message
     await QuestionMessageDAO().insert(QuestionMessage(
@@ -158,12 +237,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final accumulatedThinking = StringBuffer();
 
     try {
-      final stream = service.getQuestionTutorReplyStreaming(
-        question: question,
-        materials: materials,
-        history: history,
-        userMessage: text,
-      );
+      final stream = _sessionService!.sendQuestionTutorMessage(text);
 
       await _streamSub?.cancel();
       final completer = Completer<void>();
@@ -178,6 +252,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
             accumulatedReply.write(event.token);
             setState(() => _streamingContent = accumulatedReply.toString());
             _scrollToBottom();
+          } else if (event is TutorEvaluation) {
+            _handleScore(event.score);
           }
         },
         onDone: () => completer.complete(),
@@ -189,55 +265,35 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
 
       final reply = accumulatedReply.toString();
       final thinking = accumulatedThinking.toString();
+
       if (mounted) {
         setState(() {
           _streamingContent = null;
           _sending = false;
-          // Freeze thinking: keep content but mark as done (not null → collapsible pill remains)
           _thinkingContent = thinking.isEmpty ? null : thinking;
           _thinkingExpanded = false;
         });
       }
 
       // Save assistant reply
-      await QuestionMessageDAO().insert(QuestionMessage(
-        questionId: widget.questionId,
-        role: QuestionMessageRole.assistant,
-        content: reply,
-        createdAt: DateTime.now(),
-      ));
-      ref.invalidate(questionMessagesProvider(widget.questionId));
-      _scrollToBottom();
-
-      // Evaluate score with updated history
-      final updatedHistory = [
-        ...history,
-        QuestionMessage(
-          questionId: question.id!,
-          role: QuestionMessageRole.user,
-          content: text,
-          createdAt: DateTime.now(),
-        ),
-        QuestionMessage(
-          questionId: question.id!,
+      if (reply.isNotEmpty) {
+        await QuestionMessageDAO().insert(QuestionMessage(
+          questionId: widget.questionId,
           role: QuestionMessageRole.assistant,
           content: reply,
           createdAt: DateTime.now(),
-        ),
-      ];
-
-      final score = await service.evaluateQuestionScore(
-        question: question,
-        materials: materials,
-        history: updatedHistory,
-      );
-
-      if (score != null && mounted) {
-        await QuestionDAO().saveScore(widget.questionId, score);
-        ref.invalidate(questionProvider(widget.questionId));
-        ref.invalidate(quizBundleProvider(widget.quizId));
+        ));
+        ref.invalidate(questionMessagesProvider(widget.questionId));
+        _scrollToBottom();
       }
     } catch (e) {
+      debugPrint('Tutor stream error: $e');
+
+      // Check if error is due to ownership loss
+      if (!service.hasActiveSession) {
+        setState(() => _sessionInitialized = false);
+      }
+
       if (mounted) {
         setState(() {
           _streamingContent = null;
@@ -246,7 +302,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Quex is thinking… try again in a moment.'),
+            content: Text('Session interrupted. Please try again.'),
             duration: Duration(seconds: 3),
           ),
         );
@@ -305,10 +361,12 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
               // Question card
               _QuestionCard(question: question, scheme: scheme, theme: theme),
 
-              // Score badge (if scored)
-              if (question.score != null)
+              // Score badge (if scored or tool evaluation fired)
+              if ((_currentScore ?? question.score) != null)
                 _ScoreBadgeRow(
-                    score: question.score!, scheme: scheme, theme: theme),
+                    score: _currentScore ?? question.score ?? 0.0,
+                    scheme: scheme,
+                    theme: theme),
 
               // Messages
               Expanded(

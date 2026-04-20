@@ -1,8 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quex/core/wiki/wiki_markdown_parser.dart';
-import 'package:quex/core/wiki/wiki_storage_service.dart';
+import 'package:quex/core/ai/wiki_storage_service.dart';
 
 void main() {
   group('WikiStorageService', () {

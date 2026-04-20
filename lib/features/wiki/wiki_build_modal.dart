@@ -5,8 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
 import '../../core/ai/quex_ai.dart';
+import '../../core/ai/wiki_storage_service.dart';
 import '../../core/state/wiki_state.dart';
-import '../../core/wiki/wiki_models.dart';
 
 class WikiBuildModal extends ConsumerStatefulWidget {
   final int sessionId;

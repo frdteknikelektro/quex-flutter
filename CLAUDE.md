@@ -15,11 +15,7 @@ fvm flutter pub get          # install deps (FVM pinned to Flutter 3.41.6)
 fvm flutter run              # run app
 fvm flutter analyze          # lint
 fvm flutter test             # run tests (currently minimal: one smoke test)
-```
-
-Code generation (available but unused as of now):
-```bash
-dart run build_runner build  # generates .g.dart for riverpod_generator
+dart run build_runner build  # generates .g.dart for riverpod_generator (unused currently)
 ```
 
 ## Architecture
@@ -30,7 +26,9 @@ dart run build_runner build  # generates .g.dart for riverpod_generator
 
 **Data layer**: Raw SQLite via `sqflite`. Single DB class in `lib/core/db/database.dart` (6 tables, v1 schema, WAL mode, FK on). 6 DAOs in `lib/core/db/daos.dart`. Models in `lib/core/models/models.dart` with hand-written `toMap()`/`fromMap()`/`copyWith()` — no freezed, no json_serializable.
 
-**AI layer**: Dual-mode. `QuexAi` (static facade, rule-based fallback) + `GemmaInferenceService` (on-device Gemma 4 E4B via `flutter_gemma`). `ModelManager` handles model download from HuggingFace. `ModelDownloadNotifier` is the Riverpod state machine for download lifecycle.
+**AI layer**: Dual-mode. `QuexAi` (static facade, rule-based fallback) + `GemmaInferenceService` (on-device Gemma 4 E4B via `flutter_gemma`). `ModelManager` handles model download from HuggingFace. `ModelDownloadNotifier` is the Riverpod state machine for download lifecycle. **Important**: `GemmaInferenceService` uses persistent session pattern — call `initQuestionTutorSession()` or `initCoachSession()` once per screen, then `sendQuestionTutorMessage()` or `sendCoachMessage()` for each user message. Do NOT create new session per message.
+
+**Wiki layer**: WikiAgentService provides auto-generated study guides via multi-turn tool-calling with Gemma. WikiStorageService persists markdown to SQLite. Wiki-markdown uses custom syntax: `[[Parent Topic]]` for internal links, `# Category` headers for grouping.
 
 **Aggregation**: `SessionBundle` and `QuizBundle` compose related entities for screen consumption.
 
@@ -53,3 +51,4 @@ Defined in `lib/app/theme.dart`:
 - Route constants in `Routes` class, navigation via `context.go()`/`context.push()`
 - Default profiles seeded on DB creation: "Raina" (grade 3), "Kindi" (grade 2)
 - `activeProfileId` persisted in `SharedPreferences`, loaded on startup
+- **Gemma ownership token system**: Screens acquire service via `QuexAi.acquireGemmaService(token)`. If another screen takes ownership, previous session is invalidated. Check `service.hasActiveSession` before sending.

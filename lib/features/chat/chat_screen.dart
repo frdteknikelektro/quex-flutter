@@ -10,6 +10,7 @@ import 'package:open_filex/open_filex.dart';
 import '../../app/breakpoints.dart';
 import '../../app/theme.dart';
 import '../../core/ai/gemma_inference_service.dart';
+import '../../core/ai/gemma_session_service.dart';
 import '../../core/ai/quex_ai.dart';
 import '../../core/ai/tutor_event.dart';
 import '../../core/db/daos.dart';
@@ -41,6 +42,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _thinkingExpanded = false;
   StreamSubscription<TutorEvent>? _streamSub;
   Future<GemmaInferenceService>? _modelFuture;
+  GemmaSessionService? _sessionService;
+
+  // Persistent session state
+  bool _coachSessionInitialized = false;
+  bool _coachSessionInitializing = false;
 
   @override
   void initState() {
@@ -93,6 +99,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  /// Initialize coach session ONCE per screen visit.
+  Future<void> _ensureCoachSession(
+    Session session,
+    List<StudyMaterial> materials,
+  ) async {
+    final service = await _ensureModel();
+
+    if (_coachSessionInitialized && _sessionService != null) return;
+    if (_coachSessionInitializing) {
+      while (_coachSessionInitializing) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      if (_coachSessionInitialized && _sessionService != null) return;
+    }
+
+    _coachSessionInitializing = true;
+    try {
+      _sessionService = GemmaSessionService(service);
+      await _sessionService!.initCoachSession(
+        session: session,
+        materials: materials,
+      );
+      if (mounted) {
+        setState(() => _coachSessionInitialized = true);
+      }
+    } catch (e) {
+      debugPrint('Failed to init coach session: $e');
+      rethrow;
+    } finally {
+      if (mounted) {
+        setState(() => _coachSessionInitializing = false);
+      }
+    }
+  }
+
   Future<void> _resetChat() async {
     await ChatDAO().deleteBySession(widget.sessionId);
     ref.invalidate(chatMessagesProvider(widget.sessionId));
@@ -124,7 +165,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _sendMessage(
-      SessionBundle bundle, List<StudyMaterial> chatMaterials) async {
+    SessionBundle bundle,
+    List<StudyMaterial> chatMaterials,
+  ) async {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
 
@@ -137,6 +180,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           SnackBar(
             content: Text('Could not load model: $error'),
             duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    // Check if ownership was lost (another screen took Gemma)
+    if (!service.hasActiveSession) {
+      setState(() => _coachSessionInitialized = false);
+    }
+
+    // Initialize session (first time or after ownership loss)
+    try {
+      await _ensureCoachSession(bundle.session, chatMaterials);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to start chat session. Please try again.'),
+            duration: Duration(seconds: 3),
           ),
         );
       }
@@ -165,12 +228,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final accumulatedThinking = StringBuffer();
 
     try {
-      final stream = service.getCoachReplyStreaming(
-        session: bundle.session,
-        materials: chatMaterials,
-        history: bundle.messages,
-        message: text,
-      );
+      final stream = _sessionService!.sendCoachMessage(text);
 
       await _streamSub?.cancel();
       final completer = Completer<void>();
@@ -219,6 +277,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
       _scrollToBottom();
     } catch (e) {
+      debugPrint('Coach stream error: $e');
+
+      // Check if error is due to ownership loss
+      if (!service.hasActiveSession) {
+        setState(() => _coachSessionInitialized = false);
+      }
+
       if (mounted) {
         setState(() {
           _streamingContent = null;
@@ -227,7 +292,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Quex is thinking… try again in a moment.'),
+            content: Text('Session interrupted. Please try again.'),
             duration: Duration(seconds: 3),
           ),
         );

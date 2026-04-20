@@ -1,17 +1,16 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../ai/gemma_inference_service.dart';
+import '../ai/gemma_wiki_service.dart';
+import '../ai/wiki_storage_service.dart';
 import '../state/app_state.dart';
-import '../wiki/wiki_agent_service.dart';
-import '../wiki/wiki_models.dart';
-import '../wiki/wiki_storage_service.dart';
 
 final wikiStorageServiceProvider = Provider<WikiStorageService>((ref) {
   return WikiStorageService();
 });
 
-final wikiAgentServiceProvider = Provider<WikiAgentService>((ref) {
-  return WikiAgentService(ref.read(wikiStorageServiceProvider));
+final wikiAgentServiceProvider = Provider<GemmaWikiService>((ref) {
+  return GemmaWikiService(ref.read(wikiStorageServiceProvider));
 });
 
 final wikiAutoLoadModelProvider = Provider<bool>((ref) => true);
