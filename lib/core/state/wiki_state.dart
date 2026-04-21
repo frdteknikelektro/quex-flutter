@@ -36,11 +36,27 @@ class WikiActionController extends StateNotifier<WikiActionState> {
   final Ref _ref;
   final int _sessionId;
 
-  Future<void> ingest(GemmaInferenceService service) async {
+  Future<void> ingest(
+    GemmaInferenceService service, {
+    bool cleanFirst = false,
+  }) async {
     await _run(
       runType: WikiRunType.ingest,
       service: service,
-      runner: ({required bundle, required onLine, required onPlan, required onStepComplete}) {
+      beforeRun: cleanFirst
+          ? (appendLine) async {
+              appendLine('Clearing existing wiki pages...');
+              await _ref
+                  .read(wikiStorageServiceProvider)
+                  .clearSessionWiki(_sessionId);
+              appendLine('Wiki cleared. Building from scratch...');
+            }
+          : null,
+      runner: (
+          {required bundle,
+          required onLine,
+          required onPlan,
+          required onStepComplete}) {
         return _ref.read(wikiAgentServiceProvider).runIngest(
               service: service,
               session: bundle.session,
@@ -58,7 +74,11 @@ class WikiActionController extends StateNotifier<WikiActionState> {
     await _run(
       runType: WikiRunType.lint,
       service: service,
-      runner: ({required bundle, required onLine, required onPlan, required onStepComplete}) {
+      runner: (
+          {required bundle,
+          required onLine,
+          required onPlan,
+          required onStepComplete}) {
         return _ref.read(wikiAgentServiceProvider).runLint(
               service: service,
               session: bundle.session,
@@ -75,6 +95,7 @@ class WikiActionController extends StateNotifier<WikiActionState> {
   Future<void> _run({
     required WikiRunType runType,
     required GemmaInferenceService service,
+    Future<void> Function(void Function(String line) appendLine)? beforeRun,
     required Future<WikiAgentResult> Function({
       required SessionBundle bundle,
       required void Function(String line) onLine,
@@ -97,7 +118,7 @@ class WikiActionController extends StateNotifier<WikiActionState> {
       return;
     }
 
-    if (bundle.materials.isEmpty) {
+    if (runType == WikiRunType.ingest && bundle.materials.isEmpty) {
       state = WikiActionState(
         status: WikiActionStatus.error,
         runType: runType,
@@ -121,6 +142,12 @@ class WikiActionController extends StateNotifier<WikiActionState> {
     );
 
     try {
+      if (beforeRun != null) {
+        await beforeRun((line) {
+          state = state.copyWith(lines: [...state.lines, line]);
+        });
+      }
+
       final result = await runner(
         bundle: bundle,
         onLine: (line) {
@@ -130,7 +157,8 @@ class WikiActionController extends StateNotifier<WikiActionState> {
           state = state.copyWith(plan: steps);
         },
         onStepComplete: (index) {
-          state = state.copyWith(completedSteps: {...state.completedSteps, index});
+          state =
+              state.copyWith(completedSteps: {...state.completedSteps, index});
         },
       );
 

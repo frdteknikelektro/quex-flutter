@@ -6,6 +6,7 @@ import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 import '../models/models.dart';
 import 'gemma_inference_service.dart';
 import 'material_preprocessor.dart';
+import 'response_loop_guard.dart';
 import 'quiz_generation_event.dart';
 
 /// Service for agentic quiz generation with multi-turn tool calling.
@@ -38,7 +39,8 @@ class GemmaQuizService {
 
   static const _completeStepTool = gemma.Tool(
     name: 'complete_step',
-    description: 'Mark a planned step as done. Call after finishing each step from your plan.',
+    description:
+        'Mark a planned step as done. Call after finishing each step from your plan.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -165,6 +167,7 @@ class GemmaQuizService {
 
     final prepared = await MaterialPreprocessor.prepare(materials);
     final hasImages = prepared.any((p) => p.images.isNotEmpty);
+    final guard = ResponseLoopGuard();
 
     const systemInstruction =
         'You are a quiz generator agent for elementary students. '
@@ -178,7 +181,14 @@ class GemmaQuizService {
     await _inference.createSession(
       systemInstruction: systemInstruction,
       isThinking: false,
-      tools: [_planTool, _completeStepTool, _analyzeTool, _questionTool, _reviewTool, _finishTool],
+      tools: [
+        _planTool,
+        _completeStepTool,
+        _analyzeTool,
+        _questionTool,
+        _reviewTool,
+        _finishTool
+      ],
       supportsFunctionCalls: true,
       supportImage: hasImages,
     );
@@ -210,19 +220,40 @@ class GemmaQuizService {
     int? plannedCount;
     List<String> plannedTopics = [];
     var waitingForAnalyze = true;
+    var analyzeAttempts = 0;
+    const maxAnalyzeAttempts = 5;
 
     while (waitingForAnalyze) {
       await for (final response in _inference.generateResponses()) {
-        if (response is gemma.FunctionCallResponse) {
-          if (response.name == 'plan') {
-            final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
-            await _inference.addToolResponse(toolName: 'plan', response: {'acknowledged': true});
+        if (response is! gemma.FunctionCallResponse) {
+          continue;
+        }
+
+        final error = guard.recordToolCall(response.name, response.args);
+        if (error != null) {
+          throw StateError(error);
+        }
+
+        switch (response.name) {
+          case 'plan':
+            final steps =
+                (response.args['steps'] as List<dynamic>?)?.cast<String>() ??
+                    [];
+            await _inference.addToolResponse(
+              toolName: 'plan',
+              response: {'acknowledged': true},
+            );
             yield QuizPlanAnnounced(steps);
-          } else if (response.name == 'complete_step') {
+            continue;
+          case 'complete_step':
             final index = (response.args['index'] as num?)?.toInt() ?? 0;
-            await _inference.addToolResponse(toolName: 'complete_step', response: {'acknowledged': true});
+            await _inference.addToolResponse(
+              toolName: 'complete_step',
+              response: {'acknowledged': true},
+            );
             yield QuizStepCompleted(index);
-          } else if (response.name == 'analyze_materials') {
+            continue;
+          case 'analyze_materials':
             plannedCount = (response.args['question_count'] as num?)?.toInt();
             final topics = response.args['topics'];
             if (topics is List) {
@@ -240,13 +271,19 @@ class GemmaQuizService {
               yield QuizPlanned(plannedCount, plannedTopics);
             }
             break;
-          }
         }
       }
       if (waitingForAnalyze) {
+        analyzeAttempts++;
+        if (analyzeAttempts >= maxAnalyzeAttempts) {
+          throw StateError(
+            'Quiz agent stopped without calling analyze_materials after '
+            '$analyzeAttempts attempts.',
+          );
+        }
         // Retry prompt
-        await _inference.addTextQuery(
-            'Please call analyze_materials to plan the quiz.');
+        await _inference
+            .addTextQuery('Please call analyze_materials to plan the quiz.');
       }
     }
 
@@ -266,20 +303,50 @@ class GemmaQuizService {
           await for (final response in _inference.generateResponses()) {
             if (response is gemma.ThinkingResponse) {
               yield QuizThinkingToken(response.content);
-            } else if (response is gemma.TextResponse) {
+              continue;
+            }
+
+            if (response is gemma.TextResponse) {
+              final error = guard.recordTextToken(response.token);
+              if (error != null) {
+                throw StateError(error);
+              }
               yield QuizTextToken(response.token);
-            } else if (response is gemma.FunctionCallResponse) {
-              if (response.name == 'plan') {
-                final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
-                await _inference.addToolResponse(toolName: 'plan', response: {'acknowledged': true});
+              continue;
+            }
+
+            if (response is! gemma.FunctionCallResponse) {
+              continue;
+            }
+
+            final error = guard.recordToolCall(response.name, response.args);
+            if (error != null) {
+              throw StateError(error);
+            }
+
+            switch (response.name) {
+              case 'plan':
+                final steps = (response.args['steps'] as List<dynamic>?)
+                        ?.cast<String>() ??
+                    [];
+                await _inference.addToolResponse(
+                  toolName: 'plan',
+                  response: {'acknowledged': true},
+                );
                 yield QuizPlanAnnounced(steps);
-              } else if (response.name == 'complete_step') {
+                continue;
+              case 'complete_step':
                 final index = (response.args['index'] as num?)?.toInt() ?? 0;
-                await _inference.addToolResponse(toolName: 'complete_step', response: {'acknowledged': true});
+                await _inference.addToolResponse(
+                  toolName: 'complete_step',
+                  response: {'acknowledged': true},
+                );
                 yield QuizStepCompleted(index);
-              } else if (response.name == 'generate_question') {
+                continue;
+              case 'generate_question':
                 gotCall = true;
-                parsed = _parseToolCallQuestion(response.args, orderIndex: i - 1);
+                parsed =
+                    _parseToolCallQuestion(response.args, orderIndex: i - 1);
                 if (parsed == null) retries++;
 
                 // Acknowledge generation
@@ -291,7 +358,7 @@ class GemmaQuizService {
                     'valid': parsed != null,
                   },
                 );
-              }
+                continue;
             }
           }
         } catch (e) {
@@ -333,16 +400,35 @@ class GemmaQuizService {
     while (reviewCycles < maxReviewCycles) {
       List<int> regenerateIndices = [];
       await for (final response in _inference.generateResponses()) {
-        if (response is gemma.FunctionCallResponse) {
-          if (response.name == 'plan') {
-            final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
-            await _inference.addToolResponse(toolName: 'plan', response: {'acknowledged': true});
+        if (response is! gemma.FunctionCallResponse) {
+          continue;
+        }
+
+        final error = guard.recordToolCall(response.name, response.args);
+        if (error != null) {
+          throw StateError(error);
+        }
+
+        switch (response.name) {
+          case 'plan':
+            final steps =
+                (response.args['steps'] as List<dynamic>?)?.cast<String>() ??
+                    [];
+            await _inference.addToolResponse(
+              toolName: 'plan',
+              response: {'acknowledged': true},
+            );
             yield QuizPlanAnnounced(steps);
-          } else if (response.name == 'complete_step') {
+            continue;
+          case 'complete_step':
             final index = (response.args['index'] as num?)?.toInt() ?? 0;
-            await _inference.addToolResponse(toolName: 'complete_step', response: {'acknowledged': true});
+            await _inference.addToolResponse(
+              toolName: 'complete_step',
+              response: {'acknowledged': true},
+            );
             yield QuizStepCompleted(index);
-          } else if (response.name == 'review_quiz') {
+            continue;
+          case 'review_quiz':
             final ready = response.args['ready_to_submit'] as bool? ?? false;
             final issues = response.args['issues_found'];
             final indices = response.args['regenerate_indices'];
@@ -368,7 +454,7 @@ class GemmaQuizService {
             if (ready || regenerateIndices.isEmpty) {
               break;
             }
-          }
+            continue;
         }
       }
 
@@ -387,17 +473,37 @@ class GemmaQuizService {
               'Regenerate question ${idx + 1}. Call generate_question with improved content.');
 
           await for (final response in _inference.generateResponses()) {
-            if (response is gemma.FunctionCallResponse) {
-              if (response.name == 'plan') {
-                final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
-                await _inference.addToolResponse(toolName: 'plan', response: {'acknowledged': true});
+            if (response is! gemma.FunctionCallResponse) {
+              continue;
+            }
+
+            final error = guard.recordToolCall(response.name, response.args);
+            if (error != null) {
+              throw StateError(error);
+            }
+
+            switch (response.name) {
+              case 'plan':
+                final steps = (response.args['steps'] as List<dynamic>?)
+                        ?.cast<String>() ??
+                    [];
+                await _inference.addToolResponse(
+                  toolName: 'plan',
+                  response: {'acknowledged': true},
+                );
                 yield QuizPlanAnnounced(steps);
-              } else if (response.name == 'complete_step') {
+                continue;
+              case 'complete_step':
                 final index = (response.args['index'] as num?)?.toInt() ?? 0;
-                await _inference.addToolResponse(toolName: 'complete_step', response: {'acknowledged': true});
+                await _inference.addToolResponse(
+                  toolName: 'complete_step',
+                  response: {'acknowledged': true},
+                );
                 yield QuizStepCompleted(index);
-              } else if (response.name == 'generate_question') {
-                replaced = _parseToolCallQuestion(response.args, orderIndex: idx);
+                continue;
+              case 'generate_question':
+                replaced =
+                    _parseToolCallQuestion(response.args, orderIndex: idx);
 
                 await _inference.addToolResponse(
                   toolName: 'generate_question',
@@ -408,7 +514,6 @@ class GemmaQuizService {
                   },
                 );
                 break;
-              }
             }
           }
           regenRetries++;
@@ -432,16 +537,34 @@ class GemmaQuizService {
     var summary = '';
 
     await for (final response in _inference.generateResponses()) {
-      if (response is gemma.FunctionCallResponse) {
-        if (response.name == 'plan') {
-          final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
-          await _inference.addToolResponse(toolName: 'plan', response: {'acknowledged': true});
+      if (response is! gemma.FunctionCallResponse) {
+        continue;
+      }
+
+      final error = guard.recordToolCall(response.name, response.args);
+      if (error != null) {
+        throw StateError(error);
+      }
+
+      switch (response.name) {
+        case 'plan':
+          final steps =
+              (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
+          await _inference.addToolResponse(
+            toolName: 'plan',
+            response: {'acknowledged': true},
+          );
           yield QuizPlanAnnounced(steps);
-        } else if (response.name == 'complete_step') {
+          continue;
+        case 'complete_step':
           final index = (response.args['index'] as num?)?.toInt() ?? 0;
-          await _inference.addToolResponse(toolName: 'complete_step', response: {'acknowledged': true});
+          await _inference.addToolResponse(
+            toolName: 'complete_step',
+            response: {'acknowledged': true},
+          );
           yield QuizStepCompleted(index);
-        } else if (response.name == 'finish_run') {
+          continue;
+        case 'finish_run':
           summary = (response.args['summary'] as String?) ?? '';
 
           await _inference.addToolResponse(
@@ -449,7 +572,6 @@ class GemmaQuizService {
             response: {'acknowledged': true},
           );
           break;
-        }
       }
     }
 
@@ -519,8 +641,7 @@ class GemmaQuizService {
       final type = typeStr == 'textAnswer'
           ? QuestionType.textAnswer
           : QuestionType.multipleChoice;
-      final options =
-          (args['options'] as List<dynamic>?)?.cast<String>() ?? [];
+      final options = (args['options'] as List<dynamic>?)?.cast<String>() ?? [];
 
       if (type == QuestionType.multipleChoice && options.length < 2) {
         return null;

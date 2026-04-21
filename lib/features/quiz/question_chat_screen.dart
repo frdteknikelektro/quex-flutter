@@ -9,8 +9,8 @@ import 'package:open_filex/open_filex.dart';
 
 import '../../app/theme.dart';
 import '../../core/ai/gemma_inference_service.dart';
+import '../../core/ai/gemma_service_host.dart';
 import '../../core/ai/gemma_session_service.dart';
-import '../../core/ai/quex_ai.dart';
 import '../../core/ai/tutor_event.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
@@ -20,12 +20,14 @@ class QuestionChatScreen extends ConsumerStatefulWidget {
   final int sessionId;
   final int quizId;
   final int questionId;
+  final GemmaInferenceService Function()? gemmaServiceFactory;
 
   const QuestionChatScreen({
     super.key,
     required this.sessionId,
     required this.quizId,
     required this.questionId,
+    this.gemmaServiceFactory,
   });
 
   @override
@@ -35,14 +37,13 @@ class QuestionChatScreen extends ConsumerStatefulWidget {
 class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
-  final Object _gemmaOwnerToken = Object();
+  late final GemmaServiceHost _gemmaHost;
   bool _sending = false;
   String? _streamingContent; // reply tokens accumulating
   String?
       _thinkingContent; // thinking tokens accumulating (null = not thinking)
   bool _thinkingExpanded = false;
   StreamSubscription<TutorEvent>? _streamSub;
-  Future<GemmaInferenceService>? _modelFuture;
   GemmaSessionService? _sessionService;
 
   // Persistent session state
@@ -53,6 +54,9 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   @override
   void initState() {
     super.initState();
+    _gemmaHost = GemmaServiceHost(
+      service: widget.gemmaServiceFactory?.call(),
+    );
     unawaited(_warmModel());
   }
 
@@ -61,31 +65,12 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     _streamSub?.cancel();
     _controller.dispose();
     _scrollController.dispose();
-    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
+    unawaited(_gemmaHost.dispose());
     super.dispose();
   }
 
   Future<GemmaInferenceService> _ensureModel() {
-    final current = QuexAi.gemmaService;
-    if (current != null &&
-        current.isInitialized &&
-        QuexAi.isCurrentGemmaOwner(_gemmaOwnerToken)) {
-      return Future.value(current);
-    }
-
-    final existingFuture = _modelFuture;
-    if (existingFuture != null) return existingFuture;
-
-    final future = _loadModel();
-    _modelFuture = future;
-    future.whenComplete(() {
-      if (mounted) _modelFuture = null;
-    });
-    return future;
-  }
-
-  Future<GemmaInferenceService> _loadModel() async {
-    return await QuexAi.acquireGemmaService(_gemmaOwnerToken);
+    return _gemmaHost.ensureInitialized();
   }
 
   Future<void> _warmModel() async {
@@ -96,7 +81,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     }
   }
 
-  /// Initialize tutor session with proper guards for concurrent calls and ownership loss.
+  /// Initialize tutor session with proper guards for concurrent calls.
   Future<void> _ensureTutorSession(
     Question question,
     List<StudyMaterial> materials,
@@ -178,9 +163,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
 
-    late final GemmaInferenceService service;
     try {
-      service = await _ensureModel();
+      await _ensureModel();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -193,15 +177,10 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       return;
     }
 
-    // Check if ownership was lost (another screen took Gemma)
-    if (!service.hasActiveSession) {
-      setState(() => _sessionInitialized = false);
-    }
-
     final materials =
         ref.read(materialsProvider(widget.sessionId)).valueOrNull ?? [];
 
-    // Initialize session (first time or after ownership loss)
+    // Initialize session once per screen visit.
     try {
       await _ensureTutorSession(question, materials);
     } catch (e) {
@@ -289,13 +268,10 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     } catch (e) {
       debugPrint('Tutor stream error: $e');
 
-      // Check if error is due to ownership loss
-      if (!service.hasActiveSession) {
-        setState(() => _sessionInitialized = false);
-      }
-
       if (mounted) {
         setState(() {
+          _sessionInitialized = false;
+          _sessionService = null;
           _streamingContent = null;
           _thinkingContent = null;
           _sending = false;

@@ -4,14 +4,24 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/theme.dart';
-import '../../core/ai/quex_ai.dart';
+import '../../core/ai/gemma_inference_service.dart';
+import '../../core/ai/gemma_service_host.dart';
 import '../../core/ai/wiki_storage_service.dart';
 import '../../core/state/wiki_state.dart';
 
 class WikiBuildModal extends ConsumerStatefulWidget {
   final int sessionId;
+  final bool cleanFirst;
+  final GemmaInferenceService Function()? gemmaServiceFactory;
+  final Future<void> Function(GemmaInferenceService service)? buildRunner;
 
-  const WikiBuildModal({super.key, required this.sessionId});
+  const WikiBuildModal({
+    super.key,
+    required this.sessionId,
+    this.cleanFirst = false,
+    this.gemmaServiceFactory,
+    this.buildRunner,
+  });
 
   @override
   ConsumerState<WikiBuildModal> createState() => _WikiBuildModalState();
@@ -20,31 +30,39 @@ class WikiBuildModal extends ConsumerStatefulWidget {
 enum _WikiBuildStep { loading, building, complete }
 
 class _WikiBuildModalState extends ConsumerState<WikiBuildModal> {
-  final Object _gemmaOwnerToken = Object();
+  late final GemmaServiceHost _gemmaHost;
   final ScrollController _scrollController = ScrollController();
   _WikiBuildStep _step = _WikiBuildStep.loading;
 
   @override
   void initState() {
     super.initState();
+    _gemmaHost = GemmaServiceHost(
+      service: widget.gemmaServiceFactory?.call(),
+    );
     _loadModelAndBuild();
   }
 
   @override
   void dispose() {
-    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
+    unawaited(_gemmaHost.dispose());
     _scrollController.dispose();
     super.dispose();
   }
 
   Future<void> _loadModelAndBuild() async {
     try {
-      final service = await QuexAi.acquireGemmaService(_gemmaOwnerToken);
+      final service = await _gemmaHost.ensureInitialized();
       if (!mounted) return;
       setState(() => _step = _WikiBuildStep.building);
-      await ref
-          .read(wikiActionControllerProvider(widget.sessionId).notifier)
-          .ingest(service);
+      final buildRunner = widget.buildRunner;
+      if (buildRunner != null) {
+        await buildRunner(service);
+      } else {
+        await ref
+            .read(wikiActionControllerProvider(widget.sessionId).notifier)
+            .ingest(service, cleanFirst: widget.cleanFirst);
+      }
     } catch (error) {
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -55,7 +73,6 @@ class _WikiBuildModalState extends ConsumerState<WikiBuildModal> {
   }
 
   void _cancel() {
-    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -74,6 +91,13 @@ class _WikiBuildModalState extends ConsumerState<WikiBuildModal> {
   String _statusText(WikiActionState actionState) {
     if (_step == _WikiBuildStep.loading) return 'Loading model…';
     if (_step == _WikiBuildStep.complete) return 'Wiki built! 🎉';
+    if (widget.cleanFirst) {
+      final startedClear = actionState.lines
+          .any((line) => line.startsWith('Clearing existing wiki pages'));
+      final finishedClear =
+          actionState.lines.any((line) => line.startsWith('Wiki cleared.'));
+      if (startedClear && !finishedClear) return 'Clearing old wiki…';
+    }
     if (actionState.lines.isEmpty) return 'Getting ready…';
     return actionState.runType == WikiRunType.lint
         ? 'Linting wiki…'
@@ -172,7 +196,10 @@ class _WikiBuildModalState extends ConsumerState<WikiBuildModal> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Sp.md),
               child: AnimatedOpacity(
-                opacity: (actionState.plan.isNotEmpty || actionState.lines.isNotEmpty) ? 1.0 : 0.0,
+                opacity: (actionState.plan.isNotEmpty ||
+                        actionState.lines.isNotEmpty)
+                    ? 1.0
+                    : 0.0,
                 duration: const Duration(milliseconds: 300),
                 child: SizedBox(
                   height: 240,
@@ -187,24 +214,34 @@ class _WikiBuildModalState extends ConsumerState<WikiBuildModal> {
                       children: [
                         if (actionState.plan.isNotEmpty) ...[
                           ...actionState.plan.asMap().entries.map((e) {
-                            final done = actionState.completedSteps.contains(e.key);
+                            final done =
+                                actionState.completedSteps.contains(e.key);
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 6),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Icon(
-                                    done ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                                    done
+                                        ? Icons.check_circle_rounded
+                                        : Icons.radio_button_unchecked,
                                     size: 16,
-                                    color: done ? scheme.primary : scheme.outlineVariant,
+                                    color: done
+                                        ? scheme.primary
+                                        : scheme.outlineVariant,
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
                                       e.value,
-                                      style: theme.textTheme.bodySmall?.copyWith(
-                                        color: done ? scheme.onSurface : scheme.onSurfaceVariant,
-                                        decoration: done ? TextDecoration.lineThrough : null,
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color: done
+                                            ? scheme.onSurface
+                                            : scheme.onSurfaceVariant,
+                                        decoration: done
+                                            ? TextDecoration.lineThrough
+                                            : null,
                                       ),
                                     ),
                                   ),
@@ -212,19 +249,20 @@ class _WikiBuildModalState extends ConsumerState<WikiBuildModal> {
                               ),
                             );
                           }),
-                          if (actionState.lines.isNotEmpty) const Divider(height: 16),
+                          if (actionState.lines.isNotEmpty)
+                            const Divider(height: 16),
                         ],
                         ...actionState.lines.map((line) => Padding(
-                          padding: const EdgeInsets.only(bottom: 4),
-                          child: Text(
-                            '> $line',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              fontFamily: 'monospace',
-                              height: 1.5,
-                            ),
-                          ),
-                        )),
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                '> $line',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                  fontFamily: 'monospace',
+                                  height: 1.5,
+                                ),
+                              ),
+                            )),
                       ],
                     ),
                   ),

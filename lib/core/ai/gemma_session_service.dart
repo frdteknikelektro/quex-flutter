@@ -5,6 +5,7 @@ import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
 import '../models/models.dart';
 import 'gemma_inference_service.dart';
+import 'response_loop_guard.dart';
 import 'material_preprocessor.dart';
 import 'tutor_event.dart';
 
@@ -54,7 +55,9 @@ class GemmaSessionService {
     final hasImages = prepared.any((p) => p.images.isNotEmpty);
 
     final optionsText = question.type == QuestionType.multipleChoice
-        ? question.options.asMap().entries
+        ? question.options
+            .asMap()
+            .entries
             .map((e) => '${String.fromCharCode(65 + e.key)}) ${e.value}')
             .join('\n')
         : '';
@@ -106,17 +109,27 @@ class GemmaSessionService {
   /// Yields: TutorThinking, TutorReply, or TutorEvaluation (when model calls tool).
   Stream<TutorEvent> sendQuestionTutorMessage(String userMessage) async* {
     if (!_inference.hasActiveSession) {
-      throw StateError('No active session. Call initQuestionTutorSession() first.');
+      throw StateError(
+          'No active session. Call initQuestionTutorSession() first.');
     }
 
+    final guard = ResponseLoopGuard();
     await _inference.addTextQuery(userMessage);
 
     await for (final response in _inference.generateResponses()) {
       if (response is gemma.ThinkingResponse) {
         yield TutorThinking(response.content);
       } else if (response is gemma.TextResponse) {
+        final error = guard.recordTextToken(response.token);
+        if (error != null) {
+          throw StateError(error);
+        }
         yield TutorReply(response.token);
       } else if (response is gemma.FunctionCallResponse) {
+        final error = guard.recordToolCall(response.name, response.args);
+        if (error != null) {
+          throw StateError(error);
+        }
         if (response.name == 'evaluate_understanding') {
           final score = (response.args['score'] as num?)?.toDouble();
           if (score != null) {
@@ -180,12 +193,17 @@ class GemmaSessionService {
       throw StateError('No active session. Call initCoachSession() first.');
     }
 
+    final guard = ResponseLoopGuard();
     await _inference.addTextQuery(message);
 
     await for (final response in _inference.generateResponses()) {
       if (response is gemma.ThinkingResponse) {
         yield TutorThinking(response.content);
       } else if (response is gemma.TextResponse) {
+        final error = guard.recordTextToken(response.token);
+        if (error != null) {
+          throw StateError(error);
+        }
         yield TutorReply(response.token);
       }
     }

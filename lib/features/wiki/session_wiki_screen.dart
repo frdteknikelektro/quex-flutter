@@ -26,12 +26,18 @@ class SessionWikiScreen extends ConsumerStatefulWidget {
 class _SessionWikiScreenState extends ConsumerState<SessionWikiScreen> {
   String? _selectedPath;
 
-  void _openBuildModal(BuildContext context) {
+  void _openBuildModal(
+    BuildContext context, {
+    bool cleanFirst = false,
+  }) {
     showDialog<void>(
       context: context,
       barrierDismissible: false,
       useSafeArea: false,
-      builder: (_) => WikiBuildModal(sessionId: widget.sessionId),
+      builder: (_) => WikiBuildModal(
+        sessionId: widget.sessionId,
+        cleanFirst: cleanFirst,
+      ),
     );
   }
 
@@ -98,7 +104,10 @@ class _SessionWikiScreenState extends ConsumerState<SessionWikiScreen> {
           ),
           floatingActionButton: hasWiki
               ? FloatingActionButton.extended(
-                  onPressed: () => _openBuildModal(context),
+                  onPressed: () => _openBuildModal(
+                    context,
+                    cleanFirst: true,
+                  ),
                   icon: const Icon(Icons.refresh_rounded),
                   label: const Text('Re-build wiki'),
                 )

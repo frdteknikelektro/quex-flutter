@@ -5,6 +5,7 @@ import 'package:quex/core/ai/gemma_inference_service.dart';
 class FakeGemmaInferenceService extends GemmaInferenceService {
   int initializeCalls = 0;
   int disposeCalls = 0;
+  int closeSessionCalls = 0;
   bool _ready = false;
 
   @override
@@ -22,6 +23,14 @@ class FakeGemmaInferenceService extends GemmaInferenceService {
   @override
   Future<void> dispose() async {
     disposeCalls++;
+    await super.dispose();
+    _ready = false;
+  }
+
+  @override
+  Future<void> closeSession() async {
+    closeSessionCalls++;
+    await super.closeSession();
     _ready = false;
   }
 }

@@ -1,46 +1,7 @@
-import 'dart:async';
 import 'dart:math';
-
-import 'package:flutter/foundation.dart';
-
-import 'gemma_service_manager.dart';
-import 'gemma_inference_service.dart';
-import 'gemma_session_service.dart';
 import '../models/models.dart';
 
 class QuexAi {
-  static GemmaServiceManager _gemmaServiceManager =
-      GemmaServiceManager.instance;
-
-  @visibleForTesting
-  static void setGemmaServiceManager(GemmaServiceManager manager) {
-    _gemmaServiceManager = manager;
-  }
-
-  @visibleForTesting
-  static void resetGemmaServiceManager() {
-    _gemmaServiceManager = GemmaServiceManager.instance;
-  }
-
-  static GemmaInferenceService? get gemmaService =>
-      _gemmaServiceManager.current;
-
-  /// Whether the Gemma service is initialized and ready for inference.
-  static bool get isReady => _gemmaServiceManager.isReady;
-
-  static bool isCurrentGemmaOwner(Object ownerToken) =>
-      _gemmaServiceManager.isCurrentOwner(ownerToken);
-
-  static Future<GemmaInferenceService> acquireGemmaService(
-    Object ownerToken,
-  ) {
-    return _gemmaServiceManager.acquire(ownerToken);
-  }
-
-  static Future<void> releaseGemmaService(Object ownerToken) {
-    return _gemmaServiceManager.release(ownerToken);
-  }
-
   /// Build a rule-based quiz from study materials (fallback when AI unavailable).
   static List<Question> buildQuizRuleBased({
     required Session session,
@@ -88,37 +49,7 @@ class QuexAi {
 
   /// Get coach reply with optional LLM enhancement.
   /// Uses Gemma E4B when available, otherwise falls back to rule-based responses.
-  static Future<String> coachReply({
-    required Session session,
-    required List<StudyMaterial> materials,
-    required List<ChatMessage> history,
-    required String message,
-  }) async {
-    // Try LLM-powered coach reply if service is available
-    final service = gemmaService;
-    if (service != null && service.isInitialized) {
-      try {
-        final sessionService = GemmaSessionService(service);
-        // For sync replies, we create a session and get one response
-        await sessionService.initCoachSession(
-          session: session,
-          materials: materials,
-        );
-        return await service.sendMessage(message);
-      } catch (_) {
-        // Fall back to rule-based on error
-      }
-    }
-
-    // Rule-based fallback
-    return _coachReplyRuleBased(
-      session: session,
-      materials: materials,
-      message: message,
-    );
-  }
-
-  static String _coachReplyRuleBased({
+  static String coachReply({
     required Session session,
     required List<StudyMaterial> materials,
     required String message,
@@ -143,7 +74,7 @@ class QuexAi {
         'I can also make a quiz or summary if you want.';
   }
 
-static String sessionSummary(Session session, List<StudyMaterial> materials) {
+  static String sessionSummary(Session session, List<StudyMaterial> materials) {
     return _sessionSummary(session, materials);
   }
 

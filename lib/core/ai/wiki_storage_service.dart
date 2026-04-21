@@ -312,6 +312,14 @@ class WikiStorageService {
     return Directory(p.join(wikiRoot.path, 'session_$sessionId'));
   }
 
+  Future<void> clearSessionWiki(int sessionId) async {
+    final root = await sessionRootDirectory(sessionId);
+    if (await root.exists()) {
+      await root.delete(recursive: true);
+    }
+    await root.create(recursive: true);
+  }
+
   Future<List<String>> listMarkdownPaths(int sessionId) async {
     final root = await sessionRootDirectory(sessionId);
     if (!await root.exists()) return const [];

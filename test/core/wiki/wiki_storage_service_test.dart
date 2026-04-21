@@ -72,6 +72,27 @@ void main() {
       expect(tree[3].children.single.relativePath, 'reviews/lint.md');
     });
 
+    test('clearSessionWiki removes all existing markdown files', () async {
+      await service.writeMarkdownFile(
+        sessionId: 11,
+        relativePath: 'index.md',
+        content: '# Index',
+      );
+      await service.writeMarkdownFile(
+        sessionId: 11,
+        relativePath: 'concepts/force.md',
+        content: '# Force',
+      );
+
+      expect(await service.hasWiki(11), isTrue);
+
+      await service.clearSessionWiki(11);
+
+      expect(await service.hasWiki(11), isFalse);
+      final root = await service.sessionRootDirectory(11);
+      expect(await root.exists(), isTrue);
+    });
+
     test('rejects paths outside wiki root', () {
       expect(
         () => service.normalizeRelativePath('../evil.md'),

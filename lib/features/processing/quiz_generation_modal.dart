@@ -7,9 +7,9 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
 import '../../core/ai/gemma_inference_service.dart';
+import '../../core/ai/gemma_service_host.dart';
 import '../../core/ai/gemma_quiz_service.dart';
 import '../../core/ai/quiz_generation_event.dart';
-import '../../core/ai/quex_ai.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
@@ -18,8 +18,13 @@ enum _ModalStep { materialSelection, detecting, generating, complete }
 
 class QuizGenerationModal extends ConsumerStatefulWidget {
   final int sessionId;
+  final GemmaInferenceService Function()? gemmaServiceFactory;
 
-  const QuizGenerationModal({super.key, required this.sessionId});
+  const QuizGenerationModal({
+    super.key,
+    required this.sessionId,
+    this.gemmaServiceFactory,
+  });
 
   @override
   ConsumerState<QuizGenerationModal> createState() =>
@@ -33,7 +38,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   List<String> _planSteps = [];
   final Set<int> _completedSteps = {};
   final _scrollController = ScrollController();
-  final Object _gemmaOwnerToken = Object();
+  late final GemmaServiceHost _gemmaHost;
 
   _ModalStep _step = _ModalStep.materialSelection;
   List<StudyMaterial> _allMaterials = [];
@@ -47,20 +52,22 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   String _extractedQuestionText = '';
   StreamSubscription<QuizGenerationEvent>? _subscription;
   int? _quizId;
-  Future<GemmaInferenceService>? _modelFuture;
   GemmaQuizService? _quizService;
   Session? _session;
 
   @override
   void initState() {
     super.initState();
+    _gemmaHost = GemmaServiceHost(
+      service: widget.gemmaServiceFactory?.call(),
+    );
     _loadMaterials();
   }
 
   @override
   void dispose() {
     _subscription?.cancel();
-    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
+    unawaited(_gemmaHost.dispose());
     _scrollController.dispose();
     super.dispose();
   }
@@ -95,26 +102,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   }
 
   Future<GemmaInferenceService> _ensureModel() {
-    final current = QuexAi.gemmaService;
-    if (current != null &&
-        current.isInitialized &&
-        QuexAi.isCurrentGemmaOwner(_gemmaOwnerToken)) {
-      return Future.value(current);
-    }
-
-    final existingFuture = _modelFuture;
-    if (existingFuture != null) return existingFuture;
-
-    final future = _loadModel();
-    _modelFuture = future;
-    future.whenComplete(() {
-      if (mounted) _modelFuture = null;
-    });
-    return future;
-  }
-
-  Future<GemmaInferenceService> _loadModel() async {
-    return await QuexAi.acquireGemmaService(_gemmaOwnerToken);
+    return _gemmaHost.ensureInitialized();
   }
 
   String _extractQuestionTextFromJson(String jsonBuffer) {
@@ -161,7 +149,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     try {
       final service = await _ensureModel();
       _quizService = GemmaQuizService(service);
-      detected = await _quizService!.detectQuestionsInMaterials(materials: selected);
+      detected =
+          await _quizService!.detectQuestionsInMaterials(materials: selected);
     } catch (_) {
       detected = [];
     }
@@ -349,7 +338,6 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   void _cancel() {
     _subscription?.cancel();
     _subscription = null;
-    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
     if (mounted) Navigator.of(context).pop();
   }
 
@@ -588,17 +576,25 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Icon(
-                                done ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                                done
+                                    ? Icons.check_circle_rounded
+                                    : Icons.radio_button_unchecked,
                                 size: 16,
-                                color: done ? scheme.primary : scheme.outlineVariant,
+                                color: done
+                                    ? scheme.primary
+                                    : scheme.outlineVariant,
                               ),
                               const SizedBox(width: 8),
                               Expanded(
                                 child: Text(
                                   e.value,
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                    color: done ? scheme.onSurface : scheme.onSurfaceVariant,
-                                    decoration: done ? TextDecoration.lineThrough : null,
+                                    color: done
+                                        ? scheme.onSurface
+                                        : scheme.onSurfaceVariant,
+                                    decoration: done
+                                        ? TextDecoration.lineThrough
+                                        : null,
                                   ),
                                 ),
                               ),
@@ -606,7 +602,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           ),
                         );
                       }),
-                      if (_generatedQuestions.isNotEmpty || _thinkingBuffer.isNotEmpty)
+                      if (_generatedQuestions.isNotEmpty ||
+                          _thinkingBuffer.isNotEmpty)
                         const Divider(height: 16),
                     ],
                     if (_thinkingBuffer.isNotEmpty)

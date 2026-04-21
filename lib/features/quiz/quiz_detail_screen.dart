@@ -1,11 +1,8 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
-import '../../core/ai/quex_ai.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../widgets/quex_ui.dart';
@@ -25,43 +22,6 @@ class QuizDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
-  final Object _gemmaOwnerToken = Object();
-  bool _modelLoading = true;
-  String? _modelError;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadModel();
-  }
-
-  Future<void> _loadModel() async {
-    setState(() {
-      _modelLoading = true;
-      _modelError = null;
-    });
-    try {
-      await QuexAi.acquireGemmaService(_gemmaOwnerToken);
-      if (!mounted) {
-        await QuexAi.releaseGemmaService(_gemmaOwnerToken);
-        return;
-      }
-      setState(() => _modelLoading = false);
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _modelLoading = false;
-        _modelError = e.toString();
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -78,58 +38,6 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
       ),
       body: Column(
         children: [
-          // Model loading / error banner
-          if (_modelLoading)
-            _ModelBanner(
-              scheme: scheme,
-              isError: false,
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: scheme.onSecondaryContainer,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Loading Quex brain…',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: scheme.onSecondaryContainer,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else if (_modelError != null)
-            _ModelBanner(
-              scheme: scheme,
-              isError: true,
-              child: Row(
-                children: [
-                  Icon(Icons.error_outline,
-                      size: 16, color: scheme.onErrorContainer),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Failed to load brain. Tap to retry.',
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: scheme.onErrorContainer,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  GestureDetector(
-                    onTap: _loadModel,
-                    child: Icon(Icons.refresh,
-                        size: 18, color: scheme.onErrorContainer),
-                  ),
-                ],
-              ),
-            ),
           // Question list
           Expanded(
             child: bundle.when(
@@ -160,7 +68,6 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
                           totalScore: totalScore,
                           answered: scored.length,
                           total: questions.length,
-                          modelLoading: _modelLoading,
                           scheme: scheme,
                           theme: theme,
                         ),
@@ -177,7 +84,6 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
                               index: index,
                               sessionId: widget.sessionId,
                               quizId: widget.quizId,
-                              modelLoading: _modelLoading,
                               scheme: scheme,
                               theme: theme,
                             ),
@@ -197,33 +103,10 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
   }
 }
 
-class _ModelBanner extends StatelessWidget {
-  final Widget child;
-  final ColorScheme scheme;
-  final bool isError;
-
-  const _ModelBanner({
-    required this.child,
-    required this.scheme,
-    required this.isError,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      color: isError ? scheme.errorContainer : scheme.secondaryContainer,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: SafeArea(bottom: false, child: child),
-    );
-  }
-}
-
 class _ScoreHeader extends StatelessWidget {
   final double? totalScore;
   final int answered;
   final int total;
-  final bool modelLoading;
   final ColorScheme scheme;
   final ThemeData theme;
 
@@ -231,7 +114,6 @@ class _ScoreHeader extends StatelessWidget {
     required this.totalScore,
     required this.answered,
     required this.total,
-    required this.modelLoading,
     required this.scheme,
     required this.theme,
   });
@@ -254,11 +136,9 @@ class _ScoreHeader extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  modelLoading
-                      ? 'Loading Quex brain before you can chat…'
-                      : totalScore == null
-                          ? 'Tap a question to start chatting with Quex!'
-                          : '$answered answered · tap any to continue',
+                  totalScore == null
+                      ? 'Tap a question to start chatting with Quex!'
+                      : '$answered answered · tap any to continue',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -327,7 +207,6 @@ class _QuestionTile extends StatelessWidget {
   final int index;
   final int sessionId;
   final int quizId;
-  final bool modelLoading;
   final ColorScheme scheme;
   final ThemeData theme;
 
@@ -336,7 +215,6 @@ class _QuestionTile extends StatelessWidget {
     required this.index,
     required this.sessionId,
     required this.quizId,
-    required this.modelLoading,
     required this.scheme,
     required this.theme,
   });
@@ -372,29 +250,19 @@ class _QuestionTile extends StatelessWidget {
   }
 
   void _onTap(BuildContext context) {
-    if (modelLoading) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Still loading… please wait a moment.'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
     if (question.id == null) return;
     context.push('/session/$sessionId/quiz/$quizId/question/${question.id}');
   }
 
   @override
   Widget build(BuildContext context) {
-    final disabled = modelLoading || question.id == null;
     return Opacity(
-      opacity: modelLoading ? 0.5 : 1.0,
+      opacity: question.id == null ? 0.5 : 1.0,
       child: Card(
         margin: EdgeInsets.zero,
         child: InkWell(
           borderRadius: Br.lg,
-          onTap: disabled ? () => _onTap(context) : () => _onTap(context),
+          onTap: () => _onTap(context),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Row(

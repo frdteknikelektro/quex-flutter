@@ -10,6 +10,7 @@ import 'package:open_filex/open_filex.dart';
 import '../../app/breakpoints.dart';
 import '../../app/theme.dart';
 import '../../core/ai/gemma_inference_service.dart';
+import '../../core/ai/gemma_service_host.dart';
 import '../../core/ai/gemma_session_service.dart';
 import '../../core/ai/quex_ai.dart';
 import '../../core/ai/tutor_event.dart';
@@ -20,11 +21,13 @@ import '../../core/state/app_state.dart';
 class ChatScreen extends ConsumerStatefulWidget {
   final int sessionId;
   final List<int>? preselectedMaterialIds;
+  final GemmaInferenceService Function()? gemmaServiceFactory;
 
   const ChatScreen({
     super.key,
     required this.sessionId,
     this.preselectedMaterialIds,
+    this.gemmaServiceFactory,
   });
 
   @override
@@ -34,14 +37,13 @@ class ChatScreen extends ConsumerStatefulWidget {
 class _ChatScreenState extends ConsumerState<ChatScreen> {
   final _controller = TextEditingController();
   final _scrollController = ScrollController();
-  final Object _gemmaOwnerToken = Object();
+  late final GemmaServiceHost _gemmaHost;
   bool _sending = false;
   bool _modelLoading = false;
   String? _streamingContent;
   String? _thinkingContent;
   bool _thinkingExpanded = false;
   StreamSubscription<TutorEvent>? _streamSub;
-  Future<GemmaInferenceService>? _modelFuture;
   GemmaSessionService? _sessionService;
 
   // Persistent session state
@@ -51,6 +53,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _gemmaHost = GemmaServiceHost(
+      service: widget.gemmaServiceFactory?.call(),
+    );
     unawaited(_warmModel());
     unawaited(_resetChat());
   }
@@ -60,43 +65,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _streamSub?.cancel();
     _controller.dispose();
     _scrollController.dispose();
-    unawaited(QuexAi.releaseGemmaService(_gemmaOwnerToken));
+    unawaited(_gemmaHost.dispose());
     super.dispose();
   }
 
   Future<GemmaInferenceService> _ensureModel() {
-    final current = QuexAi.gemmaService;
-    if (current != null &&
-        current.isInitialized &&
-        QuexAi.isCurrentGemmaOwner(_gemmaOwnerToken)) {
-      return Future.value(current);
-    }
-
-    final existingFuture = _modelFuture;
-    if (existingFuture != null) return existingFuture;
-
-    final future = _loadModel();
-    _modelFuture = future;
-    future.whenComplete(() {
-      if (mounted) _modelFuture = null;
-    });
-    return future;
-  }
-
-  Future<GemmaInferenceService> _loadModel() async {
-    if (mounted) setState(() => _modelLoading = true);
-    try {
-      return await QuexAi.acquireGemmaService(_gemmaOwnerToken);
-    } finally {
-      if (mounted) setState(() => _modelLoading = false);
-    }
+    return _gemmaHost.ensureInitialized();
   }
 
   Future<void> _warmModel() async {
     try {
+      if (mounted) setState(() => _modelLoading = true);
       await _ensureModel();
     } catch (_) {
       // Send path will surface model load failure if needed.
+    } finally {
+      if (mounted) setState(() => _modelLoading = false);
     }
   }
 
@@ -172,9 +156,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
 
-    late final GemmaInferenceService service;
     try {
-      service = await _ensureModel();
+      await _ensureModel();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -187,12 +170,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return;
     }
 
-    // Check if ownership was lost (another screen took Gemma)
-    if (!service.hasActiveSession) {
-      setState(() => _coachSessionInitialized = false);
-    }
-
-    // Initialize session (first time or after ownership loss)
+    // Initialize session once per screen visit.
     try {
       await _ensureCoachSession(bundle.session, chatMaterials);
     } catch (e) {
@@ -280,13 +258,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } catch (e) {
       debugPrint('Coach stream error: $e');
 
-      // Check if error is due to ownership loss
-      if (!service.hasActiveSession) {
-        setState(() => _coachSessionInitialized = false);
-      }
-
       if (mounted) {
         setState(() {
+          _coachSessionInitialized = false;
+          _sessionService = null;
           _streamingContent = null;
           _thinkingContent = null;
           _sending = false;

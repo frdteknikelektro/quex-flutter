@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../models/models.dart';
 import 'gemma_inference_service.dart';
 import 'material_preprocessor.dart';
+import 'response_loop_guard.dart';
 import 'wiki_storage_service.dart';
 
 typedef WikiAgentLineCallback = void Function(String line);
@@ -50,7 +51,8 @@ class GemmaWikiService {
 
   static const _completeStepTool = gemma.Tool(
     name: 'complete_step',
-    description: 'Mark a planned step as done. Call after finishing each step from your plan.',
+    description:
+        'Mark a planned step as done. Call after finishing each step from your plan.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -65,7 +67,8 @@ class GemmaWikiService {
 
   static const _listPagesTool = gemma.Tool(
     name: 'list_existing_pages',
-    description: 'List all existing markdown pages in the current session wiki. Call this first to understand what already exists before writing or updating.',
+    description:
+        'List all existing markdown pages in the current session wiki. Call this first to understand what already exists before writing or updating.',
     parameters: {
       'type': 'object',
       'properties': {},
@@ -74,13 +77,15 @@ class GemmaWikiService {
 
   static const _readPageTool = gemma.Tool(
     name: 'read_existing_page',
-    description: 'Read the full content of one existing wiki page. Use this before updating a page to avoid overwriting useful content.',
+    description:
+        'Read the full content of one existing wiki page. Use this before updating a page to avoid overwriting useful content.',
     parameters: {
       'type': 'object',
       'properties': {
         'path': {
           'type': 'string',
-          'description': 'Relative path to the wiki page, e.g. sources/chapter1.md or concepts/photosynthesis.md',
+          'description':
+              'Relative path to the wiki page, e.g. sources/chapter1.md or concepts/photosynthesis.md',
         },
       },
       'required': ['path'],
@@ -89,7 +94,8 @@ class GemmaWikiService {
 
   static const _writePageTool = gemma.Tool(
     name: 'write_markdown_file',
-    description: 'Write a wiki page. Include YAML frontmatter and markdown. Allowed: index.md, log.md, sources/*.md, concepts/*.md, entities/*.md, syntheses/*.md, reviews/*.md.',
+    description:
+        'Write a wiki page. Include YAML frontmatter and markdown. Allowed: index.md, log.md, sources/*.md, concepts/*.md, entities/*.md, syntheses/*.md, reviews/*.md.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -108,13 +114,15 @@ class GemmaWikiService {
 
   static const _deletePageTool = gemma.Tool(
     name: 'delete_markdown_file',
-    description: 'Delete one obsolete or duplicate wiki page. Only use when a page is truly redundant or superseded.',
+    description:
+        'Delete one obsolete or duplicate wiki page. Only use when a page is truly redundant or superseded.',
     parameters: {
       'type': 'object',
       'properties': {
         'path': {
           'type': 'string',
-          'description': 'Relative path of the wiki file to delete, e.g. sources/old_draft.md',
+          'description':
+              'Relative path of the wiki file to delete, e.g. sources/old_draft.md',
         },
       },
       'required': ['path'],
@@ -123,7 +131,8 @@ class GemmaWikiService {
 
   static const _finishTool = gemma.Tool(
     name: 'finish_run',
-    description: 'Call when all wiki changes are done. Provide a one-line summary.',
+    description:
+        'Call when all wiki changes are done. Provide a one-line summary.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -194,7 +203,9 @@ class GemmaWikiService {
     final prepared = await MaterialPreprocessor.prepare(materials);
     final hasImages = prepared.any((item) => item.images.isNotEmpty);
     final totalImages = prepared.fold(0, (sum, p) => sum + p.images.length);
-    debugPrint('[WikiAgent] start: materials=${materials.length} images=$totalImages hasImages=$hasImages');
+    final guard = ResponseLoopGuard();
+    debugPrint(
+        '[WikiAgent] start: materials=${materials.length} images=$totalImages hasImages=$hasImages');
 
     await service.createSession(
       systemInstruction: systemInstruction,
@@ -241,11 +252,16 @@ class GemmaWikiService {
         if (response is gemma.ThinkingResponse) {
           // per-token thinking — skip
         } else if (response is gemma.TextResponse) {
+          final error = guard.recordTextToken(response.token);
+          if (error != null) {
+            throw StateError(error);
+          }
           lastPlainText += response.token;
           // Try to recover flushed tool calls from partial JSON
           final recovered = _tryRecoverToolCall(lastPlainText);
           if (recovered != null) {
-            debugPrint('[WikiAgent] recovered flushed tool call: ${recovered.name}');
+            debugPrint(
+                '[WikiAgent] recovered flushed tool call: ${recovered.name}');
             sawToolCall = true;
             final result = await _executeToolCall(
               sessionId: sessionId,
@@ -266,7 +282,12 @@ class GemmaWikiService {
             }
           }
         } else if (response is gemma.FunctionCallResponse) {
-          debugPrint('[WikiAgent] tool call: name=${response.name} args=${response.args}');
+          final error = guard.recordToolCall(response.name, response.args);
+          if (error != null) {
+            throw StateError(error);
+          }
+          debugPrint(
+              '[WikiAgent] tool call: name=${response.name} args=${response.args}');
           sawToolCall = true;
           final result = await _executeToolCall(
             sessionId: sessionId,
@@ -288,6 +309,10 @@ class GemmaWikiService {
         } else if (response is gemma.ParallelFunctionCallResponse) {
           sawToolCall = true;
           for (final call in response.calls) {
+            final error = guard.recordToolCall(call.name, call.args);
+            if (error != null) {
+              throw StateError(error);
+            }
             final result = await _executeToolCall(
               sessionId: sessionId,
               response: call,
@@ -314,7 +339,8 @@ class GemmaWikiService {
           final preview = lastPlainText.isEmpty
               ? '<empty stream or no text emitted>'
               : '"${lastPlainText.substring(0, lastPlainText.length.clamp(0, 100))}"';
-          debugPrint('[WikiAgent] FAILURE after $plainTextRetry text-only turns. '
+          debugPrint(
+              '[WikiAgent] FAILURE after $plainTextRetry text-only turns. '
               'Last text: $preview. Touched: ${touchedPaths.length}, deleted: ${deletedPaths.length}. '
               'Touched paths: ${touchedPaths.toList()}. Deleted paths: ${deletedPaths.toList()}.');
           throw StateError(
@@ -323,7 +349,8 @@ class GemmaWikiService {
             'Touched: ${touchedPaths.length}, deleted: ${deletedPaths.length}.',
           );
         }
-        debugPrint('[WikiAgent] text-only turn $plainTextRetry, nudging with noTool query. '
+        debugPrint(
+            '[WikiAgent] text-only turn $plainTextRetry, nudging with noTool query. '
             'lastTextPreview: "${lastPlainText.substring(0, lastPlainText.length.clamp(0, 80))}"');
         await service.addTextQuery(
           'You must call a tool now. Call list_existing_pages or write_markdown_file with valid arguments. '
@@ -336,7 +363,8 @@ class GemmaWikiService {
       plainTextRetry = 0;
       for (final result in toolResults) {
         final toolName = result['tool'] as String? ?? 'unknown';
-        debugPrint('[WikiAgent] tool result: $toolName -> ${result['message']}');
+        debugPrint(
+            '[WikiAgent] tool result: $toolName -> ${result['message']}');
         if (result['plan'] != null) {
           onPlan?.call((result['plan'] as List).cast<String>());
         }
@@ -363,11 +391,13 @@ class GemmaWikiService {
   }) async {
     switch (response.name) {
       case 'plan':
-        final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
+        final steps =
+            (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
         return {
           'tool': response.name,
           'plan': steps,
-          'message': 'Plan: ${steps.length} step${steps.length == 1 ? '' : 's'}',
+          'message':
+              'Plan: ${steps.length} step${steps.length == 1 ? '' : 's'}',
         };
       case 'complete_step':
         final index = (response.args['index'] as num?)?.toInt() ?? 0;
@@ -415,7 +445,8 @@ class GemmaWikiService {
         if (cleanPath.isEmpty) {
           return {
             'tool': response.name,
-            'message': 'Path is required and must be a valid wiki path. Got: "$path"',
+            'message':
+                'Path is required and must be a valid wiki path. Got: "$path"',
           };
         }
         final content = response.args['content'] as String? ?? '';
@@ -437,7 +468,8 @@ class GemmaWikiService {
         if (cleanPath.isEmpty) {
           return {
             'tool': response.name,
-            'message': 'Path is required and must be a valid wiki path. Got: "$path"',
+            'message':
+                'Path is required and must be a valid wiki path. Got: "$path"',
           };
         }
         final normalized = _storage.normalizeRelativePath(cleanPath);
@@ -495,7 +527,7 @@ WORKFLOW (ingest mode):
 1. list_existing_pages — understand current wiki structure and coverage. This is MANDATORY FIRST.
 2. Call plan() with all steps you intend to take based on current state. Then call complete_step(index) after finishing each step.
 3. For each source: identify key concepts, entities, and facts.
-4. write or update concept/*.md pages with definitions, examples from sources, links to related entities and sources.
+4. write or update concepts/*.md pages with definitions, examples from sources, links to related entities and sources.
 5. write or update entities/*.md pages with descriptions, roles, relationships, and citations.
 6. write sources/[title].md summarizing the source and highlighting what's new or contradictory.
 7. Update syntheses/*.md — revise cross-source comparisons, timelines, and conclusions.
@@ -530,7 +562,7 @@ RULES:
 1. ALWAYS list_existing_pages FIRST. This informs your plan. Never call plan() before examining existing structure.
 2. ALWAYS call plan() AFTER list_existing_pages and before any writes. Plan must include concrete steps based on what exists now and what you just learned.
 3. Before updating an existing page, read_existing_page. Preserve content; refine and extend.
-4. Cross-linking is mandatory: if page A mentions concept B, link it: [concept](../concepts/b.md). If concept B relates to entity C, reciprocate.
+4. Cross-linking is mandatory: link relative to current file. Example: from sources/chapter1.md use [concept](../concepts/b.md); from index.md or log.md use [concept](concepts/b.md). If concept B relates to entity C, reciprocate.
 5. Flag contradictions explicitly in syntheses/ or log.md. Never silently overwrite old claims. Example: "Source X claims [A]. Source Y claims [B]. See syntheses/contradiction-A-vs-B.md"
 6. Avoid duplication: if an entity already has a page, link to it from other pages rather than repeating its description.
 7. Only delete a page if it is truly superseded or a duplicate. Default: update.
@@ -549,7 +581,8 @@ Allowed categories: $categories
   String _buildIngestPrompt(Session session, List<StudyMaterial> materials) {
     final hasPhotos = materials.any((m) => m.kind == MaterialKind.photo);
     final buffer = StringBuffer()
-      ..writeln('Ingest all session materials into the wiki. Update existing pages when appropriate instead of duplicating them.')
+      ..writeln(
+          'Ingest all session materials into the wiki. Update existing pages when appropriate instead of duplicating them.')
       ..writeln()
       ..writeln('Session: ${session.title}')
       ..writeln('Grade: ${session.gradeOverride}')
@@ -559,10 +592,12 @@ Allowed categories: $categories
       ..writeln(_materialsContext(materials))
       ..writeln();
     if (hasPhotos) {
-      buffer.writeln('Note: Image attachments for photo materials are included above. Use them to extract content for wiki pages.');
+      buffer.writeln(
+          'Note: Image attachments for photo materials are included above. Use them to extract content for wiki pages.');
       buffer.writeln();
     }
-    buffer.writeln('Start by listing existing pages if needed. Then read any page you need, write/update wiki pages, update index.md and log.md, and finish.');
+    buffer.writeln(
+        'Start by listing existing pages if needed. Then read any page you need, write/update wiki pages, update index.md and log.md, and finish.');
     return buffer.toString();
   }
 
@@ -593,7 +628,10 @@ When safe, fix wiki pages directly. Also write one lint report under reviews/ wi
     // Strip trailing whitespace around the whole thing
     cleaned = cleaned.trim();
     // Reject: empty, or contains obviously bad chars (no angle brackets, no pipe tags)
-    if (cleaned.isEmpty || cleaned.contains('<') || cleaned.contains('>|') || !RegExp(r'^[a-zA-Z0-9_/.\-]+$').hasMatch(cleaned)) {
+    if (cleaned.isEmpty ||
+        cleaned.contains('<') ||
+        cleaned.contains('>|') ||
+        !RegExp(r'^[a-zA-Z0-9_/.\-]+$').hasMatch(cleaned)) {
       debugPrint('[WikiAgent] _cleanPath rejecting: "$raw" -> "$cleaned"');
       return '';
     }
@@ -645,7 +683,9 @@ When safe, fix wiki pages directly. Also write one lint report under reviews/ wi
     try {
       final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
       final argsRaw = decoded['args'] as Map<String, dynamic>?;
-      if (argsRaw == null) return gemma.FunctionCallResponse(name: name, args: {});
+      if (argsRaw == null) {
+        return gemma.FunctionCallResponse(name: name, args: {});
+      }
       final args = _flattenArgs(argsRaw);
       debugPrint('[WikiAgent] _tryRecoverToolCall: name=$name args=$args');
       return gemma.FunctionCallResponse(name: name, args: args);
@@ -656,14 +696,16 @@ When safe, fix wiki pages directly. Also write one lint report under reviews/ wi
     // Fallback: extract path from the innermost path value
     final pathMatch = RegExp(r'"path"\s*:\s*"([^"]+)"').firstMatch(jsonStr);
     final path = pathMatch?.group(1);
-    final contentMatch = RegExp(r'"content"\s*:\s*"([\s\S]*?)"(?:\s*,|\s*\})').firstMatch(jsonStr);
+    final contentMatch = RegExp(r'"content"\s*:\s*"([\s\S]*?)"(?:\s*,|\s*\})')
+        .firstMatch(jsonStr);
     final content = contentMatch?.group(1);
 
     final args = <String, Object?>{};
     if (path != null) args['path'] = path;
     if (content != null) args['content'] = content;
 
-    debugPrint('[WikiAgent] _tryRecoverToolCall fallback: name=$name args=$args');
+    debugPrint(
+        '[WikiAgent] _tryRecoverToolCall fallback: name=$name args=$args');
     return gemma.FunctionCallResponse(name: name, args: args);
   }
 
@@ -701,7 +743,8 @@ When safe, fix wiki pages directly. Also write one lint report under reviews/ wi
     final buffer = StringBuffer();
     for (final material in materials) {
       buffer
-        ..writeln('- [${material.id}] ${material.title} (${material.kind.name})')
+        ..writeln(
+            '- [${material.id}] ${material.title} (${material.kind.name})')
         ..writeln('  Preview: ${material.preview}');
       if (material.kind == MaterialKind.text) {
         final trimmed = material.content.trim();
@@ -710,7 +753,8 @@ When safe, fix wiki pages directly. Also write one lint report under reviews/ wi
             : trimmed;
         buffer.writeln('  Content: $snippet');
       } else if (material.kind == MaterialKind.photo) {
-        final imageCount = material.content.split('\n').where((p) => p.isNotEmpty).length;
+        final imageCount =
+            material.content.split('\n').where((p) => p.isNotEmpty).length;
         buffer.writeln('  Images: $imageCount image(s) attached');
       }
     }

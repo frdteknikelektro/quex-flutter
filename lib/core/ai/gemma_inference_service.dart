@@ -126,25 +126,18 @@ class GemmaInferenceService {
       throw StateError('No active chat. Call createSession() first.');
     }
 
-    // Include first image with text if available
+    // Include all queued images with the first user message.
     if (_pendingImages.isNotEmpty) {
-      debugPrint('[Gemma] Including ${_pendingImages.length} images with text message');
+      debugPrint(
+          '[Gemma] Including ${_pendingImages.length} images with text message');
       await _chat!.addQueryChunk(
-        gemma.Message.withImage(
+        gemma.Message.withImages(
           text: message,
-          imageBytes: _pendingImages[0],
+          imageBytes: List<Uint8List>.from(_pendingImages),
           isUser: true,
         ),
         noTool,
       );
-
-      // Add remaining images as separate image-only messages
-      for (int i = 1; i < _pendingImages.length; i++) {
-        await _chat!.addQueryChunk(
-          gemma.Message.imageOnly(imageBytes: _pendingImages[i], isUser: true),
-        );
-      }
-
       _pendingImages.clear();
     } else {
       await _chat!.addQueryChunk(
@@ -258,11 +251,11 @@ class GemmaInferenceService {
     _pendingImages.clear();
   }
 
-  /// Close the model and release all resources.
+  /// Release chat resources owned by this service.
+  ///
+  /// The active Gemma model stays app-scoped. Feature owners should dispose
+  /// their own service instance, but the shared model remains available.
   Future<void> dispose() async {
     await closeSession();
-    await _model?.close();
-    _model = null;
-    _isInitialized = false;
   }
 }
