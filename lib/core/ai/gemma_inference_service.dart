@@ -36,6 +36,7 @@ class GemmaInferenceService {
       maxTokens: maxTokens,
       preferredBackend: preferredBackend,
       supportImage: true,
+      maxNumImages: 64,
     );
 
     _isInitialized = true;

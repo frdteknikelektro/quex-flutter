@@ -172,7 +172,7 @@ class _WikiBuildModalState extends ConsumerState<WikiBuildModal> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: Sp.md),
               child: AnimatedOpacity(
-                opacity: actionState.lines.isNotEmpty ? 1.0 : 0.0,
+                opacity: (actionState.plan.isNotEmpty || actionState.lines.isNotEmpty) ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 300),
                 child: SizedBox(
                   height: 240,
@@ -181,23 +181,51 @@ class _WikiBuildModalState extends ConsumerState<WikiBuildModal> {
                       color: scheme.surfaceContainerHighest,
                       borderRadius: Br.md,
                     ),
-                    child: ListView.builder(
+                    child: ListView(
                       controller: _scrollController,
                       padding: const EdgeInsets.all(12),
-                      itemCount: actionState.lines.length,
-                      itemBuilder: (context, index) {
-                        return Padding(
+                      children: [
+                        if (actionState.plan.isNotEmpty) ...[
+                          ...actionState.plan.asMap().entries.map((e) {
+                            final done = actionState.completedSteps.contains(e.key);
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(
+                                    done ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                                    size: 16,
+                                    color: done ? scheme.primary : scheme.outlineVariant,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      e.value,
+                                      style: theme.textTheme.bodySmall?.copyWith(
+                                        color: done ? scheme.onSurface : scheme.onSurfaceVariant,
+                                        decoration: done ? TextDecoration.lineThrough : null,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                          if (actionState.lines.isNotEmpty) const Divider(height: 16),
+                        ],
+                        ...actionState.lines.map((line) => Padding(
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Text(
-                            '> ${actionState.lines[index]}',
+                            '> $line',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: scheme.onSurfaceVariant,
                               fontFamily: 'monospace',
                               height: 1.5,
                             ),
                           ),
-                        );
-                      },
+                        )),
+                      ],
                     ),
                   ),
                 ),

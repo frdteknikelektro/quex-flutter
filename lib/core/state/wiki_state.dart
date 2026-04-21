@@ -40,13 +40,15 @@ class WikiActionController extends StateNotifier<WikiActionState> {
     await _run(
       runType: WikiRunType.ingest,
       service: service,
-      runner: ({required bundle, required onLine}) {
+      runner: ({required bundle, required onLine, required onPlan, required onStepComplete}) {
         return _ref.read(wikiAgentServiceProvider).runIngest(
               service: service,
               session: bundle.session,
               materials: bundle.materials,
               sessionId: _sessionId,
               onLine: onLine,
+              onPlan: onPlan,
+              onStepComplete: onStepComplete,
             );
       },
     );
@@ -56,13 +58,15 @@ class WikiActionController extends StateNotifier<WikiActionState> {
     await _run(
       runType: WikiRunType.lint,
       service: service,
-      runner: ({required bundle, required onLine}) {
+      runner: ({required bundle, required onLine, required onPlan, required onStepComplete}) {
         return _ref.read(wikiAgentServiceProvider).runLint(
               service: service,
               session: bundle.session,
               materials: bundle.materials,
               sessionId: _sessionId,
               onLine: onLine,
+              onPlan: onPlan,
+              onStepComplete: onStepComplete,
             );
       },
     );
@@ -74,6 +78,8 @@ class WikiActionController extends StateNotifier<WikiActionState> {
     required Future<WikiAgentResult> Function({
       required SessionBundle bundle,
       required void Function(String line) onLine,
+      required void Function(List<String> steps) onPlan,
+      required void Function(int index) onStepComplete,
     }) runner,
   }) async {
     if (state.isBusy) return;
@@ -119,6 +125,12 @@ class WikiActionController extends StateNotifier<WikiActionState> {
         bundle: bundle,
         onLine: (line) {
           state = state.copyWith(lines: [...state.lines, line]);
+        },
+        onPlan: (steps) {
+          state = state.copyWith(plan: steps);
+        },
+        onStepComplete: (index) {
+          state = state.copyWith(completedSteps: {...state.completedSteps, index});
         },
       );
 

@@ -78,6 +78,8 @@ class WikiActionState {
   final List<String> touchedPaths;
   final DateTime? startedAt;
   final DateTime? completedAt;
+  final List<String> plan;
+  final Set<int> completedSteps;
 
   const WikiActionState({
     required this.status,
@@ -87,6 +89,8 @@ class WikiActionState {
     this.touchedPaths = const [],
     this.startedAt,
     this.completedAt,
+    this.plan = const [],
+    this.completedSteps = const {},
   });
 
   const WikiActionState.idle()
@@ -96,7 +100,9 @@ class WikiActionState {
         error = null,
         touchedPaths = const [],
         startedAt = null,
-        completedAt = null;
+        completedAt = null,
+        plan = const [],
+        completedSteps = const {};
 
   bool get isBusy =>
       status == WikiActionStatus.loadingModel ||
@@ -113,6 +119,8 @@ class WikiActionState {
     List<String>? touchedPaths,
     DateTime? startedAt,
     DateTime? completedAt,
+    List<String>? plan,
+    Set<int>? completedSteps,
   }) {
     return WikiActionState(
       status: status ?? this.status,
@@ -122,6 +130,8 @@ class WikiActionState {
       touchedPaths: touchedPaths ?? this.touchedPaths,
       startedAt: startedAt ?? this.startedAt,
       completedAt: completedAt ?? this.completedAt,
+      plan: plan ?? this.plan,
+      completedSteps: completedSteps ?? this.completedSteps,
     );
   }
 }

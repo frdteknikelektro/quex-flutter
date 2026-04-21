@@ -17,6 +17,40 @@ class GemmaQuizService {
 
   final GemmaInferenceService _inference;
 
+  static const _planTool = gemma.Tool(
+    name: 'plan',
+    description:
+        'Declare your complete plan before starting any work. Call ONCE at the very beginning. '
+        'List every step you intend to take in order.',
+    parameters: {
+      'type': 'object',
+      'properties': {
+        'steps': {
+          'type': 'array',
+          'items': {'type': 'string'},
+          'description':
+              'Ordered list of steps, e.g. ["Analyze materials", "Generate 10 questions", "Review quality", "Finish"]',
+        },
+      },
+      'required': ['steps'],
+    },
+  );
+
+  static const _completeStepTool = gemma.Tool(
+    name: 'complete_step',
+    description: 'Mark a planned step as done. Call after finishing each step from your plan.',
+    parameters: {
+      'type': 'object',
+      'properties': {
+        'index': {
+          'type': 'integer',
+          'description': '0-based index of the completed step from your plan',
+        },
+      },
+      'required': ['index'],
+    },
+  );
+
   static const _analyzeTool = gemma.Tool(
     name: 'analyze_materials',
     description:
@@ -134,6 +168,7 @@ class GemmaQuizService {
 
     const systemInstruction =
         'You are a quiz generator agent for elementary students. '
+        'Call plan() first with all steps you will take, then complete_step(index) after finishing each step. '
         'Plan the quiz first with analyze_materials, then generate questions one at a time, '
         'review for quality, and finish with finish_run. '
         'Use multipleChoice for factual recall (3-4 options). '
@@ -143,7 +178,7 @@ class GemmaQuizService {
     await _inference.createSession(
       systemInstruction: systemInstruction,
       isThinking: false,
-      tools: [_analyzeTool, _questionTool, _reviewTool, _finishTool],
+      tools: [_planTool, _completeStepTool, _analyzeTool, _questionTool, _reviewTool, _finishTool],
       supportsFunctionCalls: true,
       supportImage: hasImages,
     );
@@ -175,7 +210,15 @@ class GemmaQuizService {
     while (waitingForAnalyze) {
       await for (final response in _inference.generateResponses()) {
         if (response is gemma.FunctionCallResponse) {
-          if (response.name == 'analyze_materials') {
+          if (response.name == 'plan') {
+            final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
+            await _inference.addToolResponse(toolName: 'plan', response: {'acknowledged': true});
+            yield QuizPlanAnnounced(steps);
+          } else if (response.name == 'complete_step') {
+            final index = (response.args['index'] as num?)?.toInt() ?? 0;
+            await _inference.addToolResponse(toolName: 'complete_step', response: {'acknowledged': true});
+            yield QuizStepCompleted(index);
+          } else if (response.name == 'analyze_materials') {
             plannedCount = (response.args['question_count'] as num?)?.toInt();
             final topics = response.args['topics'];
             if (topics is List) {
@@ -222,7 +265,15 @@ class GemmaQuizService {
             } else if (response is gemma.TextResponse) {
               yield QuizTextToken(response.token);
             } else if (response is gemma.FunctionCallResponse) {
-              if (response.name == 'generate_question') {
+              if (response.name == 'plan') {
+                final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
+                await _inference.addToolResponse(toolName: 'plan', response: {'acknowledged': true});
+                yield QuizPlanAnnounced(steps);
+              } else if (response.name == 'complete_step') {
+                final index = (response.args['index'] as num?)?.toInt() ?? 0;
+                await _inference.addToolResponse(toolName: 'complete_step', response: {'acknowledged': true});
+                yield QuizStepCompleted(index);
+              } else if (response.name == 'generate_question') {
                 gotCall = true;
                 parsed = _parseToolCallQuestion(response.args, orderIndex: i - 1);
                 if (parsed == null) retries++;
@@ -279,7 +330,15 @@ class GemmaQuizService {
       List<int> regenerateIndices = [];
       await for (final response in _inference.generateResponses()) {
         if (response is gemma.FunctionCallResponse) {
-          if (response.name == 'review_quiz') {
+          if (response.name == 'plan') {
+            final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
+            await _inference.addToolResponse(toolName: 'plan', response: {'acknowledged': true});
+            yield QuizPlanAnnounced(steps);
+          } else if (response.name == 'complete_step') {
+            final index = (response.args['index'] as num?)?.toInt() ?? 0;
+            await _inference.addToolResponse(toolName: 'complete_step', response: {'acknowledged': true});
+            yield QuizStepCompleted(index);
+          } else if (response.name == 'review_quiz') {
             final ready = response.args['ready_to_submit'] as bool? ?? false;
             final issues = response.args['issues_found'];
             final indices = response.args['regenerate_indices'];
@@ -324,19 +383,28 @@ class GemmaQuizService {
               'Regenerate question ${idx + 1}. Call generate_question with improved content.');
 
           await for (final response in _inference.generateResponses()) {
-            if (response is gemma.FunctionCallResponse &&
-                response.name == 'generate_question') {
-              replaced = _parseToolCallQuestion(response.args, orderIndex: idx);
+            if (response is gemma.FunctionCallResponse) {
+              if (response.name == 'plan') {
+                final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
+                await _inference.addToolResponse(toolName: 'plan', response: {'acknowledged': true});
+                yield QuizPlanAnnounced(steps);
+              } else if (response.name == 'complete_step') {
+                final index = (response.args['index'] as num?)?.toInt() ?? 0;
+                await _inference.addToolResponse(toolName: 'complete_step', response: {'acknowledged': true});
+                yield QuizStepCompleted(index);
+              } else if (response.name == 'generate_question') {
+                replaced = _parseToolCallQuestion(response.args, orderIndex: idx);
 
-              await _inference.addToolResponse(
-                toolName: 'generate_question',
-                response: {
-                  'acknowledged': true,
-                  'index': idx + 1,
-                  'valid': replaced != null,
-                },
-              );
-              break;
+                await _inference.addToolResponse(
+                  toolName: 'generate_question',
+                  response: {
+                    'acknowledged': true,
+                    'index': idx + 1,
+                    'valid': replaced != null,
+                  },
+                );
+                break;
+              }
             }
           }
           regenRetries++;
@@ -361,7 +429,15 @@ class GemmaQuizService {
 
     await for (final response in _inference.generateResponses()) {
       if (response is gemma.FunctionCallResponse) {
-        if (response.name == 'finish_run') {
+        if (response.name == 'plan') {
+          final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
+          await _inference.addToolResponse(toolName: 'plan', response: {'acknowledged': true});
+          yield QuizPlanAnnounced(steps);
+        } else if (response.name == 'complete_step') {
+          final index = (response.args['index'] as num?)?.toInt() ?? 0;
+          await _inference.addToolResponse(toolName: 'complete_step', response: {'acknowledged': true});
+          yield QuizStepCompleted(index);
+        } else if (response.name == 'finish_run') {
           summary = (response.args['summary'] as String?) ?? '';
 
           await _inference.addToolResponse(

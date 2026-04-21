@@ -30,6 +30,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   final _thinkingBuffer = StringBuffer();
   final _currentQuestionBuffer = StringBuffer();
   final _generatedQuestions = <String>[];
+  List<String> _planSteps = [];
+  final Set<int> _completedSteps = {};
   final _scrollController = ScrollController();
   final Object _gemmaOwnerToken = Object();
 
@@ -266,6 +268,12 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   void _handleEvent(QuizGenerationEvent event) {
     if (!mounted) return;
     switch (event) {
+      case QuizPlanAnnounced(:final steps):
+        setState(() => _planSteps = steps);
+        _scrollToBottom();
+      case QuizStepCompleted(:final index):
+        setState(() => _completedSteps.add(index));
+        _scrollToBottom();
       case QuizPlanned(:final questionCount, :final topics):
         setState(() {
           _totalCount = questionCount;
@@ -492,7 +500,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
 
   Widget _buildGeneratingView(ColorScheme scheme) {
     final theme = Theme.of(context);
-    final hasStream = _thinkingBuffer.isNotEmpty ||
+    final hasStream = _planSteps.isNotEmpty ||
+        _thinkingBuffer.isNotEmpty ||
         _generatedQuestions.isNotEmpty ||
         (_totalCount > 0 && _generatedCount < _totalCount && !_isComplete);
 
@@ -570,6 +579,36 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                   controller: _scrollController,
                   padding: const EdgeInsets.all(12),
                   children: [
+                    if (_planSteps.isNotEmpty) ...[
+                      ..._planSteps.asMap().entries.map((e) {
+                        final done = _completedSteps.contains(e.key);
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(
+                                done ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                                size: 16,
+                                color: done ? scheme.primary : scheme.outlineVariant,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  e.value,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: done ? scheme.onSurface : scheme.onSurfaceVariant,
+                                    decoration: done ? TextDecoration.lineThrough : null,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }),
+                      if (_generatedQuestions.isNotEmpty || _thinkingBuffer.isNotEmpty)
+                        const Divider(height: 16),
+                    ],
                     if (_thinkingBuffer.isNotEmpty)
                       Text(
                         _thinkingBuffer.toString(),

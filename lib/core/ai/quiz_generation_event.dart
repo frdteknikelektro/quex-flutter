@@ -31,6 +31,16 @@ class QuizPlanned extends QuizGenerationEvent {
   QuizPlanned(this.questionCount, this.topics);
 }
 
+class QuizPlanAnnounced extends QuizGenerationEvent {
+  final List<String> steps;
+  QuizPlanAnnounced(this.steps);
+}
+
+class QuizStepCompleted extends QuizGenerationEvent {
+  final int index;
+  QuizStepCompleted(this.index);
+}
+
 // 3. Review phase
 class QuizUnderReview extends QuizGenerationEvent {
   final List<String> issues;

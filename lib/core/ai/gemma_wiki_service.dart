@@ -29,6 +29,40 @@ class GemmaWikiService {
 
   final WikiStorageService _storage;
 
+  static const _planTool = gemma.Tool(
+    name: 'plan',
+    description:
+        'Declare your complete plan before starting any work. Call ONCE at the very beginning. '
+        'List every step you intend to take in order.',
+    parameters: {
+      'type': 'object',
+      'properties': {
+        'steps': {
+          'type': 'array',
+          'items': {'type': 'string'},
+          'description':
+              'Ordered list of steps, e.g. ["List existing pages", "Write concepts/photosynthesis.md", "Update index.md", "Finish"]',
+        },
+      },
+      'required': ['steps'],
+    },
+  );
+
+  static const _completeStepTool = gemma.Tool(
+    name: 'complete_step',
+    description: 'Mark a planned step as done. Call after finishing each step from your plan.',
+    parameters: {
+      'type': 'object',
+      'properties': {
+        'index': {
+          'type': 'integer',
+          'description': '0-based index of the completed step from your plan',
+        },
+      },
+      'required': ['index'],
+    },
+  );
+
   static const _listPagesTool = gemma.Tool(
     name: 'list_existing_pages',
     description: 'List all existing markdown pages in the current session wiki. Call this first to understand what already exists before writing or updating.',
@@ -108,6 +142,8 @@ class GemmaWikiService {
     required List<StudyMaterial> materials,
     required int sessionId,
     WikiAgentLineCallback? onLine,
+    void Function(List<String> steps)? onPlan,
+    void Function(int index)? onStepComplete,
   }) async {
     return _run(
       service: service,
@@ -117,6 +153,8 @@ class GemmaWikiService {
       prompt: _buildIngestPrompt(session, materials),
       systemInstruction: _buildSystemInstruction(session, mode: 'ingest'),
       onLine: onLine,
+      onPlan: onPlan,
+      onStepComplete: onStepComplete,
     );
   }
 
@@ -126,6 +164,8 @@ class GemmaWikiService {
     required List<StudyMaterial> materials,
     required int sessionId,
     WikiAgentLineCallback? onLine,
+    void Function(List<String> steps)? onPlan,
+    void Function(int index)? onStepComplete,
   }) async {
     return _run(
       service: service,
@@ -135,6 +175,8 @@ class GemmaWikiService {
       prompt: _buildLintPrompt(session),
       systemInstruction: _buildSystemInstruction(session, mode: 'lint'),
       onLine: onLine,
+      onPlan: onPlan,
+      onStepComplete: onStepComplete,
     );
   }
 
@@ -146,6 +188,8 @@ class GemmaWikiService {
     required String prompt,
     required String systemInstruction,
     WikiAgentLineCallback? onLine,
+    void Function(List<String> steps)? onPlan,
+    void Function(int index)? onStepComplete,
   }) async {
     final prepared = await MaterialPreprocessor.prepare(materials);
     final hasImages = prepared.any((item) => item.images.isNotEmpty);
@@ -154,10 +198,12 @@ class GemmaWikiService {
 
     await service.createSession(
       systemInstruction: systemInstruction,
-      temperature: 0.2,
+      temperature: 1,
       topK: 1,
       supportImage: hasImages,
       tools: const [
+        _planTool,
+        _completeStepTool,
         _listPagesTool,
         _readPageTool,
         _writePageTool,
@@ -287,6 +333,12 @@ class GemmaWikiService {
       for (final result in toolResults) {
         final toolName = result['tool'] as String? ?? 'unknown';
         debugPrint('[WikiAgent] tool result: $toolName -> ${result['message']}');
+        if (result['plan'] != null) {
+          onPlan?.call((result['plan'] as List).cast<String>());
+        }
+        if (result['completedIndex'] != null) {
+          onStepComplete?.call(result['completedIndex'] as int);
+        }
         await service.addToolResponse(toolName: toolName, response: result);
       }
     }
@@ -306,6 +358,20 @@ class GemmaWikiService {
     required Set<String> deletedPaths,
   }) async {
     switch (response.name) {
+      case 'plan':
+        final steps = (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
+        return {
+          'tool': response.name,
+          'plan': steps,
+          'message': 'Plan: ${steps.length} step${steps.length == 1 ? '' : 's'}',
+        };
+      case 'complete_step':
+        final index = (response.args['index'] as num?)?.toInt() ?? 0;
+        return {
+          'tool': response.name,
+          'completedIndex': index,
+          'message': 'Step ${index + 1} done',
+        };
       case 'list_existing_pages':
         final entries = await _storage.readAllEntries(sessionId);
         return {
@@ -412,31 +478,66 @@ class GemmaWikiService {
     ].join(', ');
 
     return '''
-You are a wiki maintenance agent. Your job is to build, update, and lint study wikis by calling tools exactly as instructed. Output ONLY tool calls. Never emit free text, reasoning, or explanations.
+You are a wiki builder and maintainer for "${session.title}" (Grade ${session.gradeOverride}). Your job is to construct and evolve a persistent, interconnected knowledge base by reading sources, extracting key ideas, and maintaining cross-references. Output ONLY tool calls. Never emit free text, reasoning, or explanations.
 
-RULES — follow these exactly:
+CORE PRINCIPLES:
+- The wiki is a LIVING ARTIFACT. Each ingest strengthens it — new pages, updated connections, refined understanding.
+- Extract and synthesize. Don't just summarize sources — identify core concepts, named entities, relationships, and contradictions.
+- Cross-reference obsessively. Every concept page links to related entities and sources. Every entity page links to concepts that define or explain it.
+- Track evolution. Note when new sources confirm, contradict, or refine existing claims. Update log.md with what changed and why.
+- Organize by PURPOSE, not format: sources are raw input. Concepts are recurring ideas. Entities are named things (people, places, species, etc.). Syntheses are cross-source insights. Reviews are gaps and next questions.
 
-1. ALWAYS call list_existing_pages FIRST before writing any new page. Check what already exists.
-2. Call read_existing_page BEFORE updating an existing page. Read it first to avoid losing content.
-3. Call write_markdown_file to create or overwrite wiki pages. Include YAML frontmatter (title, category, slug, materialIds) and markdown body.
-4. Call delete_markdown_file only for truly redundant or superseded pages.
-5. Call finish_run ONLY after all file changes are done. Provide a one-line summary.
-6. NEVER produce free text as a response. If you cannot decide, call a tool.
+WORKFLOW (ingest mode):
+1. list_existing_pages — understand current wiki structure and coverage. This is MANDATORY FIRST.
+2. Call plan() with all steps you intend to take based on current state. Then call complete_step(index) after finishing each step.
+3. For each source: identify key concepts, entities, and facts.
+4. write or update concept/*.md pages with definitions, examples from sources, links to related entities and sources.
+5. write or update entities/*.md pages with descriptions, roles, relationships, and citations.
+6. write sources/[title].md summarizing the source and highlighting what's new or contradictory.
+7. Update syntheses/*.md — revise cross-source comparisons, timelines, and conclusions.
+8. Update index.md with new pages and revised metadata.
+9. Append to log.md: what was added, what was updated, what contradictions emerged, what questions remain.
+10. finish_run with a one-line summary.
 
-WIKI STRUCTURE:
-- index.md  — category index with links grouped by category
-- log.md    — append a new dated section for this run
-- sources/*.md  — one page per study material
-- concepts/*.md — shared ideas and recurring themes
-- entities/*.md — concrete named entities only
-- syntheses/*.md — cross-material summaries and comparisons
-- reviews/*.md  — lint reports only
+FRONTMATTER TEMPLATE (YAML):
+---
+title: [Page Title]
+category: [sources|concepts|entities|syntheses|reviews]
+slug: [kebab-case-url-slug]
+materialIds: [comma-separated source IDs that informed this page]
+lastUpdated: YYYY-MM-DD
+status: [draft|active|deprecated]
+---
 
-PATH FORMAT — path arguments must be plain strings. CORRECT: "sources/chapter1.md". WRONG: "\"sources/chapter1.md\"" or "sources/<tag>" or any wrapper. No extra quotes, no tags, no brackets.
+FILE STRUCTURE:
+- index.md — master index. Organized by category. Each entry: [Title](path) — one-line summary.
+- log.md — append-only changelog. Format: `## [YYYY-MM-DD HH:MM] [ingest|lint|query] | [brief summary]`
+- sources/*.md — one page per study material. Summary + key claims.
+- concepts/*.md — abstract ideas, definitions, principles, recurring themes. Links to entities and sources.
+- entities/*.md — concrete things: people, places, species, events, objects. Links to related concepts and sources.
+- syntheses/*.md — cross-source comparisons, timelines, arguments, patterns. Cite all sources.
+- reviews/*.md — lint findings, gaps, contradictions, suggested next questions. Only in lint mode.
 
-OUTPUT RULE: You MUST output a tool call response for every user message. Do not explain what you are doing. Do not output thinking, reasoning, or intermediate text. Only structured tool calls are valid responses.
+PATH FORMAT:
+CORRECT: "sources/chapter1.md", "concepts/photosynthesis.md", "entities/carbon-cycle.md"
+WRONG: quotes around path, angle brackets, variables, spaces in filenames
 
-Current date: ${DateFormat('yyyy/MM/dd HH:mm z').format(DateTime.now())} (use YYYY/MM/DD HH:MM format in log entries)
+RULES:
+1. ALWAYS list_existing_pages FIRST. This informs your plan. Never call plan() before examining existing structure.
+2. ALWAYS call plan() AFTER list_existing_pages and before any writes. Plan must include concrete steps based on what exists now and what you just learned.
+3. Before updating an existing page, read_existing_page. Preserve content; refine and extend.
+4. Cross-linking is mandatory: if page A mentions concept B, link it: [concept](../concepts/b.md). If concept B relates to entity C, reciprocate.
+5. Flag contradictions explicitly in syntheses/ or log.md. Never silently overwrite old claims. Example: "Source X claims [A]. Source Y claims [B]. See syntheses/contradiction-A-vs-B.md"
+6. Avoid duplication: if an entity already has a page, link to it from other pages rather than repeating its description.
+7. Only delete a page if it is truly superseded or a duplicate. Default: update.
+8. Produce a tool call for every user message. No free text, no reasoning in responses.
+
+CONTENT QUALITY:
+- Write for grade ${session.gradeOverride} comprehension. Define jargon. Use examples.
+- Synthesis pages should connect at least 2–3 sources. Show patterns and differences.
+- Log entries should indicate what was *added*, *updated*, or *contradicted* — help readers see the wiki's evolution.
+
+Current date: ${DateFormat('yyyy/MM/dd HH:mm z').format(DateTime.now())}
 Allowed categories: $categories
 ''';
   }
@@ -526,6 +627,8 @@ When safe, fix wiki pages directly. Also write one lint report under reviews/ wi
     final name = nameMatch.group(1)!;
 
     const validNames = {
+      'plan',
+      'complete_step',
       'list_existing_pages',
       'read_existing_page',
       'write_markdown_file',
