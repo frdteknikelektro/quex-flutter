@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
@@ -15,6 +14,7 @@ import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 class GemmaInferenceService {
   gemma.InferenceModel? _model;
   gemma.InferenceChat? _chat;
+  final List<Uint8List> _pendingImages = [];
 
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
@@ -77,6 +77,13 @@ class GemmaInferenceService {
       supportsFunctionCalls: supportsFunctionCalls,
       modelType: gemma.ModelType.gemmaIt,
     );
+    _pendingImages.clear();
+  }
+
+  /// Queue images to be included with the first user message.
+  /// Images are accumulated and consumed when addTextQuery() is called.
+  Future<void> addImagesToQueue(List<Uint8List> images) async {
+    _pendingImages.addAll(images);
   }
 
   /// Send a text message and get a synchronous response.
@@ -109,6 +116,8 @@ class GemmaInferenceService {
   }
 
   /// Add a text query chunk to the current session.
+  /// If pending images exist, includes the first image with the text,
+  /// then adds remaining images as separate queries.
   Future<void> addTextQuery(
     String message, {
     bool noTool = false,
@@ -117,21 +126,42 @@ class GemmaInferenceService {
       throw StateError('No active chat. Call createSession() first.');
     }
 
-    await _chat!.addQueryChunk(
-      gemma.Message.text(text: message, isUser: true),
-      noTool,
-    );
+    // Include first image with text if available
+    if (_pendingImages.isNotEmpty) {
+      debugPrint('[Gemma] Including ${_pendingImages.length} images with text message');
+      await _chat!.addQueryChunk(
+        gemma.Message.withImage(
+          text: message,
+          imageBytes: _pendingImages[0],
+          isUser: true,
+        ),
+        noTool,
+      );
+
+      // Add remaining images as separate image-only messages
+      for (int i = 1; i < _pendingImages.length; i++) {
+        await _chat!.addQueryChunk(
+          gemma.Message.imageOnly(imageBytes: _pendingImages[i], isUser: true),
+        );
+      }
+
+      _pendingImages.clear();
+    } else {
+      await _chat!.addQueryChunk(
+        gemma.Message.text(text: message, isUser: true),
+        noTool,
+      );
+    }
   }
 
   /// Add an image query chunk to the current session.
+  /// Images are queued and consumed when addTextQuery() is called.
   Future<void> addImageQuery(Uint8List imageBytes) async {
     if (_chat == null) {
       throw StateError('No active chat. Call createSession() first.');
     }
 
-    await _chat!.addQueryChunk(
-      gemma.Message.imageOnly(imageBytes: imageBytes, isUser: true),
-    );
+    await addImagesToQueue([imageBytes]);
   }
 
   /// Add a tool response to the current session.
@@ -225,6 +255,7 @@ class GemmaInferenceService {
   Future<void> closeSession() async {
     await _chat?.close();
     _chat = null;
+    _pendingImages.clear();
   }
 
   /// Close the model and release all resources.

@@ -214,10 +214,14 @@ class GemmaWikiService {
       isThinking: false,
     );
 
+    // Queue all images to be included with first user message
+    final allImages = <Uint8List>[];
     for (final item in prepared) {
-      for (final image in item.images) {
-        await service.addImageQuery(image);
-      }
+      allImages.addAll(item.images);
+    }
+    if (allImages.isNotEmpty) {
+      debugPrint('[WikiAgent] Queuing ${allImages.length} images');
+      await service.addImagesToQueue(allImages);
     }
     await service.addTextQuery(prompt);
     debugPrint('[WikiAgent] session ready, generating (turn 0)');

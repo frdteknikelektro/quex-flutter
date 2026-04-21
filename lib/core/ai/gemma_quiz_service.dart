@@ -189,10 +189,14 @@ class GemmaQuizService {
         .where((t) => t.isNotEmpty)
         .join('\n\n');
 
+    // Queue all images to be included with first user message
+    final allImages = <Uint8List>[];
     for (final prep in prepared) {
-      for (final imgBytes in prep.images) {
-        await _inference.addImageQuery(imgBytes);
-      }
+      allImages.addAll(prep.images);
+    }
+    if (allImages.isNotEmpty) {
+      debugPrint('[Quiz] Queuing ${allImages.length} images');
+      await _inference.addImagesToQueue(allImages);
     }
 
     // Phase 1: Analysis

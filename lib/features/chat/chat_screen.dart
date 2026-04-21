@@ -52,6 +52,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void initState() {
     super.initState();
     unawaited(_warmModel());
+    unawaited(_resetChat());
   }
 
   @override

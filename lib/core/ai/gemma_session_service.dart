@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
 import '../models/models.dart';
@@ -90,11 +91,14 @@ class GemmaSessionService {
       supportsFunctionCalls: true,
     );
 
-    // Pre-seed images once as visual context.
+    // Queue all images to be included with first user message
+    final allImages = <Uint8List>[];
     for (final p in prepared) {
-      for (final imageBytes in p.images) {
-        await _inference.addImageQuery(imageBytes);
-      }
+      allImages.addAll(p.images);
+    }
+    if (allImages.isNotEmpty) {
+      debugPrint('[Tutor] Queuing ${allImages.length} images');
+      await _inference.addImagesToQueue(allImages);
     }
   }
 
@@ -159,10 +163,14 @@ class GemmaSessionService {
       supportImage: hasImages,
     );
 
+    // Queue all images to be included with first user message
+    final allImages = <Uint8List>[];
     for (final p in prepared) {
-      for (final imageBytes in p.images) {
-        await _inference.addImageQuery(imageBytes);
-      }
+      allImages.addAll(p.images);
+    }
+    if (allImages.isNotEmpty) {
+      debugPrint('[Coach] Queuing ${allImages.length} images');
+      await _inference.addImagesToQueue(allImages);
     }
   }
 
