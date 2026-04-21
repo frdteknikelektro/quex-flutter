@@ -574,7 +574,7 @@ void dispose() {
 |----------|-------|----------|
 | Basic tutor chat | Open question → send 3 messages | Materials processed once, context maintained |
 | Tool evaluation | Answer correctly | TutorEvaluation event fires, score appears |
-| Ownership loss | Open wiki while chatting → return → send | Auto-reinit, no crash |
+| Ownership loss | Open another screen while chatting → return → send | Auto-reinit, no crash |
 | Init retry | Kill app during init → reopen → send | Clean error, retry works |
 | Concurrent spam | Triple-tap send | Single init, single response |
 | Background/restore | Background app → restore → send | Session still valid |

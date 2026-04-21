@@ -28,8 +28,6 @@ dart run build_runner build  # generates .g.dart for riverpod_generator (unused 
 
 **AI layer**: Dual-mode. `QuexAi` (static facade, rule-based fallback) + `GemmaInferenceService` (on-device Gemma 4 E4B via `flutter_gemma`). `ModelManager` handles model download from HuggingFace. `ModelDownloadNotifier` is the Riverpod state machine for download lifecycle. **Important**: `GemmaInferenceService` uses persistent session pattern — call `initQuestionTutorSession()` or `initCoachSession()` once per screen, then `sendQuestionTutorMessage()` or `sendCoachMessage()` for each user message. Do NOT create new session per message.
 
-**Wiki layer**: WikiAgentService provides auto-generated study guides via multi-turn tool-calling with Gemma. WikiStorageService persists markdown to SQLite. Wiki-markdown uses custom syntax: `[[Parent Topic]]` for internal links, `# Category` headers for grouping.
-
 **Aggregation**: `SessionBundle` and `QuizBundle` compose related entities for screen consumption.
 
 ## Design System

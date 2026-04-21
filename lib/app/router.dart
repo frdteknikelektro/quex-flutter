@@ -17,7 +17,6 @@ import '../features/profile_selection/profile_selection_screen.dart';
 import '../features/quiz/question_chat_screen.dart';
 import '../features/quiz/quiz_detail_screen.dart';
 import '../features/session_detail/session_detail_screen.dart';
-import '../features/wiki/session_wiki_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../features/summary/summary_screen.dart';
 
@@ -29,7 +28,6 @@ class Routes {
   static const newSession = '/session/new';
   static const session = '/session/:sessionId';
   static const addMaterial = '/session/:sessionId/material';
-  static const sessionWiki = '/session/:sessionId/wiki';
   static const materialDetail = '/session/:sessionId/material/:materialId';
   static const chat = '/session/:sessionId/chat';
   static const quizDetail = '/session/:sessionId/quiz/:quizId/detail';
@@ -102,14 +100,6 @@ final appRouter = GoRouter(
       builder: (context, state) {
         final sessionId = int.parse(state.pathParameters['sessionId']!);
         return MaterialScreen(sessionId: sessionId);
-      },
-    ),
-    GoRoute(
-      path: Routes.sessionWiki,
-      name: 'session-wiki',
-      builder: (context, state) {
-        final sessionId = int.parse(state.pathParameters['sessionId']!);
-        return SessionWikiScreen(sessionId: sessionId);
       },
     ),
     GoRoute(

@@ -3,12 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../app/router.dart';
 import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
-import '../../core/state/wiki_state.dart';
 import '../../widgets/quex_ui.dart';
 import '../processing/quiz_generation_modal.dart';
 
@@ -104,8 +102,6 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
   @override
   Widget build(BuildContext context) {
     final bundleAsync = ref.watch(sessionBundleProvider(widget.sessionId));
-    final wikiHasContentAsync =
-        ref.watch(wikiHasContentProvider(widget.sessionId));
 
     return bundleAsync.when(
       loading: () => const Scaffold(
@@ -120,11 +116,6 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
             body: Center(child: Text('Session not found')),
           );
         }
-
-        final hasWiki = wikiHasContentAsync.maybeWhen(
-          data: (value) => value,
-          orElse: () => false,
-        );
 
         return Scaffold(
           appBar: AppBar(
@@ -162,7 +153,6 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
                     sessionId: widget.sessionId,
                     materialCount: bundle.materials.length,
                     materials: bundle.materials,
-                    hasWiki: hasWiki,
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -233,13 +223,11 @@ class _NavigationCard extends StatefulWidget {
   final int sessionId;
   final int materialCount;
   final List<StudyMaterial> materials;
-  final bool hasWiki;
 
   const _NavigationCard({
     required this.sessionId,
     required this.materialCount,
     required this.materials,
-    required this.hasWiki,
   });
 
   @override
@@ -285,23 +273,6 @@ class _NavigationCardState extends State<_NavigationCard> {
             subtitle: Text(subtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/session/${widget.sessionId}/material'),
-          ),
-          const Divider(height: 1, indent: 16, endIndent: 16),
-          ListTile(
-            leading: Icon(Icons.auto_stories_outlined, color: scheme.primary),
-            title: const Text('Wiki'),
-            subtitle: Text(
-              widget.hasWiki
-                  ? 'Browse index, pages, and reviews'
-                  : 'Build a knowledge wiki',
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => context.push(
-              Routes.sessionWiki.replaceFirst(
-                ':sessionId',
-                '${widget.sessionId}',
-              ),
-            ),
           ),
           const Divider(height: 1, indent: 16, endIndent: 16),
           ListTile(
