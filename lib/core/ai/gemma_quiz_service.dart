@@ -174,6 +174,8 @@ class GemmaQuizService {
         'Call plan() first with all steps you will take, then complete_step(index) after finishing each step. '
         'Plan the quiz first with analyze_materials, then generate questions one at a time, '
         'review for quality, and finish with finish_run. '
+        'Every turn must be a tool call using one of the provided tools. '
+        'Do not output free text, markdown, or explanations. '
         'Use multipleChoice for factual recall (3-4 options). '
         'Use textAnswer for definitions or short answers. '
         'Match difficulty to grade level.';
@@ -181,6 +183,8 @@ class GemmaQuizService {
     await _inference.createSession(
       systemInstruction: systemInstruction,
       isThinking: false,
+      promptDialect: gemma.PromptDialect.gemma4,
+      toolChoice: gemma.ToolChoice.required,
       tools: [
         _planTool,
         _completeStepTool,
@@ -606,6 +610,8 @@ class GemmaQuizService {
       temperature: 0.1,
       topK: 1,
       supportImage: hasImages,
+      promptDialect: gemma.PromptDialect.gemma4,
+      toolChoice: gemma.ToolChoice.auto,
     );
 
     final prompt = 'Extract all quiz questions from these materials. '

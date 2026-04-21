@@ -53,10 +53,13 @@ class GemmaInferenceService {
     double temperature = 0.8,
     int randomSeed = 1,
     int topK = 1,
+    gemma.ModelType modelType = gemma.ModelType.gemmaIt,
+    gemma.PromptDialect promptDialect = gemma.PromptDialect.gemma4,
     bool supportImage = false,
     bool isThinking = false,
     List<gemma.Tool> tools = const [],
     bool supportsFunctionCalls = false,
+    gemma.ToolChoice toolChoice = gemma.ToolChoice.auto,
   }) async {
     if (_model == null) {
       throw StateError(
@@ -65,6 +68,7 @@ class GemmaInferenceService {
 
     // Close existing chat if any
     await _chat?.close();
+    _pendingImages.clear();
 
     _chat = await _model!.createChat(
       systemInstruction: systemInstruction,
@@ -75,9 +79,10 @@ class GemmaInferenceService {
       isThinking: isThinking,
       tools: tools,
       supportsFunctionCalls: supportsFunctionCalls,
-      modelType: gemma.ModelType.gemmaIt,
+      modelType: modelType,
+      promptDialect: promptDialect,
+      toolChoice: toolChoice,
     );
-    _pendingImages.clear();
   }
 
   /// Queue images to be included with the first user message.

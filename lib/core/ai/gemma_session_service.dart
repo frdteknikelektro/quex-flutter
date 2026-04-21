@@ -69,10 +69,10 @@ class GemmaSessionService {
 
     final systemInstruction = StringBuffer(
       'You are a friendly tutor helping an elementary student answer a quiz question. '
-      'Guide them with hints and encouragement — do NOT reveal the answer directly until '
-      'they demonstrate understanding. Keep responses short and simple.\n\n'
-      'You have access to the evaluate_understanding tool. Call it ONLY when the student '
-      'answers correctly or clearly demonstrates understanding.\n\n'
+      'Keep responses short and simple. Give hints and encouragement, and do NOT reveal '
+      'the answer directly until they demonstrate understanding.\n\n'
+      'Use the evaluate_understanding tool only when the student answers correctly or '
+      'clearly demonstrates understanding. Otherwise reply in plain text.\n\n'
       '--- QUIZ QUESTION ---\n'
       'Question: ${question.questionText}\n',
     );
@@ -90,6 +90,8 @@ class GemmaSessionService {
       systemInstruction: systemInstruction.toString(),
       temperature: 0.7,
       supportImage: hasImages,
+      promptDialect: gemma.PromptDialect.gemma4,
+      toolChoice: gemma.ToolChoice.auto,
       tools: [_evaluateTool],
       supportsFunctionCalls: true,
     );
@@ -114,29 +116,44 @@ class GemmaSessionService {
     }
 
     final guard = ResponseLoopGuard();
+    final replyBuffer = StringBuffer();
+    final thinkingBuffer = StringBuffer();
+    final toolCalls = <String>[];
     await _inference.addTextQuery(userMessage);
 
-    await for (final response in _inference.generateResponses()) {
-      if (response is gemma.ThinkingResponse) {
-        yield TutorThinking(response.content);
-      } else if (response is gemma.TextResponse) {
-        final error = guard.recordTextToken(response.token);
-        if (error != null) {
-          throw StateError(error);
-        }
-        yield TutorReply(response.token);
-      } else if (response is gemma.FunctionCallResponse) {
-        final error = guard.recordToolCall(response.name, response.args);
-        if (error != null) {
-          throw StateError(error);
-        }
-        if (response.name == 'evaluate_understanding') {
-          final score = (response.args['score'] as num?)?.toDouble();
-          if (score != null) {
-            yield TutorEvaluation(score: score);
+    try {
+      await for (final response in _inference.generateResponses()) {
+        if (response is gemma.ThinkingResponse) {
+          thinkingBuffer.write(response.content);
+          yield TutorThinking(response.content);
+        } else if (response is gemma.TextResponse) {
+          replyBuffer.write(response.token);
+          final error = guard.recordTextToken(response.token);
+          if (error != null) {
+            throw StateError(error);
+          }
+          yield TutorReply(response.token);
+        } else if (response is gemma.FunctionCallResponse) {
+          toolCalls.add('${response.name}(${response.args})');
+          final error = guard.recordToolCall(response.name, response.args);
+          if (error != null) {
+            throw StateError(error);
+          }
+          if (response.name == 'evaluate_understanding') {
+            final score = (response.args['score'] as num?)?.toDouble();
+            if (score != null) {
+              yield TutorEvaluation(score: score);
+            }
           }
         }
       }
+    } finally {
+      _debugGemmaAudit(
+        label: 'Tutor',
+        thinking: thinkingBuffer.toString(),
+        reply: replyBuffer.toString(),
+        toolCalls: toolCalls,
+      );
     }
   }
 
@@ -174,6 +191,8 @@ class GemmaSessionService {
       systemInstruction: systemInstruction.toString(),
       temperature: 0.7,
       supportImage: hasImages,
+      promptDialect: gemma.PromptDialect.gemma4,
+      toolChoice: gemma.ToolChoice.auto,
     );
 
     // Queue all images to be included with first user message
@@ -194,18 +213,67 @@ class GemmaSessionService {
     }
 
     final guard = ResponseLoopGuard();
+    final replyBuffer = StringBuffer();
+    final thinkingBuffer = StringBuffer();
+    final toolCalls = <String>[];
     await _inference.addTextQuery(message);
 
-    await for (final response in _inference.generateResponses()) {
-      if (response is gemma.ThinkingResponse) {
-        yield TutorThinking(response.content);
-      } else if (response is gemma.TextResponse) {
-        final error = guard.recordTextToken(response.token);
-        if (error != null) {
-          throw StateError(error);
+    try {
+      await for (final response in _inference.generateResponses()) {
+        if (response is gemma.ThinkingResponse) {
+          thinkingBuffer.write(response.content);
+          yield TutorThinking(response.content);
+        } else if (response is gemma.TextResponse) {
+          replyBuffer.write(response.token);
+          final error = guard.recordTextToken(response.token);
+          if (error != null) {
+            throw StateError(error);
+          }
+          yield TutorReply(response.token);
+        } else if (response is gemma.FunctionCallResponse) {
+          toolCalls.add('${response.name}(${response.args})');
         }
-        yield TutorReply(response.token);
       }
+    } finally {
+      _debugGemmaAudit(
+        label: 'Coach',
+        thinking: thinkingBuffer.toString(),
+        reply: replyBuffer.toString(),
+        toolCalls: toolCalls,
+      );
+    }
+  }
+
+  void _debugGemmaAudit({
+    required String label,
+    required String thinking,
+    required String reply,
+    required List<String> toolCalls,
+  }) {
+    if (!kDebugMode) return;
+
+    debugPrint(
+      '[$label][Gemma][audit] thinking=${thinking.length} chars '
+      'reply=${reply.length} chars toolCalls=${toolCalls.length}',
+    );
+    _debugPrintChunked('[$label][Gemma][thinking]', thinking);
+    _debugPrintChunked('[$label][Gemma][reply]', reply);
+    if (toolCalls.isNotEmpty) {
+      debugPrint('[$label][Gemma][toolCalls] ${toolCalls.join(' | ')}');
+    }
+  }
+
+  void _debugPrintChunked(String prefix, String text) {
+    if (text.isEmpty) {
+      debugPrint('$prefix <empty>');
+      return;
+    }
+
+    const chunkSize = 900;
+    for (var start = 0; start < text.length; start += chunkSize) {
+      final end =
+          start + chunkSize < text.length ? start + chunkSize : text.length;
+      debugPrint('$prefix ${text.substring(start, end)}');
     }
   }
 }

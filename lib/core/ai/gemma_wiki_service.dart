@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
@@ -16,25 +15,45 @@ typedef WikiAgentLineCallback = void Function(String line);
 class WikiAgentResult {
   final List<String> touchedPaths;
   final List<String> deletedPaths;
+  final List<String> unresolvedIssues;
   final String summary;
 
   const WikiAgentResult({
     required this.touchedPaths,
     required this.deletedPaths,
     required this.summary,
+    this.unresolvedIssues = const [],
+  });
+}
+
+class _AgentSessionResult {
+  final List<String> touchedPaths;
+  final List<String> deletedPaths;
+  final List<String> unresolvedIssues;
+  final String summary;
+
+  const _AgentSessionResult({
+    required this.touchedPaths,
+    required this.deletedPaths,
+    required this.unresolvedIssues,
+    required this.summary,
   });
 }
 
 class GemmaWikiService {
-  GemmaWikiService(this._storage);
+  GemmaWikiService(
+    this._storage, {
+    GemmaInferenceService Function()? workerServiceFactory,
+  }) : _workerServiceFactory = workerServiceFactory ?? GemmaInferenceService.new;
 
   final WikiStorageService _storage;
+  final GemmaInferenceService Function() _workerServiceFactory;
 
   static const _planTool = gemma.Tool(
     name: 'plan',
     description:
         'Declare your complete plan before starting any work. Call ONCE at the very beginning. '
-        'List every step you intend to take in order.',
+        'List every step you intend to take in order, with one sentence per step.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -42,7 +61,7 @@ class GemmaWikiService {
           'type': 'array',
           'items': {'type': 'string'},
           'description':
-              'Ordered list of steps, e.g. ["List existing pages", "Write concepts/photosynthesis.md", "Update index.md", "Finish"]',
+              'Ordered list of single-sentence steps, one step per line, e.g. ["List existing pages", "Write concepts/photosynthesis.md", "Update index.md", "Finish"]',
         },
       },
       'required': ['steps'],
@@ -52,7 +71,7 @@ class GemmaWikiService {
   static const _completeStepTool = gemma.Tool(
     name: 'complete_step',
     description:
-        'Mark a planned step as done. Call after finishing each step from your plan.',
+        'Mark a planned worker step as done. Call after finishing each step from your plan.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -62,6 +81,35 @@ class GemmaWikiService {
         },
       },
       'required': ['index'],
+    },
+  );
+
+  static const _spawnWorkerTool = gemma.Tool(
+    name: 'spawn_worker',
+    description:
+        'Spawn one sequential worker agent for a single markdown task. '
+        'Use this after planning. Provide one concrete task bundle at a time and do not overlap workers.',
+    parameters: {
+      'type': 'object',
+      'properties': {
+        'task': {
+          'type': 'string',
+          'description':
+              'Concrete worker task, such as writing specific pages or linting a small slice of the wiki.',
+        },
+        'stepIndex': {
+          'type': 'integer',
+          'description':
+              'Optional 0-based index of the planned step that this worker completes.',
+        },
+        'focusPaths': {
+          'type': 'array',
+          'items': {'type': 'string'},
+          'description':
+              'Optional existing wiki paths the worker should inspect first.',
+        },
+      },
+      'required': ['task'],
     },
   );
 
@@ -132,13 +180,19 @@ class GemmaWikiService {
   static const _finishTool = gemma.Tool(
     name: 'finish_run',
     description:
-        'Call when all wiki changes are done. Provide a one-line summary.',
+        'Call when all wiki changes or delegated worker tasks are done. Provide a one-line summary and any unresolved issues.',
     parameters: {
       'type': 'object',
       'properties': {
         'summary': {
           'type': 'string',
           'description': 'One-line summary of changes made.',
+        },
+        'unresolvedIssues': {
+          'type': 'array',
+          'items': {'type': 'string'},
+          'description':
+              'Optional issues that remain unresolved after the run.',
         },
       },
       'required': ['summary'],
@@ -154,13 +208,14 @@ class GemmaWikiService {
     void Function(List<String> steps)? onPlan,
     void Function(int index)? onStepComplete,
   }) async {
-    return _run(
+    return _runDelegatedManager(
       service: service,
       session: session,
       materials: materials,
       sessionId: sessionId,
-      prompt: _buildIngestPrompt(session, materials),
-      systemInstruction: _buildSystemInstruction(session, mode: 'ingest'),
+      prompt: _buildManagerPrompt(session, materials, mode: 'ingest'),
+      systemInstruction:
+          _buildManagerSystemInstruction(session, mode: 'ingest'),
       onLine: onLine,
       onPlan: onPlan,
       onStepComplete: onStepComplete,
@@ -176,16 +231,69 @@ class GemmaWikiService {
     void Function(List<String> steps)? onPlan,
     void Function(int index)? onStepComplete,
   }) async {
-    return _run(
+    return _runDelegatedManager(
       service: service,
       session: session,
       materials: materials,
       sessionId: sessionId,
-      prompt: _buildLintPrompt(session),
-      systemInstruction: _buildSystemInstruction(session, mode: 'lint'),
+      prompt: _buildManagerPrompt(session, materials, mode: 'lint'),
+      systemInstruction: _buildManagerSystemInstruction(session, mode: 'lint'),
       onLine: onLine,
       onPlan: onPlan,
       onStepComplete: onStepComplete,
+    );
+  }
+
+  Future<WikiAgentResult> _runDelegatedManager({
+    required GemmaInferenceService service,
+    required Session session,
+    required List<StudyMaterial> materials,
+    required int sessionId,
+    required String prompt,
+    required String systemInstruction,
+    WikiAgentLineCallback? onLine,
+    void Function(List<String> steps)? onPlan,
+    void Function(int index)? onStepComplete,
+  }) async {
+    final prepared = await MaterialPreprocessor.prepare(materials);
+    final managerResult = await _runAgentSession(
+      service: service,
+      session: session,
+      materials: materials,
+      prepared: prepared,
+      sessionId: sessionId,
+      mode: 'manager',
+      role: 'manager',
+      prompt: prompt,
+      systemInstruction: systemInstruction,
+      supportImage: false,
+      tools: const [
+        _planTool,
+        _completeStepTool,
+        _listPagesTool,
+        _readPageTool,
+        _spawnWorkerTool,
+        _finishTool,
+      ],
+      onLine: onLine,
+      onPlan: onPlan,
+      onStepComplete: onStepComplete,
+      executeToolCall: (response) => _executeManagerToolCall(
+        service: service,
+        session: session,
+        materials: materials,
+        prepared: prepared,
+        sessionId: sessionId,
+        response: response,
+        onLine: onLine,
+      ),
+    );
+
+    return WikiAgentResult(
+      touchedPaths: managerResult.touchedPaths,
+      deletedPaths: managerResult.deletedPaths,
+      unresolvedIssues: managerResult.unresolvedIssues,
+      summary: managerResult.summary,
     );
   }
 
@@ -212,6 +320,8 @@ class GemmaWikiService {
       temperature: 1,
       topK: 1,
       supportImage: hasImages,
+      promptDialect: gemma.PromptDialect.gemma4,
+      toolChoice: gemma.ToolChoice.required,
       tools: const [
         _planTool,
         _completeStepTool,
@@ -257,30 +367,6 @@ class GemmaWikiService {
             throw StateError(error);
           }
           lastPlainText += response.token;
-          // Try to recover flushed tool calls from partial JSON
-          final recovered = _tryRecoverToolCall(lastPlainText);
-          if (recovered != null) {
-            debugPrint(
-                '[WikiAgent] recovered flushed tool call: ${recovered.name}');
-            sawToolCall = true;
-            final result = await _executeToolCall(
-              sessionId: sessionId,
-              response: recovered,
-              touchedPaths: touchedPaths,
-              deletedPaths: deletedPaths,
-            );
-            toolResults.add(result);
-            _emitLine(onLine, result['message'] as String? ?? recovered.name);
-            lastPlainText = '';
-            if (recovered.name == 'finish_run') {
-              summary = (recovered.args['summary'] as String?)?.trim() ?? '';
-              return WikiAgentResult(
-                touchedPaths: touchedPaths.toList()..sort(),
-                deletedPaths: deletedPaths.toList()..sort(),
-                summary: summary,
-              );
-            }
-          }
         } else if (response is gemma.FunctionCallResponse) {
           final error = guard.recordToolCall(response.name, response.args);
           if (error != null) {
@@ -298,8 +384,8 @@ class GemmaWikiService {
           toolResults.add(result);
           _emitLine(onLine, result['message'] as String? ?? response.name);
           if (response.name == 'finish_run') {
-            debugPrint('[WikiAgent] finish_run called. summary=$summary');
             summary = (response.args['summary'] as String?)?.trim() ?? '';
+            debugPrint('[WikiAgent] finish_run called. summary=$summary');
             return WikiAgentResult(
               touchedPaths: touchedPaths.toList()..sort(),
               deletedPaths: deletedPaths.toList()..sort(),
@@ -323,6 +409,7 @@ class GemmaWikiService {
             _emitLine(onLine, result['message'] as String? ?? call.name);
             if (call.name == 'finish_run') {
               summary = (call.args['summary'] as String?)?.trim() ?? '';
+              debugPrint('[WikiAgent] finish_run called. summary=$summary');
               return WikiAgentResult(
                 touchedPaths: touchedPaths.toList()..sort(),
                 deletedPaths: deletedPaths.toList()..sort(),
@@ -353,8 +440,7 @@ class GemmaWikiService {
             '[WikiAgent] text-only turn $plainTextRetry, nudging with noTool query. '
             'lastTextPreview: "${lastPlainText.substring(0, lastPlainText.length.clamp(0, 80))}"');
         await service.addTextQuery(
-          'You must call a tool now. Call list_existing_pages or write_markdown_file with valid arguments. '
-          'Example: {"name": "list_existing_pages", "args": {}}',
+          'You must call a tool now. Call list_existing_pages or write_markdown_file with valid arguments.',
           noTool: true,
         );
         continue;
@@ -422,68 +508,67 @@ class GemmaWikiService {
         };
       case 'read_existing_page':
         final rawPath = response.args['path'] as String? ?? '';
-        final path = _cleanPath(rawPath);
-        if (path.isEmpty) {
+        try {
+          final entry = await _storage.readEntry(sessionId, rawPath);
+          final normalizedPath = _storage.normalizeRelativePath(rawPath);
           return {
             'tool': response.name,
-            'message': 'Path is required. Got: "$rawPath"',
+            'path': normalizedPath,
+            'found': entry != null,
+            'content': entry?.rawContent ?? '',
+            'message': entry == null
+                ? 'Page not found: $normalizedPath'
+                : 'Read page ${entry.relativePath}.',
+          };
+        } on FormatException catch (error) {
+          return {
+            'tool': response.name,
+            'message': 'Invalid wiki path. Got: "$rawPath". ${error.message}',
           };
         }
-        final entry = await _storage.readEntry(sessionId, path);
-        return {
-          'tool': response.name,
-          'path': path,
-          'found': entry != null,
-          'content': entry?.rawContent ?? '',
-          'message': entry == null
-              ? 'Page not found: $path'
-              : 'Read page ${entry.relativePath}.',
-        };
       case 'write_markdown_file':
         final path = response.args['path'] as String? ?? '';
-        final cleanPath = _cleanPath(path);
-        if (cleanPath.isEmpty) {
+        final content = response.args['content'] as String? ?? '';
+        try {
+          final entry = await _storage.writeMarkdownFile(
+            sessionId: sessionId,
+            relativePath: path,
+            content: content,
+          );
+          touchedPaths.add(entry.relativePath);
+          deletedPaths.remove(entry.relativePath);
           return {
             'tool': response.name,
-            'message':
-                'Path is required and must be a valid wiki path. Got: "$path"',
+            'path': entry.relativePath,
+            'message': 'Wrote ${entry.relativePath}.',
+          };
+        } on FormatException catch (error) {
+          return {
+            'tool': response.name,
+            'message': 'Invalid wiki path. Got: "$path". ${error.message}',
           };
         }
-        final content = response.args['content'] as String? ?? '';
-        final entry = await _storage.writeMarkdownFile(
-          sessionId: sessionId,
-          relativePath: cleanPath,
-          content: content,
-        );
-        touchedPaths.add(entry.relativePath);
-        deletedPaths.remove(entry.relativePath);
-        return {
-          'tool': response.name,
-          'path': entry.relativePath,
-          'message': 'Wrote ${entry.relativePath}.',
-        };
       case 'delete_markdown_file':
         final path = response.args['path'] as String? ?? '';
-        final cleanPath = _cleanPath(path);
-        if (cleanPath.isEmpty) {
+        try {
+          final normalized = _storage.normalizeRelativePath(path);
+          await _storage.deleteMarkdownFile(
+            sessionId: sessionId,
+            relativePath: normalized,
+          );
+          deletedPaths.add(normalized);
+          touchedPaths.remove(normalized);
           return {
             'tool': response.name,
-            'message':
-                'Path is required and must be a valid wiki path. Got: "$path"',
+            'path': normalized,
+            'message': 'Deleted $normalized.',
+          };
+        } on FormatException catch (error) {
+          return {
+            'tool': response.name,
+            'message': 'Invalid wiki path. Got: "$path". ${error.message}',
           };
         }
-        final normalized = _storage.normalizeRelativePath(cleanPath);
-        await _storage.deleteMarkdownFile(
-          sessionId: sessionId,
-          relativePath: normalized,
-        );
-        deletedPaths.add(normalized);
-        touchedPaths.remove(normalized);
-        return {
-          'tool': response.name,
-          'path': normalized,
-          'message': 'Deleted $normalized.',
-        };
       case 'finish_run':
         return {
           'tool': response.name,
@@ -512,30 +597,68 @@ class GemmaWikiService {
       'syntheses',
       'reviews',
     ].join(', ');
+    final currentDate = DateFormat('yyyy/MM/dd HH:mm z').format(DateTime.now());
+    final modeRules = switch (mode) {
+      'ingest' => '''
+MODE: ingest
+- Build and refine the wiki from the provided materials.
+- Prefer updating existing pages over creating duplicates.
+- Use concepts/entities/syntheses to generalize across sources.
+- End with finish_run after index.md and log.md are updated.''',
+      'lint' => '''
+MODE: lint
+- Audit the wiki for contradictions, stale claims, weak links, orphan pages, and bad category placement.
+- Fix safe issues directly.
+- Write one review page under reviews/ with findings, fixes, unresolved issues, and next targets.
+- End with finish_run after index.md and log.md are updated.''',
+      _ => '''
+MODE: $mode
+- Follow the same wiki rules, but prefer the smallest safe set of edits.''',
+    };
 
     return '''
-You are a wiki builder and maintainer for "${session.title}" (Grade ${session.gradeOverride}). Your job is to construct and evolve a persistent, interconnected knowledge base by reading sources, extracting key ideas, and maintaining cross-references. Output ONLY tool calls. Never emit free text, reasoning, or explanations.
+You are the wiki builder and maintainer for "${session.title}" (Grade ${session.gradeOverride}).
+Output ONLY tool calls. Never emit free text, reasoning, or explanations.
+Every response must be a tool call using one of the provided tools.
 
-CORE PRINCIPLES:
-- The wiki is a LIVING ARTIFACT. Each ingest strengthens it — new pages, updated connections, refined understanding.
-- Extract and synthesize. Don't just summarize sources — identify core concepts, named entities, relationships, and contradictions.
-- Cross-reference obsessively. Every concept page links to related entities and sources. Every entity page links to concepts that define or explain it.
-- Track evolution. Note when new sources confirm, contradict, or refine existing claims. Update log.md with what changed and why.
-- Organize by PURPOSE, not format: sources are raw input. Concepts are recurring ideas. Entities are named things (people, places, species, etc.). Syntheses are cross-source insights. Reviews are gaps and next questions.
+GOAL
+Maintain a persistent, interconnected knowledge base that is accurate, readable for Grade ${session.gradeOverride}, and easy to navigate.
 
-WORKFLOW (ingest mode):
-1. list_existing_pages — understand current wiki structure and coverage. This is MANDATORY FIRST.
-2. Call plan() with all steps you intend to take based on current state. Then call complete_step(index) after finishing each step.
-3. For each source: identify key concepts, entities, and facts.
-4. write or update concepts/*.md pages with definitions, examples from sources, links to related entities and sources.
-5. write or update entities/*.md pages with descriptions, roles, relationships, and citations.
-6. write sources/[title].md summarizing the source and highlighting what's new or contradictory.
-7. Update syntheses/*.md — revise cross-source comparisons, timelines, and conclusions.
-8. Update index.md with new pages and revised metadata.
-9. Append to log.md: what was added, what was updated, what contradictions emerged, what questions remain.
-10. finish_run with a one-line summary.
+HARD RULES
+- list_existing_pages must be the first tool call in every run.
+- plan() must come after list_existing_pages and before any writes.
+- Call read_existing_page before editing an existing file.
+- Use finish_run only when all wiki changes are complete.
+- Do not invent paths, categories, or tools.
+- Use only these categories: $categories.
+- Keep filenames lowercase kebab-case when possible.
 
-FRONTMATTER TEMPLATE (YAML):
+$modeRules
+
+PAGE ROLES
+- sources: one page per study material, focused on what the material says.
+- concepts: abstractions, definitions, repeated ideas, and principles.
+- entities: concrete named things such as people, places, events, objects, or species.
+- syntheses: cross-source comparisons, timelines, patterns, and conclusions.
+- reviews: lint findings, gaps, contradictions, and follow-up questions.
+
+QUALITY BAR
+- Write for Grade ${session.gradeOverride} comprehension.
+- Prefer short sentences, clear headers, and concrete examples.
+- Define jargon on first use.
+- Cross-link both directions when a relationship matters.
+- Never silently overwrite a contradiction; preserve it in syntheses or log.md.
+- Avoid repeating the same description across pages. Link instead.
+
+PLAN AND OUTPUT STYLE
+- In plan(), include only the concrete steps you will actually do now.
+- Keep each step to one sentence.
+- After each step, call complete_step(index).
+- Prefer updating index.md and log.md near the end of the run.
+- The final tool call must be finish_run with a one-line summary.
+
+FRONTMATTER
+Use YAML frontmatter on wiki pages with:
 ---
 title: [Page Title]
 category: [sources|concepts|entities|syntheses|reviews]
@@ -545,36 +668,8 @@ lastUpdated: YYYY-MM-DD
 status: [draft|active|deprecated]
 ---
 
-FILE STRUCTURE:
-- index.md — master index. Organized by category. Each entry: [Title](path) — one-line summary.
-- log.md — append-only changelog. Format: `## [YYYY-MM-DD HH:MM] [ingest|lint|query] | [brief summary]`
-- sources/*.md — one page per study material. Summary + key claims.
-- concepts/*.md — abstract ideas, definitions, principles, recurring themes. Links to entities and sources.
-- entities/*.md — concrete things: people, places, species, events, objects. Links to related concepts and sources.
-- syntheses/*.md — cross-source comparisons, timelines, arguments, patterns. Cite all sources.
-- reviews/*.md — lint findings, gaps, contradictions, suggested next questions. Only in lint mode.
-
-PATH FORMAT:
-CORRECT: "sources/chapter1.md", "concepts/photosynthesis.md", "entities/carbon-cycle.md"
-WRONG: quotes around path, angle brackets, variables, spaces in filenames
-
-RULES:
-1. ALWAYS list_existing_pages FIRST. This informs your plan. Never call plan() before examining existing structure.
-2. ALWAYS call plan() AFTER list_existing_pages and before any writes. Plan must include concrete steps based on what exists now and what you just learned.
-3. Before updating an existing page, read_existing_page. Preserve content; refine and extend.
-4. Cross-linking is mandatory: link relative to current file. Example: from sources/chapter1.md use [concept](../concepts/b.md); from index.md or log.md use [concept](concepts/b.md). If concept B relates to entity C, reciprocate.
-5. Flag contradictions explicitly in syntheses/ or log.md. Never silently overwrite old claims. Example: "Source X claims [A]. Source Y claims [B]. See syntheses/contradiction-A-vs-B.md"
-6. Avoid duplication: if an entity already has a page, link to it from other pages rather than repeating its description.
-7. Only delete a page if it is truly superseded or a duplicate. Default: update.
-8. Produce a tool call for every user message. No free text, no reasoning in responses.
-
-CONTENT QUALITY:
-- Write for grade ${session.gradeOverride} comprehension. Define jargon. Use examples.
-- Synthesis pages should connect at least 2–3 sources. Show patterns and differences.
-- Log entries should indicate what was *added*, *updated*, or *contradicted* — help readers see the wiki's evolution.
-
-Current date: ${DateFormat('yyyy/MM/dd HH:mm z').format(DateTime.now())}
-Allowed categories: $categories
+CURRENT DATE
+$currentDate
 ''';
   }
 
@@ -617,128 +712,6 @@ When safe, fix wiki pages directly. Also write one lint report under reviews/ wi
 ''';
   }
 
-  String _cleanPath(String raw) {
-    if (raw.isEmpty) return '';
-    // Strip XML artifacts that flutter_gemma can emit
-    var cleaned = raw.replaceAll('<|"|>', '"').replaceAll('<|"|', '"');
-    // Strip any angle-bracket sequences the model might hallucinate
-    cleaned = cleaned.replaceAll(RegExp(r'<\|[^>]*>'), '');
-    // Collapse repeated slashes
-    cleaned = cleaned.replaceAll(RegExp(r'/+'), '/');
-    // Strip trailing whitespace around the whole thing
-    cleaned = cleaned.trim();
-    // Reject: empty, or contains obviously bad chars (no angle brackets, no pipe tags)
-    if (cleaned.isEmpty ||
-        cleaned.contains('<') ||
-        cleaned.contains('>|') ||
-        !RegExp(r'^[a-zA-Z0-9_/.\-]+$').hasMatch(cleaned)) {
-      debugPrint('[WikiAgent] _cleanPath rejecting: "$raw" -> "$cleaned"');
-      return '';
-    }
-    return cleaned;
-  }
-
-  /// Attempt to parse a flushed text blob as a JSON tool call.
-  /// flutter_gemma flushes raw tokens as TextResponse when the function buffer
-  /// exceeds 1024 chars. The flushed text may contain partial JSON.
-  gemma.FunctionCallResponse? _tryRecoverToolCall(String text) {
-    final trimmed = text.trim();
-    if (trimmed.isEmpty) return null;
-
-    // Strip Gemma raw token artifacts
-    var clean = trimmed
-        .replaceAll(RegExp(r'<\|[^>]*>'), '')
-        .replaceAll('call:', '')
-        .replaceAll('call', '')
-        .trim();
-
-    // Try to find JSON object (may be wrapped in backticks or extra text)
-    final jsonStart = clean.indexOf('{');
-    final jsonEnd = clean.lastIndexOf('}');
-    if (jsonStart == -1 || jsonEnd == -1 || jsonEnd <= jsonStart) return null;
-
-    var jsonStr = clean.substring(jsonStart, jsonEnd + 1);
-    if (jsonStr.length < 10) return null;
-
-    // Unescape newlines that break JSON parsing — model embeds raw \n in strings
-    jsonStr = _tryFixJsonNewlines(jsonStr);
-
-    // Extract name from JSON
-    final nameMatch = RegExp(r'"name"\s*:\s*"([^"]+)"').firstMatch(jsonStr);
-    if (nameMatch == null) return null;
-    final name = nameMatch.group(1)!;
-
-    const validNames = {
-      'plan',
-      'complete_step',
-      'list_existing_pages',
-      'read_existing_page',
-      'write_markdown_file',
-      'delete_markdown_file',
-      'finish_run',
-    };
-    if (!validNames.contains(name)) return null;
-
-    // Try full JSON parse first
-    try {
-      final decoded = jsonDecode(jsonStr) as Map<String, dynamic>;
-      final argsRaw = decoded['args'] as Map<String, dynamic>?;
-      if (argsRaw == null) {
-        return gemma.FunctionCallResponse(name: name, args: {});
-      }
-      final args = _flattenArgs(argsRaw);
-      debugPrint('[WikiAgent] _tryRecoverToolCall: name=$name args=$args');
-      return gemma.FunctionCallResponse(name: name, args: args);
-    } catch (_) {
-      // Fallback: manual extraction for malformed JSON
-    }
-
-    // Fallback: extract path from the innermost path value
-    final pathMatch = RegExp(r'"path"\s*:\s*"([^"]+)"').firstMatch(jsonStr);
-    final path = pathMatch?.group(1);
-    final contentMatch = RegExp(r'"content"\s*:\s*"([\s\S]*?)"(?:\s*,|\s*\})')
-        .firstMatch(jsonStr);
-    final content = contentMatch?.group(1);
-
-    final args = <String, Object?>{};
-    if (path != null) args['path'] = path;
-    if (content != null) args['content'] = content;
-
-    debugPrint(
-        '[WikiAgent] _tryRecoverToolCall fallback: name=$name args=$args');
-    return gemma.FunctionCallResponse(name: name, args: args);
-  }
-
-  /// Recursively flatten nested objects — model sometimes wraps args like
-  /// {"path": {"path": "...", "content": "..."}} instead of {"path": "...", "content": "..."}
-  Map<String, Object?> _flattenArgs(Map<String, dynamic> args) {
-    final result = <String, Object?>{};
-    for (final entry in args.entries) {
-      if (entry.value is Map) {
-        result.addAll(_flattenArgs(entry.value as Map<String, dynamic>));
-      } else {
-        result[entry.key] = entry.value;
-      }
-    }
-    return result;
-  }
-
-  /// Replace raw newlines in JSON string values with \n escape sequences.
-  /// The model embeds YAML frontmatter with unescaped newlines, breaking JSON parse.
-  String _tryFixJsonNewlines(String json) {
-    // Strategy: find all "content": "..." or "summary": "..." string values
-    // and escape their inner newlines
-    return json.replaceAllMapped(
-      RegExp(r'("(?:content|summary)"\s*:\s*")([\s\S]*?)"(?=\s*,|\s*\})'),
-      (m) {
-        final openQuote = m.group(1)!;
-        final value = m.group(2)!;
-        final escaped = value.replaceAll('\n', '\\n').replaceAll('\r', '\\r');
-        return '$openQuote$escaped"';
-      },
-    );
-  }
-
   String _materialsContext(List<StudyMaterial> materials) {
     final buffer = StringBuffer();
     for (final material in materials) {
@@ -759,5 +732,731 @@ When safe, fix wiki pages directly. Also write one lint report under reviews/ wi
       }
     }
     return buffer.toString().trim();
+  }
+
+  Future<_AgentSessionResult> _runAgentSession({
+    required GemmaInferenceService service,
+    required Session session,
+    required List<StudyMaterial> materials,
+    required List<PreparedMaterial> prepared,
+    required int sessionId,
+    required String mode,
+    required String role,
+    required String prompt,
+    required String systemInstruction,
+    required bool supportImage,
+    required List<gemma.Tool> tools,
+    required Future<Map<String, Object?>> Function(
+      gemma.FunctionCallResponse response,
+    ) executeToolCall,
+    WikiAgentLineCallback? onLine,
+    void Function(List<String> steps)? onPlan,
+    void Function(int index)? onStepComplete,
+    int maxTurns = 48,
+  }) async {
+    final hasImages = supportImage && prepared.any((item) => item.images.isNotEmpty);
+    final totalImages = prepared.fold<int>(0, (sum, p) => sum + p.images.length);
+    final guard = ResponseLoopGuard();
+    debugPrint(
+      '[WikiAgent][$role][$sessionId] start: materials=${materials.length} images=$totalImages hasImages=$hasImages',
+    );
+
+    await service.createSession(
+      systemInstruction: systemInstruction,
+      temperature: 0.2,
+      topK: 1,
+      supportImage: hasImages,
+      promptDialect: gemma.PromptDialect.gemma4,
+      toolChoice: gemma.ToolChoice.required,
+      tools: tools,
+      supportsFunctionCalls: true,
+      isThinking: false,
+    );
+
+    final allImages = <Uint8List>[];
+    for (final item in prepared) {
+      allImages.addAll(item.images);
+    }
+    if (hasImages && allImages.isNotEmpty) {
+      debugPrint('[WikiAgent][$role][$sessionId] Queuing ${allImages.length} images');
+      await service.addImagesToQueue(allImages);
+    }
+    await service.addTextQuery(prompt);
+    debugPrint('[WikiAgent][$role][$sessionId] session ready, generating (turn 0)');
+
+    final touchedPaths = <String>{};
+    final deletedPaths = <String>{};
+    final unresolvedIssues = <String>{};
+    var summary = '';
+    var plainTextRetry = 0;
+    var lastPlainText = '';
+
+    for (var turn = 0; turn < maxTurns; turn++) {
+      lastPlainText = '';
+      var sawToolCall = false;
+      final toolResults = <Map<String, Object?>>[];
+
+      await for (final response in service.generateResponses()) {
+        if (response is gemma.ThinkingResponse) {
+          continue;
+        } else if (response is gemma.TextResponse) {
+          final error = guard.recordTextToken(response.token);
+          if (error != null) {
+            throw StateError(error);
+          }
+          lastPlainText += response.token;
+        } else if (response is gemma.FunctionCallResponse) {
+          final error = guard.recordToolCall(response.name, response.args);
+          if (error != null) {
+            throw StateError(error);
+          }
+          debugPrint(
+            '[WikiAgent][$role][$sessionId] tool call: name=${response.name} args=${response.args}',
+          );
+          sawToolCall = true;
+          final result = await executeToolCall(response);
+          toolResults.add(result);
+          _collectToolResult(
+            result,
+            touchedPaths: touchedPaths,
+            deletedPaths: deletedPaths,
+            unresolvedIssues: unresolvedIssues,
+          );
+          _emitLine(onLine, result['message'] as String? ?? response.name);
+          if (response.name == 'finish_run') {
+            summary = (result['summary'] as String?)?.trim() ??
+                (response.args['summary'] as String?)?.trim() ??
+                '';
+            final finishIssues = _stringList(
+              result['unresolvedIssues'] ?? response.args['unresolvedIssues'],
+            );
+            unresolvedIssues.addAll(finishIssues);
+            debugPrint(
+              '[WikiAgent][$role][$sessionId] finish_run called. summary=$summary unresolved=${unresolvedIssues.length}',
+            );
+            return _AgentSessionResult(
+              touchedPaths: touchedPaths.toList()..sort(),
+              deletedPaths: deletedPaths.toList()..sort(),
+              unresolvedIssues: unresolvedIssues.toList()..sort(),
+              summary: summary,
+            );
+          }
+        } else if (response is gemma.ParallelFunctionCallResponse) {
+          sawToolCall = true;
+          for (final call in response.calls) {
+            final error = guard.recordToolCall(call.name, call.args);
+            if (error != null) {
+              throw StateError(error);
+            }
+            final result = await executeToolCall(call);
+            toolResults.add(result);
+            _collectToolResult(
+              result,
+              touchedPaths: touchedPaths,
+              deletedPaths: deletedPaths,
+              unresolvedIssues: unresolvedIssues,
+            );
+            _emitLine(onLine, result['message'] as String? ?? call.name);
+            if (call.name == 'finish_run') {
+              summary = (result['summary'] as String?)?.trim() ??
+                  (call.args['summary'] as String?)?.trim() ??
+                  '';
+              final finishIssues = _stringList(
+                result['unresolvedIssues'] ?? call.args['unresolvedIssues'],
+              );
+              unresolvedIssues.addAll(finishIssues);
+              debugPrint(
+                '[WikiAgent][$role][$sessionId] finish_run called. summary=$summary unresolved=${unresolvedIssues.length}',
+              );
+              return _AgentSessionResult(
+                touchedPaths: touchedPaths.toList()..sort(),
+                deletedPaths: deletedPaths.toList()..sort(),
+                unresolvedIssues: unresolvedIssues.toList()..sort(),
+                summary: summary,
+              );
+            }
+          }
+        }
+      }
+
+      if (!sawToolCall) {
+        plainTextRetry++;
+        if (plainTextRetry >= 5) {
+          final preview = lastPlainText.isEmpty
+              ? '<empty stream or no text emitted>'
+              : '"${lastPlainText.substring(0, lastPlainText.length.clamp(0, 100))}"';
+          debugPrint(
+            '[WikiAgent][$role][$sessionId] FAILURE after $plainTextRetry text-only turns. '
+            'Last text: $preview. Touched: ${touchedPaths.length}, deleted: ${deletedPaths.length}. '
+            'Touched paths: ${touchedPaths.toList()}. Deleted paths: ${deletedPaths.toList()}.',
+          );
+          throw StateError(
+            'Wiki agent stopped without calling finish_run after $plainTextRetry text-only turns. '
+            'Last text: $preview. '
+            'Touched: ${touchedPaths.length}, deleted: ${deletedPaths.length}.',
+          );
+        }
+        debugPrint(
+          '[WikiAgent][$role][$sessionId] text-only turn $plainTextRetry, nudging with noTool query. '
+          'lastTextPreview: "${lastPlainText.substring(0, lastPlainText.length.clamp(0, 80))}"',
+        );
+        await service.addTextQuery(
+          'You must call a tool now. Use the assigned wiki tools only.',
+          noTool: true,
+        );
+        continue;
+      }
+
+      plainTextRetry = 0;
+      for (final result in toolResults) {
+        final toolName = result['tool'] as String? ?? 'unknown';
+        debugPrint(
+          '[WikiAgent][$role][$sessionId] tool result: $toolName -> ${result['message']}',
+        );
+        if (result['plan'] != null) {
+          onPlan?.call((result['plan'] as List).cast<String>());
+        }
+        if (result['completedIndex'] != null) {
+          onStepComplete?.call(result['completedIndex'] as int);
+        }
+        await service.addToolResponse(toolName: toolName, response: result);
+      }
+    }
+
+    debugPrint(
+      '[WikiAgent][$role][$sessionId] FAILURE: exceeded $maxTurns steps. '
+      'Touched: ${touchedPaths.toList()}. Deleted: ${deletedPaths.toList()}.',
+    );
+    throw StateError(
+      'Wiki agent exceeded step limit ($maxTurns) before finish_run. '
+      'Touched: ${touchedPaths.length}, deleted: ${deletedPaths.length}.',
+    );
+  }
+
+  Future<Map<String, Object?>> _executeManagerToolCall({
+    required GemmaInferenceService service,
+    required Session session,
+    required List<StudyMaterial> materials,
+    required List<PreparedMaterial> prepared,
+    required int sessionId,
+    required gemma.FunctionCallResponse response,
+    WikiAgentLineCallback? onLine,
+  }) async {
+    switch (response.name) {
+      case 'plan':
+        final steps =
+            (response.args['steps'] as List<dynamic>?)?.cast<String>() ?? [];
+        return {
+          'tool': response.name,
+          'plan': steps,
+          'message':
+              'Plan: ${steps.length} step${steps.length == 1 ? '' : 's'}',
+        };
+      case 'complete_step':
+        final index = (response.args['index'] as num?)?.toInt() ?? 0;
+        return {
+          'tool': response.name,
+          'completedIndex': index,
+          'message': 'Step ${index + 1} done',
+        };
+      case 'list_existing_pages':
+        final entries = await _storage.readAllEntries(sessionId);
+        return {
+          'tool': response.name,
+          'paths': entries
+              .map((entry) => {
+                    'path': entry.relativePath,
+                    'title': entry.title,
+                    'category': entry.category,
+                    'materialIds': entry.materialIds,
+                  })
+              .toList(growable: false),
+          'message': 'Listed ${entries.length} wiki pages.',
+        };
+      case 'read_existing_page':
+        final rawPath = response.args['path'] as String? ?? '';
+        try {
+          final entry = await _storage.readEntry(sessionId, rawPath);
+          final normalizedPath = _storage.normalizeRelativePath(rawPath);
+          return {
+            'tool': response.name,
+            'path': normalizedPath,
+            'found': entry != null,
+            'content': entry?.rawContent ?? '',
+            'message': entry == null
+                ? 'Page not found: $normalizedPath'
+                : 'Read page ${entry.relativePath}.',
+          };
+        } on FormatException catch (error) {
+          return {
+            'tool': response.name,
+            'message': 'Invalid wiki path. Got: "$rawPath". ${error.message}',
+          };
+        }
+      case 'spawn_worker':
+        final task = (response.args['task'] as String?)?.trim() ?? '';
+        final stepIndex = (response.args['stepIndex'] as num?)?.toInt();
+        final focusPaths = _stringList(response.args['focusPaths']);
+        if (task.isEmpty) {
+          return {
+            'tool': response.name,
+            'message': 'Worker task is required.',
+          };
+        }
+        final prefixedOnLine = onLine == null
+            ? null
+            : (String line) => _emitLine(
+                  onLine,
+                  'Worker${stepIndex == null ? '' : ' ${stepIndex + 1}'}: $line',
+                );
+        final worker = await _runWorkerTask(
+          service: _workerServiceFactory(),
+          session: session,
+          materials: materials,
+          prepared: prepared,
+          sessionId: sessionId,
+          mode: _modeFromTask(task),
+          task: task,
+          stepIndex: stepIndex,
+          focusPaths: focusPaths,
+          onLine: prefixedOnLine,
+        );
+        return {
+          'tool': response.name,
+          'summary': worker.summary,
+          'touchedPaths': worker.touchedPaths,
+          'deletedPaths': worker.deletedPaths,
+          'unresolvedIssues': worker.unresolvedIssues,
+          if (stepIndex != null) 'completedIndex': stepIndex,
+          'message': worker.unresolvedIssues.isEmpty
+              ? 'Worker completed${stepIndex == null ? '' : ' step ${stepIndex + 1}'}: ${worker.summary}'
+              : 'Worker completed${stepIndex == null ? '' : ' step ${stepIndex + 1}'} with unresolved issues.',
+        };
+      case 'finish_run':
+        return {
+          'tool': response.name,
+          'summary': response.args['summary'] ?? '',
+          'unresolvedIssues':
+              _stringList(response.args['unresolvedIssues']),
+          'message': 'Finish requested.',
+        };
+      default:
+        return {
+          'tool': response.name,
+          'message': 'Ignored unsupported tool ${response.name}.',
+        };
+    }
+  }
+
+  Future<_AgentSessionResult> _runWorkerTask({
+    required GemmaInferenceService service,
+    required Session session,
+    required List<StudyMaterial> materials,
+    required List<PreparedMaterial> prepared,
+    required int sessionId,
+    required String mode,
+    required String task,
+    required List<String> focusPaths,
+    required int? stepIndex,
+    required WikiAgentLineCallback? onLine,
+  }) async {
+    var shouldDispose = false;
+    try {
+      if (!service.isInitialized) {
+        await service.initialize();
+        shouldDispose = true;
+      }
+
+      final workerPrompt = _buildWorkerPrompt(
+        session,
+        materials: materials,
+        mode: mode,
+        task: task,
+        focusPaths: focusPaths,
+        stepIndex: stepIndex,
+      );
+      final workerSystemInstruction =
+          _buildWorkerSystemInstruction(session, mode: mode, task: task);
+      return await _runAgentSession(
+        service: service,
+        session: session,
+        materials: materials,
+        prepared: prepared,
+        sessionId: sessionId,
+        mode: mode,
+        role: 'worker',
+        prompt: workerPrompt,
+        systemInstruction: workerSystemInstruction,
+        supportImage: true,
+        tools: const [
+          _listPagesTool,
+          _readPageTool,
+          _writePageTool,
+          _deletePageTool,
+          _finishTool,
+        ],
+        onLine: onLine,
+        executeToolCall: (response) => _executeWorkerToolCall(
+          sessionId: sessionId,
+          response: response,
+        ),
+        maxTurns: 48,
+      );
+    } finally {
+      if (shouldDispose) {
+        await service.dispose();
+      }
+    }
+  }
+
+  Future<Map<String, Object?>> _executeWorkerToolCall({
+    required int sessionId,
+    required gemma.FunctionCallResponse response,
+  }) async {
+    switch (response.name) {
+      case 'list_existing_pages':
+        final entries = await _storage.readAllEntries(sessionId);
+        return {
+          'tool': response.name,
+          'paths': entries
+              .map((entry) => {
+                    'path': entry.relativePath,
+                    'title': entry.title,
+                    'category': entry.category,
+                    'materialIds': entry.materialIds,
+                  })
+              .toList(growable: false),
+          'message': 'Listed ${entries.length} wiki pages.',
+        };
+      case 'read_existing_page':
+        final rawPath = response.args['path'] as String? ?? '';
+        try {
+          final entry = await _storage.readEntry(sessionId, rawPath);
+          final normalizedPath = _storage.normalizeRelativePath(rawPath);
+          return {
+            'tool': response.name,
+            'path': normalizedPath,
+            'found': entry != null,
+            'content': entry?.rawContent ?? '',
+            'message': entry == null
+                ? 'Page not found: $normalizedPath'
+                : 'Read page ${entry.relativePath}.',
+          };
+        } on FormatException catch (error) {
+          return {
+            'tool': response.name,
+            'message': 'Invalid wiki path. Got: "$rawPath". ${error.message}',
+          };
+        }
+      case 'write_markdown_file':
+        final path = response.args['path'] as String? ?? '';
+        final content = response.args['content'] as String? ?? '';
+        try {
+          final entry = await _storage.writeMarkdownFile(
+            sessionId: sessionId,
+            relativePath: path,
+            content: content,
+          );
+          return {
+            'tool': response.name,
+            'path': entry.relativePath,
+            'touchedPaths': [entry.relativePath],
+            'message': 'Wrote ${entry.relativePath}.',
+          };
+        } on FormatException catch (error) {
+          return {
+            'tool': response.name,
+            'message': 'Invalid wiki path. Got: "$path". ${error.message}',
+          };
+        }
+      case 'delete_markdown_file':
+        final path = response.args['path'] as String? ?? '';
+        try {
+          final normalized = _storage.normalizeRelativePath(path);
+          await _storage.deleteMarkdownFile(
+            sessionId: sessionId,
+            relativePath: normalized,
+          );
+          return {
+            'tool': response.name,
+            'path': normalized,
+            'deletedPaths': [normalized],
+            'message': 'Deleted $normalized.',
+          };
+        } on FormatException catch (error) {
+          return {
+            'tool': response.name,
+            'message': 'Invalid wiki path. Got: "$path". ${error.message}',
+          };
+        }
+      case 'finish_run':
+        return {
+          'tool': response.name,
+          'summary': (response.args['summary'] as String?)?.trim() ?? '',
+          'unresolvedIssues': _stringList(response.args['unresolvedIssues']),
+          'message': 'Finish requested.',
+        };
+      default:
+        return {
+          'tool': response.name,
+          'message': 'Ignored unsupported tool ${response.name}.',
+        };
+    }
+  }
+
+  String _buildManagerSystemInstruction(Session session, {required String mode}) {
+    final categories = [
+      'sources',
+      'concepts',
+      'entities',
+      'syntheses',
+      'reviews',
+    ].join(', ');
+    final currentDate = DateFormat('yyyy/MM/dd HH:mm z').format(DateTime.now());
+    final modeRules = switch (mode) {
+      'ingest' => '''
+MODE: ingest
+- Build a delegation plan from the provided materials and existing wiki state.
+- Spawn workers one at a time to create and refine markdown pages.
+- Keep the manager's own output small; do not write markdown directly.''',
+      'lint' => '''
+MODE: lint
+- Build a delegation plan from the current wiki state.
+- Spawn workers one at a time to audit and fix the wiki.
+- Keep the manager's own output small; do not write markdown directly.''',
+      _ => '''
+MODE: $mode
+- Prefer the smallest safe delegation plan.''',
+    };
+
+    return '''
+You are the wiki manager for "${session.title}" (Grade ${session.gradeOverride}).
+Output ONLY tool calls. Never emit free text, reasoning, or explanations.
+Your job is to inspect the wiki, create a detailed plan, and delegate each task to a worker one at a time.
+
+HARD RULES
+- list_existing_pages must be the first tool call in every run.
+- Read existing pages before planning if you need more context.
+- Call plan once with worker-sized steps.
+- Use spawn_worker for each concrete step. Do not overlap workers.
+- Do not use write_markdown_file or delete_markdown_file in manager mode.
+- Use complete_step when a delegated step finishes if the worker result has not already marked it.
+- Use finish_run only after delegated work is complete.
+- Use only these categories: $categories.
+- Keep filenames lowercase kebab-case when possible.
+
+$modeRules
+
+PAGE ROLES
+- sources: one page per study material, focused on what the material says.
+- concepts: abstractions, definitions, repeated ideas, and principles.
+- entities: concrete named things such as people, places, events, objects, or species.
+- syntheses: cross-source comparisons, timelines, patterns, and conclusions.
+- reviews: lint findings, gaps, contradictions, and follow-up questions.
+
+QUALITY BAR
+- Write for Grade ${session.gradeOverride} comprehension.
+- Prefer short sentences, clear headers, and concrete examples.
+- Define jargon on first use.
+- Cross-link both directions when a relationship matters.
+- Never silently overwrite a contradiction; preserve it in syntheses or log.md.
+- Avoid repeating the same description across pages. Link instead.
+
+PLAN AND OUTPUT STYLE
+- In plan(), include only concrete worker tasks you will actually delegate now.
+- Keep each step to one sentence.
+- After each delegated step, call complete_step(index) or let the worker result mark it.
+- Prefer updating index.md and log.md near the end of the run.
+- The final tool call must be finish_run with a one-line summary.
+
+CURRENT DATE
+$currentDate
+''';
+  }
+
+  String _buildWorkerSystemInstruction(
+    Session session, {
+    required String mode,
+    required String task,
+  }) {
+    final categories = [
+      'sources',
+      'concepts',
+      'entities',
+      'syntheses',
+      'reviews',
+    ].join(', ');
+
+    final modeRules = switch (mode) {
+      'ingest' => '''
+MODE: ingest
+- Execute only the assigned markdown task.
+- Read existing pages before editing them.
+- Write or update markdown directly when needed.
+- Keep changes local to the task; do not re-plan the whole wiki.''',
+      'lint' => '''
+MODE: lint
+- Execute only the assigned lint/fix task.
+- Read existing pages before editing them.
+- Fix safe issues directly.
+- Write one review page when needed and keep the changes local to the task.''',
+      _ => '''
+MODE: $mode
+- Execute only the assigned task.''',
+    };
+
+    return '''
+You are a wiki worker for "${session.title}" (Grade ${session.gradeOverride}).
+Output ONLY tool calls. Never emit free text, reasoning, or explanations.
+The manager already made the plan. Your job is to execute one concrete task bundle and report when it is done.
+
+ASSIGNED TASK
+$task
+
+HARD RULES
+- If you need context, list_existing_pages first.
+- Read existing pages before editing them.
+- Write markdown directly when needed.
+- Do not plan the whole wiki again.
+- Use finish_run when the assigned task is complete.
+- Include unresolved issues in finish_run if any remain.
+- Use only these categories: $categories.
+- Keep filenames lowercase kebab-case when possible.
+
+$modeRules
+
+PAGE ROLES
+- sources: one page per study material, focused on what the material says.
+- concepts: abstractions, definitions, repeated ideas, and principles.
+- entities: concrete named things such as people, places, events, objects, or species.
+- syntheses: cross-source comparisons, timelines, patterns, and conclusions.
+- reviews: lint findings, gaps, contradictions, and follow-up questions.
+
+QUALITY BAR
+- Write for Grade ${session.gradeOverride} comprehension.
+- Prefer short sentences, clear headers, and concrete examples.
+- Define jargon on first use.
+- Cross-link both directions when a relationship matters.
+- Never silently overwrite a contradiction; preserve it in syntheses or log.md.
+- Avoid repeating the same description across pages. Link instead.
+''';
+  }
+
+  String _buildManagerPrompt(
+    Session session,
+    List<StudyMaterial> materials, {
+    required String mode,
+  }) {
+    final hasPhotos = materials.any((m) => m.kind == MaterialKind.photo);
+    final buffer = StringBuffer()
+      ..writeln(
+          'Inspect the current wiki, make a delegation plan, and then spawn one worker at a time for each concrete task.')
+      ..writeln()
+      ..writeln('Session: ${session.title}')
+      ..writeln('Grade: ${session.gradeOverride}')
+      ..writeln('Material count: ${materials.length}')
+      ..writeln()
+      ..writeln('Materials:')
+      ..writeln(_materialsContext(materials))
+      ..writeln();
+    if (hasPhotos) {
+      buffer.writeln(
+          'Note: photo materials exist, but this manager run should stay text-only and delegate image-heavy work to workers.');
+      buffer.writeln();
+    }
+    buffer.writeln(
+      'First list existing pages, then read anything you need, then call plan, then spawn workers step by step, and finish only after the delegated work is complete.',
+    );
+    return buffer.toString();
+  }
+
+  String _buildWorkerPrompt(
+    Session session, {
+    required List<StudyMaterial> materials,
+    required String mode,
+    required String task,
+    required List<String> focusPaths,
+    required int? stepIndex,
+  }) {
+    final hasPhotos = materials.any((m) => m.kind == MaterialKind.photo);
+    final buffer = StringBuffer()
+      ..writeln('Execute this worker task only.')
+      ..writeln()
+      ..writeln('Session: ${session.title}')
+      ..writeln('Grade: ${session.gradeOverride}')
+      ..writeln('Mode: $mode')
+      ..writeln('Task:')
+      ..writeln(task)
+      ..writeln();
+    if (stepIndex != null) {
+      buffer
+        ..writeln('Plan step index: $stepIndex')
+        ..writeln();
+    }
+    if (focusPaths.isNotEmpty) {
+      buffer.writeln('Focus paths:');
+      for (final path in focusPaths) {
+        buffer.writeln('- $path');
+      }
+      buffer.writeln();
+    }
+    buffer
+      ..writeln('Materials:')
+      ..writeln(_materialsContext(materials));
+    if (hasPhotos) {
+      buffer
+        ..writeln()
+        ..writeln('Note: photo materials exist and image attachments are available to this worker session.');
+    }
+    buffer.writeln(
+      'Use the assigned task bundle, inspect existing markdown when needed, and finish with a concise report.',
+    );
+    return buffer.toString();
+  }
+
+  void _collectToolResult(
+    Map<String, Object?> result, {
+    required Set<String> touchedPaths,
+    required Set<String> deletedPaths,
+    required Set<String> unresolvedIssues,
+  }) {
+    final singlePath = result['path'] as String?;
+    if (singlePath != null) {
+      final tool = result['tool'] as String?;
+      if (tool == 'delete_markdown_file') {
+        deletedPaths.add(singlePath);
+        touchedPaths.remove(singlePath);
+      } else {
+        touchedPaths.add(singlePath);
+      }
+    }
+
+    final touchedList = _stringList(result['touchedPaths']);
+    touchedPaths.addAll(touchedList);
+
+    final deletedList = _stringList(result['deletedPaths']);
+    deletedPaths.addAll(deletedList);
+    touchedPaths.removeAll(deletedList);
+
+    final issues = _stringList(result['unresolvedIssues']);
+    unresolvedIssues.addAll(issues);
+  }
+
+  List<String> _stringList(Object? value) {
+    if (value is List) {
+      return value.whereType<String>().toList(growable: false);
+    }
+    if (value is String && value.trim().isNotEmpty) {
+      return [value.trim()];
+    }
+    return const [];
+  }
+
+  String _modeFromTask(String task) {
+    final lower = task.toLowerCase();
+    if (lower.contains('lint') || lower.contains('review') || lower.contains('audit')) {
+      return 'lint';
+    }
+    return 'ingest';
   }
 }

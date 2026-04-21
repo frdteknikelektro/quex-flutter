@@ -173,6 +173,8 @@ class WikiActionController extends StateNotifier<WikiActionState> {
         lines: [
           ...state.lines,
           result.summary.isEmpty ? 'Wiki action complete.' : result.summary,
+          if (result.unresolvedIssues.isNotEmpty) ...result.unresolvedIssues
+              .map((issue) => 'Unresolved: $issue'),
         ],
       );
     } catch (error) {

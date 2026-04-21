@@ -10,6 +10,7 @@ import 'package:quex/core/models/models.dart';
 class _StuckGemmaInferenceService extends GemmaInferenceService {
   int addTextQueryCalls = 0;
   int createSessionCalls = 0;
+  gemma.ToolChoice? lastToolChoice;
 
   @override
   bool get isInitialized => true;
@@ -20,12 +21,17 @@ class _StuckGemmaInferenceService extends GemmaInferenceService {
     double temperature = 0.8,
     int randomSeed = 1,
     int topK = 1,
+    gemma.ModelType modelType = gemma.ModelType.gemmaIt,
+    gemma.PromptDialect promptDialect = gemma.PromptDialect.gemma4,
     bool supportImage = false,
     bool isThinking = false,
     List<gemma.Tool> tools = const [],
     bool supportsFunctionCalls = false,
+    gemma.ToolChoice toolChoice = gemma.ToolChoice.auto,
   }) async {
     createSessionCalls++;
+    lastToolChoice = toolChoice;
+    expect(promptDialect, gemma.PromptDialect.gemma4);
   }
 
   @override
@@ -64,6 +70,7 @@ void main() {
     );
 
     expect(service.createSessionCalls, 1);
+    expect(service.lastToolChoice, gemma.ToolChoice.required);
     expect(service.addTextQueryCalls, greaterThanOrEqualTo(5));
   });
 }
