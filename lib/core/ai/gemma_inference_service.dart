@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
@@ -149,6 +148,20 @@ class GemmaInferenceService {
         gemma.Message.text(text: message, isUser: true),
         noTool,
       );
+    }
+  }
+
+  /// Replay existing chat messages into the active session without generating.
+  ///
+  /// This is used to rehydrate a session from stored history before the next
+  /// live user turn is sent.
+  Future<void> replayMessages(List<gemma.Message> messages) async {
+    if (_chat == null) {
+      throw StateError('No active chat. Call createSession() first.');
+    }
+
+    for (final message in messages) {
+      await _chat!.addQueryChunk(message);
     }
   }
 

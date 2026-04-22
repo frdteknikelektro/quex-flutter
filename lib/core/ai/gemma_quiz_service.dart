@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
@@ -21,8 +22,8 @@ class GemmaQuizService {
   static const _planTool = gemma.Tool(
     name: 'plan',
     description:
-        'Declare your complete plan before starting any work. Call ONCE at the very beginning. '
-        'List every step you intend to take in order.',
+        'Declare your complete plan before starting any work. Call once at the very beginning. '
+        'List every step you intend to take in order and do not repeat the plan later.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -40,7 +41,7 @@ class GemmaQuizService {
   static const _completeStepTool = gemma.Tool(
     name: 'complete_step',
     description:
-        'Mark a planned step as done. Call after finishing each step from your plan.',
+        'Mark a planned step as done. Call after finishing each step from your plan, in order.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -56,7 +57,7 @@ class GemmaQuizService {
   static const _analyzeTool = gemma.Tool(
     name: 'analyze_materials',
     description:
-        'Analyze study materials and plan the quiz. Decide question count, topic coverage, and difficulty mix.',
+        'Analyze study materials and plan the quiz. Decide question count, topic coverage, difficulty mix, and avoid repeating the same concept.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -79,7 +80,7 @@ class GemmaQuizService {
   static const _questionTool = gemma.Tool(
     name: 'generate_question',
     description:
-        'Submit one quiz question. You must call this once per question.',
+        'Submit one quiz question. You must call this once per question and choose a new concept or sub-skill each time.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -111,7 +112,7 @@ class GemmaQuizService {
   static const _reviewTool = gemma.Tool(
     name: 'review_quiz',
     description:
-        'Review generated questions for quality, coverage, and duplicates before submitting.',
+        'Review generated questions for quality, coverage, repeated concepts, duplicate wording, and weak distractors before submitting.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -137,7 +138,7 @@ class GemmaQuizService {
   static const _finishTool = gemma.Tool(
     name: 'finish_run',
     description:
-        'Finalize and submit the complete quiz. Call this last when all questions are ready.',
+        'Finalize and submit the complete quiz. Call this last when all questions are ready and no duplicates remain.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -171,14 +172,16 @@ class GemmaQuizService {
 
     const systemInstruction =
         'You are a quiz generator agent for elementary students. '
-        'Call plan() first with all steps you will take, then complete_step(index) after finishing each step. '
-        'Plan the quiz first with analyze_materials, then generate questions one at a time, '
-        'review for quality, and finish with finish_run. '
+        'Follow this silent sequence exactly: plan once, analyze the materials once, generate one question at a time, '
+        'self-check each question against earlier questions before submitting it, review the whole quiz, regenerate only flagged items, then finish. '
+        'Call plan() first with the full ordered workflow, then call complete_step(index) after each finished step. '
         'Every turn must be a tool call using one of the provided tools. '
-        'Do not output free text, markdown, or explanations. '
-        'Use multipleChoice for factual recall (3-4 options). '
-        'Use textAnswer for definitions or short answers. '
-        'Match difficulty to grade level.';
+        'Do not output free text, markdown, reasoning, or explanations. '
+        'Generate only questions grounded in the provided materials. '
+        'Never repeat the same question, paraphrase an earlier question, or ask the same concept twice unless the materials are too narrow and you must vary the angle. '
+        'Use multipleChoice for factual recall with 3-4 options. '
+        'Use textAnswer for short definitions or concise explanations. '
+        'Match difficulty to grade level and keep wording simple, clear, and kid-friendly.';
 
     await _inference.createSession(
       systemInstruction: systemInstruction,
@@ -217,6 +220,7 @@ class GemmaQuizService {
     final initialPrompt =
         'Analyze these study materials for "${session.title}" (Grade ${session.gradeOverride}) '
         'and plan the quiz. ${maxQuestions != null ? "Target around $maxQuestions questions. " : ""}'
+        'Prefer distinct concepts across the quiz and avoid repeating the same idea in a new form. '
         'Call analyze_materials now.\n\n$textContext';
 
     await _inference.addTextQuery(initialPrompt);
@@ -299,8 +303,9 @@ class GemmaQuizService {
     for (var i = 1; i <= questionCount; i++) {
       Question? parsed;
       var retries = 0;
+      const maxQuestionAttempts = 3;
 
-      while (parsed == null && retries < 2) {
+      while (parsed == null && retries < maxQuestionAttempts) {
         var gotCall = false;
 
         try {
@@ -372,7 +377,7 @@ class GemmaQuizService {
 
         if (!gotCall) retries++;
 
-        if (parsed == null && retries < 2) {
+        if (parsed == null && retries < maxQuestionAttempts) {
           await _inference.addTextQuery(
               'Please call generate_question for question $i of $questionCount.');
         }
@@ -403,6 +408,7 @@ class GemmaQuizService {
 
     while (reviewCycles < maxReviewCycles) {
       List<int> regenerateIndices = [];
+      final reviewIssues = <String>[];
       await for (final response in _inference.generateResponses()) {
         if (response is! gemma.FunctionCallResponse) {
           continue;
@@ -438,7 +444,7 @@ class GemmaQuizService {
             final indices = response.args['regenerate_indices'];
 
             if (issues is List) {
-              yield QuizUnderReview(issues.cast<String>());
+              reviewIssues.addAll(issues.cast<String>());
             }
 
             if (indices is List) {
@@ -446,16 +452,20 @@ class GemmaQuizService {
                   indices.map((i) => (i as num).toInt()).toList();
             }
 
+            if (reviewIssues.isNotEmpty) {
+              yield QuizUnderReview(reviewIssues);
+            }
+
             await _inference.addToolResponse(
               toolName: 'review_quiz',
               response: {
                 'acknowledged': true,
-                'ready': ready,
+                'ready': ready && regenerateIndices.isEmpty,
                 'regenerate_count': regenerateIndices.length,
               },
             );
 
-            if (ready || regenerateIndices.isEmpty) {
+            if (ready && regenerateIndices.isEmpty) {
               break;
             }
             continue;
@@ -474,7 +484,8 @@ class GemmaQuizService {
 
         while (replaced == null && regenRetries < 2) {
           await _inference.addTextQuery(
-              'Regenerate question ${idx + 1}. Call generate_question with improved content.');
+            'Regenerate question ${idx + 1}. Call generate_question with a different concept, not a paraphrase of an earlier question.',
+          );
 
           await for (final response in _inference.generateResponses()) {
             if (response is! gemma.FunctionCallResponse) {

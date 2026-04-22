@@ -40,6 +40,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   late final GemmaServiceHost _gemmaHost;
   bool _sending = false;
   bool _modelLoading = false;
+  Future<void>? _preloadFuture;
   String? _streamingContent; // reply tokens accumulating
   String?
       _thinkingContent; // thinking tokens accumulating (null = not thinking)
@@ -48,8 +49,6 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   GemmaSessionService? _sessionService;
 
   // Persistent session state
-  bool _sessionInitialized = false;
-  bool _sessionInitializing = false;
   double? _currentScore;
 
   @override
@@ -85,46 +84,56 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     }
   }
 
+  void _startTutorSessionPreload(
+    Question question,
+    List<StudyMaterial> materials,
+    List<QuestionMessage> messages,
+  ) {
+    if (_preloadFuture != null) return;
+
+    final future = _preloadTutorSession(question, materials, messages);
+    _preloadFuture = future;
+    future.then((_) {
+      if (!mounted) return;
+      setState(() {});
+    }).catchError((Object error) {
+      debugPrint('Failed to preload tutor session: $error');
+      if (!mounted) return;
+      setState(() {
+        _sessionService = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to preload chat session: $error')),
+      );
+    });
+  }
+
+  Future<void> _preloadTutorSession(
+    Question question,
+    List<StudyMaterial> materials,
+    List<QuestionMessage> messages,
+  ) async {
+    final service = await _ensureModel();
+    _sessionService = GemmaSessionService(service);
+    await _sessionService!.preloadQuestionTutorSession(
+      question: question,
+      materials: materials,
+      history: messages,
+    );
+  }
+
   /// Initialize tutor session with proper guards for concurrent calls.
   Future<void> _ensureTutorSession(
     Question question,
     List<StudyMaterial> materials,
+    List<QuestionMessage> messages,
   ) async {
-    final service = await _ensureModel();
-
-    // Fast path: already ready
-    if (_sessionInitialized && _sessionService != null) return;
-
-    // Guard against concurrent initialization
-    if (_sessionInitializing) {
-      while (_sessionInitializing) {
-        await Future.delayed(const Duration(milliseconds: 50));
-      }
-      // After waiting, re-check state
-      if (_sessionInitialized && _sessionService != null) return;
+    _startTutorSessionPreload(question, materials, messages);
+    final preload = _preloadFuture;
+    if (preload == null) {
+      throw StateError('Failed to start tutor preload.');
     }
-
-    _sessionInitializing = true;
-    try {
-      _sessionService = GemmaSessionService(service);
-      await _sessionService!.initQuestionTutorSession(
-        question: question,
-        materials: materials,
-      );
-      if (mounted) {
-        setState(() {
-          _sessionInitialized = true;
-          _currentScore = null;
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to init tutor session: $e');
-      rethrow;
-    } finally {
-      if (mounted) {
-        setState(() => _sessionInitializing = false);
-      }
-    }
+    await preload;
   }
 
   /// Handle score from tool evaluation.
@@ -165,33 +174,22 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   Future<void> _sendMessage(
     Question question,
     List<StudyMaterial> materials,
+    List<QuestionMessage> messages,
   ) async {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
 
-    try {
-      await _ensureModel();
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not load model: $error'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-      return;
-    }
-
     // Initialize session once per screen visit.
     try {
-      await _ensureTutorSession(question, materials);
+      await _ensureTutorSession(question, materials, messages);
     } catch (e) {
       if (mounted) {
+        final message =
+            e is StateError && e.message.contains('model')
+                ? 'Could not load model: $e'
+                : 'Failed to start chat session. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to start chat session. Please try again.'),
-          ),
+          SnackBar(content: Text(message)),
         );
       }
       return;
@@ -274,7 +272,6 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
 
       if (mounted) {
         setState(() {
-          _sessionInitialized = false;
           _sessionService = null;
           _streamingContent = null;
           _thinkingContent = null;
@@ -296,11 +293,25 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final scheme = theme.colorScheme;
 
     final questionAsync = ref.watch(questionProvider(widget.questionId));
-    final messagesAsync =
-        ref.watch(questionMessagesProvider(widget.questionId));
     final materialsAsync = ref.watch(materialsProvider(widget.sessionId));
     final materials = materialsAsync.valueOrNull ?? const <StudyMaterial>[];
-    final materialsReady = materialsAsync.hasValue || materialsAsync.hasError;
+    final materialsReady = materialsAsync.hasValue;
+    final messagesAsync =
+        ref.watch(questionMessagesProvider(widget.questionId));
+    final messages = messagesAsync.valueOrNull ?? const <QuestionMessage>[];
+    final messagesReady = messagesAsync.hasValue;
+
+    final currentQuestion = questionAsync.valueOrNull;
+    if (currentQuestion != null &&
+        materialsReady &&
+        messagesReady &&
+        _preloadFuture == null) {
+      _startTutorSessionPreload(
+        currentQuestion,
+        materials,
+        messages,
+      );
+    }
 
     return questionAsync.when(
       loading: () =>
@@ -328,7 +339,6 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
           ),
           body: Column(
             children: [
-              // Materials thumbnail strip
               if (materials.isNotEmpty)
                 _MaterialsStrip(
                   materials: materials,
@@ -336,18 +346,12 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
                   scheme: scheme,
                   theme: theme,
                 ),
-
-              // Question card
-              _QuestionCard(question: question, scheme: scheme, theme: theme),
-
-              // Score badge (if scored or tool evaluation fired)
               if ((_currentScore ?? question.score) != null)
                 _ScoreBadgeRow(
                     score: _currentScore ?? question.score ?? 0.0,
                     scheme: scheme,
                     theme: theme),
 
-              // Messages
               Expanded(
                 child: messagesAsync.when(
                   loading: () =>
@@ -356,8 +360,21 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
                   data: (messages) => (messages.isEmpty &&
                           _streamingContent == null &&
                           _thinkingContent == null)
-                      ? _EmptyChat(scheme: scheme, theme: theme)
-                      : _MessageList(
+                      ? _ThreadList(
+                          question: question,
+                          messages: const [],
+                          streamingContent: null,
+                          thinkingContent: null,
+                          thinkingExpanded: _thinkingExpanded,
+                          onThinkingToggle: () => setState(
+                              () => _thinkingExpanded = !_thinkingExpanded),
+                          isSending: _sending,
+                          scrollController: _scrollController,
+                          scheme: scheme,
+                          theme: theme,
+                        )
+                      : _ThreadList(
+                          question: question,
                           messages: messages,
                           streamingContent: _streamingContent,
                           thinkingContent: _thinkingContent,
@@ -377,8 +394,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
                 controller: _controller,
                 sending: _sending,
                 modelLoading: _modelLoading,
-                canSend: materialsReady,
-                onSend: () => _sendMessage(question, materials),
+                canSend: materialsReady && messagesReady,
+                onSend: () => _sendMessage(question, materials, messages),
                 onStop: _stopGeneration,
                 scheme: scheme,
                 theme: theme,
@@ -532,7 +549,7 @@ class _ScoreBadgeRow extends StatelessWidget {
 
     if (score >= 0.8) {
       color = const Color(0xFF4CAF50);
-      label = 'Correct! 🎉';
+      label = 'Correct! 🎉 No explanation needed.';
       icon = Icons.check_circle;
     } else if (score >= 0.4) {
       color = const Color(0xFFFFB347);
@@ -546,7 +563,7 @@ class _ScoreBadgeRow extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
@@ -594,62 +611,95 @@ class _QuestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: Br.lg,
-        border: Border.all(color: scheme.primary.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            question.questionText,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: scheme.onPrimaryContainer,
-            ),
+    final hasOptions = question.type == QuestionType.multipleChoice &&
+        question.options.isNotEmpty;
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+        ),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(18),
+            topRight: Radius.circular(18),
+            bottomLeft: Radius.circular(4),
+            bottomRight: Radius.circular(18),
           ),
-          if (question.type == QuestionType.multipleChoice &&
-              question.options.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 6,
-              children: question.options.asMap().entries.map((e) {
-                final letter = String.fromCharCode(65 + e.key);
-                return Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: scheme.surface,
-                    borderRadius: Br.full,
-                    border: Border.all(
-                        color: scheme.primary.withValues(alpha: 0.3)),
-                  ),
-                  child: Text(
-                    '$letter. ${e.value}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurface,
-                      fontWeight: FontWeight.w500,
+          border: Border.all(color: scheme.outlineVariant),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Question',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                question.questionText,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface,
+                  height: 1.25,
+                ),
+              ),
+              if (hasOptions) ...[
+                const SizedBox(height: 14),
+                ...question.options.asMap().entries.map((entry) {
+                  final letter = String.fromCharCode(65 + entry.key);
+                  final isLast = entry.key == question.options.length - 1;
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          child: Text(
+                            '$letter.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.primary,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            entry.value,
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              height: 1.35,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-        ],
+                  );
+                }),
+              ],
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-// ─── Message list ─────────────────────────────────────────────────────────────
+// ─── Conversation thread ─────────────────────────────────────────────────────
 
-class _MessageList extends StatelessWidget {
+class _ThreadList extends StatelessWidget {
+  final Question question;
   final List<QuestionMessage> messages;
   final String? streamingContent;
   final String? thinkingContent;
@@ -660,7 +710,8 @@ class _MessageList extends StatelessWidget {
   final ColorScheme scheme;
   final ThemeData theme;
 
-  const _MessageList({
+  const _ThreadList({
+    required this.question,
     required this.messages,
     required this.streamingContent,
     required this.thinkingContent,
@@ -674,19 +725,32 @@ class _MessageList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Extra slots: thinking bubble + reply bubble (when active)
+    // Question bubble + extra slots: thinking bubble + reply bubble (when active)
     final hasThinking = thinkingContent != null;
     final hasStreaming = streamingContent != null;
     final extraItems = (hasThinking ? 1 : 0) + (hasStreaming ? 1 : 0);
-    final totalItems = messages.length + extraItems;
+    final totalItems = 1 + messages.length + extraItems;
 
     return ListView.builder(
       controller: scrollController,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       itemCount: totalItems,
       itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _QuestionCard(
+              question: question,
+              scheme: scheme,
+              theme: theme,
+            ),
+          );
+        }
+
+        final messageIndex = index - 1;
+
         // Thinking bubble — appears before streaming reply
-        if (hasThinking && index == messages.length) {
+        if (hasThinking && messageIndex == messages.length) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
             child: _ThinkingBubble(
@@ -704,7 +768,7 @@ class _MessageList extends StatelessWidget {
 
         // Streaming reply bubble — after thinking
         final replyIndex = messages.length + (hasThinking ? 1 : 0);
-        if (hasStreaming && index == replyIndex) {
+        if (hasStreaming && messageIndex == replyIndex) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 10),
             child: Align(
@@ -739,7 +803,7 @@ class _MessageList extends StatelessWidget {
           );
         }
 
-        final msg = messages[index];
+        final msg = messages[messageIndex];
         final isUser = msg.role == QuestionMessageRole.user;
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
@@ -944,45 +1008,6 @@ class _TypingIndicatorState extends State<_TypingIndicator>
           },
         );
       }),
-    );
-  }
-}
-
-// ─── Empty chat ───────────────────────────────────────────────────────────────
-
-class _EmptyChat extends StatelessWidget {
-  final ColorScheme scheme;
-  final ThemeData theme;
-
-  const _EmptyChat({required this.scheme, required this.theme});
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.chat_bubble_outline,
-                size: 48, color: scheme.outlineVariant),
-            const SizedBox(height: 16),
-            Text(
-              'Answer the question above',
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Type your answer below and Quex will help you learn!',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: scheme.onSurfaceVariant),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

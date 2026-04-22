@@ -1,5 +1,4 @@
 import 'dart:async';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
@@ -22,8 +21,8 @@ class GemmaSessionService {
   static const _evaluateTool = gemma.Tool(
     name: 'evaluate_understanding',
     description: 'Rate student understanding of the question (0.0-1.0). '
-        'Call when student answers correctly, gives correct option letter, '
-        'or demonstrates clear comprehension.',
+        'Call it first when the student answers correctly, gives the correct '
+        'option letter, or demonstrates clear comprehension.',
     parameters: {
       'type': 'object',
       'properties': {
@@ -43,6 +42,31 @@ class GemmaSessionService {
   Future<void> initQuestionTutorSession({
     required Question question,
     required List<StudyMaterial> materials,
+  }) async {
+    await _createQuestionTutorSession(
+      question: question,
+      materials: materials,
+      replayMessages: const [],
+    );
+  }
+
+  /// Create a tutor session and replay a stored history into it.
+  Future<void> preloadQuestionTutorSession({
+    required Question question,
+    required List<StudyMaterial> materials,
+    required List<QuestionMessage> history,
+  }) async {
+    await _createQuestionTutorSession(
+      question: question,
+      materials: materials,
+      replayMessages: _buildReplayMessages(history),
+    );
+  }
+
+  Future<void> _createQuestionTutorSession({
+    required Question question,
+    required List<StudyMaterial> materials,
+    required List<gemma.Message> replayMessages,
   }) async {
     if (!_inference.isInitialized) {
       throw StateError('Service not initialized');
@@ -69,12 +93,9 @@ class GemmaSessionService {
 
     final systemInstruction = StringBuffer(
       'You are a friendly tutor helping an elementary student answer a quiz question. '
-      'Keep responses short and simple. Give hints and encouragement, and do NOT reveal '
-      'the answer directly until they demonstrate understanding.\n\n'
-      'Use the evaluate_understanding tool only when the student answers correctly or '
-      'clearly demonstrates understanding. Otherwise reply in plain text.\n\n'
-      '--- QUIZ QUESTION ---\n'
-      'Question: ${question.questionText}\n',
+      'Keep responses short and simple. Give hints and encouragement. '
+      'When the student answers correctly, first call evaluate_understanding '
+      'to score it, then say "Correct!". Do not explain further.',
     );
     if (optionsText.isNotEmpty) {
       systemInstruction.writeln('Options:\n$optionsText');
@@ -95,6 +116,12 @@ class GemmaSessionService {
       tools: [_evaluateTool],
       supportsFunctionCalls: true,
     );
+
+    final replayChain = <gemma.Message>[
+      _buildQuestionPromptMessage(question),
+      ...replayMessages,
+    ];
+    await _inference.replayMessages(replayChain);
 
     // Queue all images to be included with first user message
     final allImages = <Uint8List>[];
@@ -206,6 +233,50 @@ class GemmaSessionService {
     }
   }
 
+  List<gemma.Message> _buildReplayMessages(List<QuestionMessage> history) {
+    final replay = <gemma.Message>[];
+    QuestionMessage? pendingUser;
+
+    for (final message in history) {
+      switch (message.role) {
+        case QuestionMessageRole.user:
+          pendingUser = message;
+          break;
+        case QuestionMessageRole.assistant:
+          if (pendingUser == null) {
+            break;
+          }
+          replay.add(
+            gemma.Message.text(
+              text: pendingUser.content,
+              isUser: true,
+            ),
+          );
+          replay.add(
+            gemma.Message.text(
+              text: message.content,
+              isUser: false,
+            ),
+          );
+          pendingUser = null;
+          break;
+      }
+    }
+
+    return replay;
+  }
+
+  gemma.Message _buildQuestionPromptMessage(Question question) {
+    final prompt = StringBuffer()
+      ..writeln('--- QUIZ QUESTION ---')
+      ..writeln('Question: ${question.questionText}');
+
+    return gemma.Message.text(
+      text: prompt.toString().trimRight(),
+      isUser: false,
+    );
+  }
+
   /// Send coach message incrementally.
   Stream<TutorEvent> sendCoachMessage(String message) async* {
     if (!_inference.hasActiveSession) {
@@ -259,21 +330,20 @@ class GemmaSessionService {
     _debugPrintChunked('[$label][Gemma][thinking]', thinking);
     _debugPrintChunked('[$label][Gemma][reply]', reply);
     if (toolCalls.isNotEmpty) {
-      debugPrint('[$label][Gemma][toolCalls] ${toolCalls.join(' | ')}');
+      _debugPrintChunked('[$label][Gemma][tools]', toolCalls.join('\n'));
     }
   }
 
-  void _debugPrintChunked(String prefix, String text) {
+  void _debugPrintChunked(String label, String text) {
     if (text.isEmpty) {
-      debugPrint('$prefix <empty>');
+      debugPrint('$label <empty>');
       return;
     }
 
-    const chunkSize = 900;
-    for (var start = 0; start < text.length; start += chunkSize) {
-      final end =
-          start + chunkSize < text.length ? start + chunkSize : text.length;
-      debugPrint('$prefix ${text.substring(start, end)}');
+    const chunkSize = 700;
+    for (var i = 0; i < text.length; i += chunkSize) {
+      final end = (i + chunkSize < text.length) ? i + chunkSize : text.length;
+      debugPrint('$label ${text.substring(i, end)}');
     }
   }
 }
