@@ -61,6 +61,15 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
     ref.invalidate(sessionBundleProvider(widget.sessionId));
   }
 
+  Future<void> _openQuizGenerationModal() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => QuizGenerationModal(sessionId: widget.sessionId),
+    );
+  }
+
   Future<void> _showEditBottomSheet(Session session) async {
     await showModalBottomSheet<void>(
       context: context,
@@ -130,11 +139,11 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
               ),
             ],
           ),
-          floatingActionButton: bundle.quizzes.isNotEmpty
-              ? const FloatingActionButton.extended(
-                  onPressed: null,
-                  icon: Icon(Icons.auto_fix_high),
-                  label: Text('Generate quiz (Coming Soon)'),
+          floatingActionButton: bundle.materials.isNotEmpty
+              ? FloatingActionButton.extended(
+                  onPressed: _openQuizGenerationModal,
+                  icon: const Icon(Icons.auto_fix_high),
+                  label: const Text('Generate quiz'),
                 )
               : null,
           body: SingleChildScrollView(
@@ -577,9 +586,9 @@ class _QuizEmptyStateState extends State<_QuizEmptyState> {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: null,
+                onPressed: widget.onGenerate,
                 icon: const Icon(Icons.auto_fix_high),
-                label: const Text('Generate quiz (Coming Soon)'),
+                label: const Text('Generate quiz'),
               ),
             ),
           ],

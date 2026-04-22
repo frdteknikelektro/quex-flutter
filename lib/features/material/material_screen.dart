@@ -33,7 +33,8 @@ Future<String> _copyToMaterialsDir(String srcPath, String originalName) async {
 
 // ─── Kind metadata helper ─────────────────────────────────────────────────────
 
-({String emoji, Color color}) _kindMeta(MaterialKind kind, ColorScheme scheme) =>
+({String emoji, Color color}) _kindMeta(
+        MaterialKind kind, ColorScheme scheme) =>
     switch (kind) {
       MaterialKind.text => (emoji: '📝', color: scheme.primaryContainer),
       MaterialKind.document => (emoji: '📄', color: scheme.secondaryContainer),
@@ -103,7 +104,8 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
     );
   }
 
-  Future<void> _saveMaterial(MaterialKind kind, String title, String content) async {
+  Future<void> _saveMaterial(
+      MaterialKind kind, String title, String content) async {
     final pageIndex = await MaterialDAO().countBySession(widget.sessionId);
     await MaterialDAO().insert(
       StudyMaterial(
@@ -161,8 +163,10 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
     final materialsAsync = ref.watch(materialsProvider(widget.sessionId));
 
     return sessionAsync.when(
-      loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(body: Center(child: Text('Failed to load session: $e'))),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
+      error: (e, _) =>
+          Scaffold(body: Center(child: Text('Failed to load session: $e'))),
       data: (session) {
         if (session == null) {
           return const Scaffold(body: Center(child: Text('Session not found')));
@@ -341,8 +345,10 @@ class _MaterialFileTile extends StatelessWidget {
   String _subtitleText() {
     final date = DateFormat.MMMd().format(material.createdAt);
     return switch (material.kind) {
-      MaterialKind.photo => '${material.content.split('\n').where((p) => p.isNotEmpty).length} photo(s)  ·  $date',
-      MaterialKind.document => '${pathlib.extension(material.content).replaceFirst('.', '').toUpperCase()}  ·  $date',
+      MaterialKind.photo =>
+        '${material.content.split('\n').where((p) => p.isNotEmpty).length} photo(s)  ·  $date',
+      MaterialKind.document =>
+        '${pathlib.extension(material.content).replaceFirst('.', '').toUpperCase()}  ·  $date',
       MaterialKind.text => 'Text  ·  $date',
     };
   }
@@ -365,11 +371,13 @@ class _MaterialFileTile extends StatelessWidget {
           context.push('/session/$sessionId/material/${material.id}');
         }
       },
-      contentPadding: const EdgeInsets.symmetric(horizontal: Sp.md, vertical: Sp.xs),
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: Sp.md, vertical: Sp.xs),
       leading: _buildLeading(scheme),
       title: Text(
         material.title,
-        style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+        style:
+            theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
@@ -377,7 +385,8 @@ class _MaterialFileTile extends StatelessWidget {
         _subtitleText(),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+        style:
+            theme.textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
       ),
       trailing: PopupMenuButton<String>(
         icon: Icon(Icons.more_vert, size: 20, color: scheme.onSurfaceVariant),
@@ -491,12 +500,14 @@ class _MaterialEmptyStateState extends State<_MaterialEmptyState>
 // ─── Add material bottom sheet ────────────────────────────────────────────────
 
 class _AddMaterialBottomSheet extends StatefulWidget {
-  final Future<void> Function(MaterialKind kind, String title, String content) onSaved;
+  final Future<void> Function(MaterialKind kind, String title, String content)
+      onSaved;
 
   const _AddMaterialBottomSheet({required this.onSaved});
 
   @override
-  State<_AddMaterialBottomSheet> createState() => _AddMaterialBottomSheetState();
+  State<_AddMaterialBottomSheet> createState() =>
+      _AddMaterialBottomSheetState();
 }
 
 class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
@@ -564,7 +575,8 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
         }
         setState(() => _copying = true);
         final paths = await Future.wait(
-          _selectedPhotos.map((x) => _copyToMaterialsDir(x.path, pathlib.basename(x.path))),
+          _selectedPhotos.map(
+              (x) => _copyToMaterialsDir(x.path, pathlib.basename(x.path))),
         );
         content = paths.join('\n');
 
@@ -643,7 +655,8 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
                       top: 2,
                       right: 2,
                       child: GestureDetector(
-                        onTap: () => setState(() => _selectedPhotos.removeAt(i)),
+                        onTap: () =>
+                            setState(() => _selectedPhotos.removeAt(i)),
                         child: Container(
                           width: 20,
                           height: 20,
@@ -651,7 +664,8 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
                             color: scheme.error,
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(Icons.close, size: 12, color: scheme.onError),
+                          child: Icon(Icons.close,
+                              size: 12, color: scheme.onError),
                         ),
                       ),
                     ),
@@ -702,14 +716,16 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
             return Padding(
               padding: const EdgeInsets.only(bottom: Sp.xs),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: Sp.sm, vertical: Sp.xs),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: Sp.sm, vertical: Sp.xs),
                 decoration: BoxDecoration(
                   color: scheme.surfaceContainerHighest,
                   borderRadius: Br.sm,
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.picture_as_pdf_outlined, size: 20, color: scheme.primary),
+                    Icon(Icons.picture_as_pdf_outlined,
+                        size: 20, color: scheme.primary),
                     const SizedBox(width: Sp.sm),
                     Expanded(
                       child: Text(
@@ -719,11 +735,13 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
                       ),
                     ),
                     IconButton(
-                      onPressed: () => setState(() => _selectedFiles.removeAt(i)),
+                      onPressed: () =>
+                          setState(() => _selectedFiles.removeAt(i)),
                       icon: const Icon(Icons.close, size: 18),
                       visualDensity: VisualDensity.compact,
                       padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                      constraints:
+                          const BoxConstraints(minWidth: 32, minHeight: 32),
                     ),
                   ],
                 ),
@@ -809,7 +827,8 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
             ),
             Text(
               'Add to Study Folder',
-              style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800),
+              style: theme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w800),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: Sp.lg),
@@ -839,7 +858,8 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
                   ? const SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
                     )
                   : const Text('Save file'),
             ),
@@ -884,9 +904,13 @@ class _KindSelector extends StatelessWidget {
                 curve: Curves.easeOutCubic,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: isSelected ? scheme.primaryContainer : scheme.surfaceContainerHighest,
+                  color: isSelected
+                      ? scheme.primaryContainer
+                      : scheme.surfaceContainerHighest,
                   borderRadius: Br.sm,
-                  border: isSelected ? Border.all(color: scheme.primary, width: 2) : null,
+                  border: isSelected
+                      ? Border.all(color: scheme.primary, width: 2)
+                      : null,
                 ),
                 alignment: Alignment.center,
                 child: Column(
@@ -898,8 +922,11 @@ class _KindSelector extends StatelessWidget {
                       entry.label,
                       style: TextStyle(
                         fontSize: 11,
-                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                        color: isSelected ? scheme.primary : scheme.onSurfaceVariant,
+                        fontWeight:
+                            isSelected ? FontWeight.w700 : FontWeight.w500,
+                        color: isSelected
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -937,12 +964,11 @@ class _GenerateQuizBar extends StatelessWidget {
       child: SizedBox(
         width: double.infinity,
         child: FilledButton.icon(
-          onPressed: null,
+          onPressed: onPressed,
           icon: const Icon(Icons.auto_fix_high),
-          label: const Text('Generate Quiz (Coming Soon)'),
+          label: const Text('Generate quiz'),
         ),
       ),
     );
   }
 }
-

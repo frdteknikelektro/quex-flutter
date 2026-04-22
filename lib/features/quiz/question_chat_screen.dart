@@ -39,6 +39,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   final _scrollController = ScrollController();
   late final GemmaServiceHost _gemmaHost;
   bool _sending = false;
+  bool _modelLoading = false;
   String? _streamingContent; // reply tokens accumulating
   String?
       _thinkingContent; // thinking tokens accumulating (null = not thinking)
@@ -75,9 +76,12 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
 
   Future<void> _warmModel() async {
     try {
+      if (mounted) setState(() => _modelLoading = true);
       await _ensureModel();
     } catch (_) {
       // Send path will surface model load failure if needed.
+    } finally {
+      if (mounted) setState(() => _modelLoading = false);
     }
   }
 
@@ -159,7 +163,9 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   }
 
   Future<void> _sendMessage(
-      Question question, List<QuestionMessage> history) async {
+    Question question,
+    List<StudyMaterial> materials,
+  ) async {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
 
@@ -176,9 +182,6 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       }
       return;
     }
-
-    final materials =
-        ref.read(materialsProvider(widget.sessionId)).valueOrNull ?? [];
 
     // Initialize session once per screen visit.
     try {
@@ -232,7 +235,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
             setState(() => _streamingContent = accumulatedReply.toString());
             _scrollToBottom();
           } else if (event is TutorEvaluation) {
-            _handleScore(event.score);
+            unawaited(_handleScore(event.score));
           }
         },
         onDone: () => completer.complete(),
@@ -245,15 +248,6 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       final reply = accumulatedReply.toString();
       final thinking = accumulatedThinking.toString();
 
-      if (mounted) {
-        setState(() {
-          _streamingContent = null;
-          _sending = false;
-          _thinkingContent = thinking.isEmpty ? null : thinking;
-          _thinkingExpanded = false;
-        });
-      }
-
       // Save assistant reply
       if (reply.isNotEmpty) {
         await QuestionMessageDAO().insert(QuestionMessage(
@@ -263,8 +257,18 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
           createdAt: DateTime.now(),
         ));
         ref.invalidate(questionMessagesProvider(widget.questionId));
-        _scrollToBottom();
+        await ref.read(questionMessagesProvider(widget.questionId).future);
       }
+
+      if (mounted) {
+        setState(() {
+          _streamingContent = null;
+          _sending = false;
+          _thinkingContent = thinking.isEmpty ? null : thinking;
+          _thinkingExpanded = false;
+        });
+      }
+      _scrollToBottom();
     } catch (e) {
       debugPrint('Tutor stream error: $e');
 
@@ -295,6 +299,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final messagesAsync =
         ref.watch(questionMessagesProvider(widget.questionId));
     final materialsAsync = ref.watch(materialsProvider(widget.sessionId));
+    final materials = materialsAsync.valueOrNull ?? const <StudyMaterial>[];
+    final materialsReady = materialsAsync.hasValue || materialsAsync.hasError;
 
     return questionAsync.when(
       loading: () =>
@@ -323,16 +329,13 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
           body: Column(
             children: [
               // Materials thumbnail strip
-              materialsAsync.whenData((materials) {
-                    if (materials.isEmpty) return const SizedBox.shrink();
-                    return _MaterialsStrip(
-                      materials: materials,
-                      sessionId: widget.sessionId,
-                      scheme: scheme,
-                      theme: theme,
-                    );
-                  }).value ??
-                  const SizedBox.shrink(),
+              if (materials.isNotEmpty)
+                _MaterialsStrip(
+                  materials: materials,
+                  sessionId: widget.sessionId,
+                  scheme: scheme,
+                  theme: theme,
+                ),
 
               // Question card
               _QuestionCard(question: question, scheme: scheme, theme: theme),
@@ -373,9 +376,9 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
               _InputBar(
                 controller: _controller,
                 sending: _sending,
-                onSend: () => messagesAsync.whenData(
-                  (messages) => _sendMessage(question, messages),
-                ),
+                modelLoading: _modelLoading,
+                canSend: materialsReady,
+                onSend: () => _sendMessage(question, materials),
                 onStop: _stopGeneration,
                 scheme: scheme,
                 theme: theme,
@@ -989,6 +992,8 @@ class _EmptyChat extends StatelessWidget {
 class _InputBar extends StatelessWidget {
   final TextEditingController controller;
   final bool sending;
+  final bool modelLoading;
+  final bool canSend;
   final VoidCallback onSend;
   final VoidCallback onStop;
   final ColorScheme scheme;
@@ -997,6 +1002,8 @@ class _InputBar extends StatelessWidget {
   const _InputBar({
     required this.controller,
     required this.sending,
+    required this.modelLoading,
+    required this.canSend,
     required this.onSend,
     required this.onStop,
     required this.scheme,
@@ -1023,7 +1030,7 @@ class _InputBar extends StatelessWidget {
             Expanded(
               child: TextField(
                 controller: controller,
-                enabled: !sending,
+                enabled: !sending && !modelLoading && canSend,
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
                   hintText: 'Talk to Quex…',
@@ -1049,26 +1056,44 @@ class _InputBar extends StatelessWidget {
             const SizedBox(width: 8),
             AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
-              child: sending
-                  ? IconButton(
-                      key: const ValueKey('stop'),
-                      onPressed: onStop,
-                      icon: Icon(Icons.stop_rounded,
-                          color: scheme.onErrorContainer),
-                      style: IconButton.styleFrom(
-                        backgroundColor: scheme.errorContainer,
-                        minimumSize: const Size(44, 44),
+              child: modelLoading
+                  ? SizedBox(
+                      key: const ValueKey('loading'),
+                      width: 44,
+                      height: 44,
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: scheme.primary,
+                          ),
+                        ),
                       ),
                     )
-                  : IconButton(
-                      key: const ValueKey('send'),
-                      onPressed: onSend,
-                      icon: Icon(Icons.send_rounded, color: scheme.primary),
-                      style: IconButton.styleFrom(
-                        backgroundColor: scheme.primaryContainer,
-                        minimumSize: const Size(44, 44),
-                      ),
-                    ),
+                  : sending
+                      ? IconButton(
+                          key: const ValueKey('stop'),
+                          onPressed: onStop,
+                          icon: Icon(
+                            Icons.stop_rounded,
+                            color: scheme.onErrorContainer,
+                          ),
+                          style: IconButton.styleFrom(
+                            backgroundColor: scheme.errorContainer,
+                            minimumSize: const Size(44, 44),
+                          ),
+                        )
+                      : IconButton(
+                          key: const ValueKey('send'),
+                          onPressed: canSend ? onSend : null,
+                          icon: Icon(Icons.send_rounded, color: scheme.primary),
+                          style: IconButton.styleFrom(
+                            backgroundColor: scheme.primaryContainer,
+                            minimumSize: const Size(44, 44),
+                          ),
+                        ),
             ),
           ],
         ),
