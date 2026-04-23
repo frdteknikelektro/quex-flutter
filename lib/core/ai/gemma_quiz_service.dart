@@ -18,6 +18,43 @@ class GemmaQuizService {
 
   final GemmaInferenceService _inference;
 
+  static const String _quizSystemPrompt = '''
+ROLE: You are a quiz generator for elementary students.
+
+WORKFLOW:
+1. Call set_questions_count(count) to set total - REMEMBER this number
+2. Call add_question() for each question one at a time
+3. Keep track: after each question, check if you've reached the set_questions_count
+4. Call finish_run() ONLY after generating exactly the set_questions_count number of questions
+
+OUTPUT RULES:
+- CRITICAL: Every response MUST be a tool call. Never output quiz text directly.
+- Plain question text only, no numbering (1., Question 1, A., a.)
+- multipleChoice: REQUIRED 3-4 options parameter, no letters (A/B/C/D, a/b/c/d)
+
+CONTENT RULES:
+- MANDATORY: Use existing questions from materials/images verbatim when available
+- If materials have images with questions, extract and use those questions first
+- Only generate new questions when materials lack sufficient questions
+- Reference images in questions when relevant (e.g., "In the diagram...")
+- Cover different topics from materials, not just one concept
+- No duplicate questions - if you submit a duplicate, you will receive an error and must generate a different question
+- Simple, kid-friendly language matching material complexity
+
+WORKFLOW ENFORCEMENT:
+- MUST generate EXACTLY the number of questions set in set_questions_count
+- MUST keep track of how many questions you've generated
+- DO NOT call finish_run() until you've generated exactly set_questions_count questions
+- If you set count to 15, you MUST generate 15 questions before finish_run
+
+DO NOT:
+- Output questions as free text
+- Use numbering or option letters
+- Repeat questions
+- Use complex vocabulary beyond the materials
+- Call finish_run() before generating all questions
+''';
+
   static const _setQuestionCountTool = gemma.Tool(
     name: 'set_questions_count',
     description:
@@ -98,24 +135,8 @@ class GemmaQuizService {
     final hasImages = prepared.any((p) => p.images.isNotEmpty);
     final guard = ResponseLoopGuard();
 
-    const systemInstruction =
-        'You are a quiz generator agent for elementary students. '
-        'Call set_questions_count(count) first to count the total available questions in the materials (optional, defaults to 10). '
-        'Then call add_question() for each question and finish_run() when done. '
-        'Call finish_run() when the total questions added equals the set question count. '
-        'Generate quiz content only through the add_question tool, never as free text. '
-        'Every turn must be a tool call using one of the provided tools. '
-        'Generate only questions grounded in the provided materials and images. '
-        'If the materials contain existing quiz questions, use them verbatim by calling add_question with the exact text. '
-        'If no questions exist in materials, generate new questions based on the content. '
-        'Never repeat the same question. '
-        'Write plain question text only, with no numbering such as "1." or "Question 1". '
-        'Use multipleChoice for factual recall with 3-4 plain options and no option letters. '
-        'Use textAnswer for short definitions or concise explanations. '
-        'Match difficulty to grade level and keep wording simple, clear, and kid-friendly.';
-
     await _inference.createSession(
-      systemInstruction: systemInstruction,
+      systemInstruction: _quizSystemPrompt,
       isThinking: false,
       promptDialect: gemma.PromptDialect.gemma4,
       toolChoice: gemma.ToolChoice.required,
@@ -158,169 +179,140 @@ class GemmaQuizService {
 
     // State tracking
     var questionCount = maxQuestions ?? 10;
-    var questionCountSet = false;
     var finishCalled = false;
     final questions = <Question>[];
     var currentQuestionIndex = 0;
 
     // Outer loop for multiple turns
     while (!finishCalled) {
+      // Check session state before generating
+      if (!_inference.hasActiveSession) {
+        throw StateError('Session was closed during generation. Please retry.');
+      }
+
       // Inner loop for single turn responses
-      await for (final response in _inference.generateResponses()) {
-        if (response is gemma.ThinkingResponse) {
-          yield QuizThinkingToken(response.content);
-          continue;
-        }
-
-        if (response is gemma.TextResponse) {
-          final error = guard.recordTextToken(response.token);
-          if (error != null) {
-            throw StateError(error);
-          }
-          yield QuizTextToken(response.token);
-          continue;
-        }
-
-        // Handle both single and parallel function calls
-        final toolCalls = <gemma.FunctionCallResponse>[];
-        if (response is gemma.FunctionCallResponse) {
-          toolCalls.add(response);
-        } else if (response is gemma.ParallelFunctionCallResponse) {
-          toolCalls.addAll(response.calls);
-        } else {
-          continue;
-        }
-
-        for (final toolResponse in toolCalls) {
-          final error = guard.recordToolCall(toolResponse.name, toolResponse.args);
-          if (error != null) {
-            throw StateError(error);
+      try {
+        await for (final response in _inference.generateResponses()) {
+          if (response is gemma.ThinkingResponse) {
+            yield QuizThinkingToken(response.content);
+            continue;
           }
 
-          switch (toolResponse.name) {
-            case 'set_questions_count':
-              final count = (toolResponse.args['count'] as num?)?.toInt() ?? 10;
-              questionCount = count == 0 ? 10 : count;
-              questionCountSet = true;
-              await _inference.addToolResponse(
-                toolName: 'set_questions_count',
-                response: {'count': questionCount, 'success': true},
-              );
-              yield QuizPlanned(questionCount, []);
-              yield QuizGenerationStarted(questionCount);
-              break;
+          if (response is gemma.TextResponse) {
+            final error = guard.recordTextToken(response.token);
+            if (error != null) {
+              throw StateError(error);
+            }
+            yield QuizTextToken(response.token);
+            continue;
+          }
 
-            case 'add_question':
-              Question? parsed;
-              var retries = 0;
-              const maxQuestionAttempts = 3;
+          // Handle both single and parallel function calls
+          final toolCalls = <gemma.FunctionCallResponse>[];
+          if (response is gemma.FunctionCallResponse) {
+            toolCalls.add(response);
+          } else if (response is gemma.ParallelFunctionCallResponse) {
+            toolCalls.addAll(response.calls);
+          } else {
+            continue;
+          }
 
-              while (parsed == null && retries < maxQuestionAttempts) {
-                parsed = _parseToolCallQuestion(
-                  toolResponse.args,
-                  orderIndex: currentQuestionIndex,
-                );
-                if (parsed == null) retries++;
-              }
+          for (final toolResponse in toolCalls) {
+            final error = guard.recordToolCall(toolResponse.name, toolResponse.args);
+            if (error != null) {
+              throw StateError(error);
+            }
 
-              if (parsed == null) {
-                yield QuizGenerationError('Failed to generate question');
+            switch (toolResponse.name) {
+              case 'set_questions_count':
+                final count = (toolResponse.args['count'] as num?)?.toInt() ?? 10;
+                questionCount = count == 0 ? 10 : count;
                 await _inference.addToolResponse(
-                  toolName: 'add_question',
-                  response: {'success': false, 'error': 'Invalid question format. Please try again with correct format.'},
+                  toolName: 'set_questions_count',
+                  response: {'count': questionCount, 'success': true},
                 );
-              } else {
-                questions.add(parsed);
-                currentQuestionIndex++;
+                yield QuizPlanned(questionCount, []);
+                yield QuizGenerationStarted(questionCount);
+                break;
+
+              case 'add_question':
+                Question? parsed;
+                var retries = 0;
+                const maxQuestionAttempts = 3;
+
+                while (parsed == null && retries < maxQuestionAttempts) {
+                  parsed = _parseToolCallQuestion(
+                    toolResponse.args,
+                    orderIndex: currentQuestionIndex,
+                  );
+                  if (parsed == null) retries++;
+                }
+
+                if (parsed == null) {
+                  yield QuizGenerationError('Failed to generate question');
+                  await _inference.addToolResponse(
+                    toolName: 'add_question',
+                    response: {'success': false, 'error': 'Invalid question format. Please try again with correct format.'},
+                  );
+                } else {
+                  // Check for duplicate question text
+                  final questionText = parsed.questionText;
+                  final isDuplicate = questions.any((q) => 
+                    q.questionText.toLowerCase() == questionText.toLowerCase()
+                  );
+                  
+                  if (isDuplicate) {
+                    await _inference.addToolResponse(
+                      toolName: 'add_question',
+                      response: {'success': false, 'error': 'Duplicate question. This question already exists. Please generate a different question.'},
+                    );
+                  } else {
+                    questions.add(parsed);
+                    currentQuestionIndex++;
+                    await _inference.addToolResponse(
+                      toolName: 'add_question',
+                      response: {
+                        'index': currentQuestionIndex,
+                        'total': questionCount,
+                        'success': true,
+                      },
+                    );
+                    yield QuizQuestionGenerated(
+                      parsed,
+                      currentQuestionIndex,
+                      questionCount,
+                    );
+                  }
+                }
+                break;
+
+              case 'finish_run':
+                if (finishCalled) {
+                  continue;
+                }
+                finishCalled = true;
+
                 await _inference.addToolResponse(
-                  toolName: 'add_question',
-                  response: {
-                    'index': currentQuestionIndex,
-                    'total': questionCount,
-                    'success': true,
-                  },
+                  toolName: 'finish_run',
+                  response: {'success': true},
                 );
-                yield QuizQuestionGenerated(
-                  parsed,
-                  currentQuestionIndex,
-                  questionCount,
-                );
-              }
-              break;
-
-            case 'finish_run':
-              if (finishCalled) {
-                continue;
-              }
-              finishCalled = true;
-
-              await _inference.addToolResponse(
-                toolName: 'finish_run',
-                response: {'success': true},
-              );
-              break;
+                break;
+            }
           }
         }
+      } catch (e) {
+        final errorStr = e.toString();
+        if (errorStr.contains('No active chat') || 
+            errorStr.contains('Session not created') ||
+            errorStr.contains('Session is cancelled')) {
+          throw StateError('Session was closed during generation. Please retry.');
+        }
+        rethrow;
       }
     }
 
     yield QuizSubmitted();
     yield QuizGenerationComplete(questions);
-  }
-
-  /// Scan materials for existing quiz questions.
-  /// Returns verbatim question texts found, or empty list if none detected.
-  Future<List<String>> detectQuestionsInMaterials({
-    required List<StudyMaterial> materials,
-  }) async {
-    if (!_inference.isInitialized) {
-      throw StateError('Service not initialized');
-    }
-
-    final prepared = await MaterialPreprocessor.prepare(materials);
-    final hasImages = prepared.any((p) => p.images.isNotEmpty);
-    final textContext = prepared
-        .map((p) => p.textChunk)
-        .where((t) => t.isNotEmpty)
-        .join('\n\n');
-
-    const systemInstruction =
-        'You are a question extractor. Scan the study materials provided. '
-        'If there are quiz questions already written in them, list each one EXACTLY as written, '
-        'one per line, with no extra text or numbering. '
-        'If there are no questions in the materials, respond with exactly: NONE';
-
-    await _inference.createSession(
-      systemInstruction: systemInstruction,
-      temperature: 0.1,
-      topK: 1,
-      supportImage: hasImages,
-      promptDialect: gemma.PromptDialect.gemma4,
-      toolChoice: gemma.ToolChoice.auto,
-    );
-
-    final prompt = 'Extract all quiz questions from these materials. '
-        'One per line, or NONE if none exist.\n\n$textContext';
-
-    for (final prep in prepared) {
-      for (final imgBytes in prep.images) {
-        await _inference.addImageQuery(imgBytes);
-      }
-    }
-
-    await _inference.addTextQuery(prompt);
-
-    final response = await _inference.generateResponse();
-    final raw = response is gemma.TextResponse ? response.token : '';
-
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty || trimmed.toUpperCase() == 'NONE') return [];
-
-    return trimmed
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty && line.toUpperCase() != 'NONE')
-        .toList();
   }
 
   Question? _parseToolCallQuestion(
