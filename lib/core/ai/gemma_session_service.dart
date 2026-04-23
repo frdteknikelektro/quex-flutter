@@ -97,9 +97,6 @@ class GemmaSessionService {
       'When the student answers correctly, first call evaluate_understanding '
       'to score it, then say "Correct!". Do not explain further.',
     );
-    if (optionsText.isNotEmpty) {
-      systemInstruction.writeln('Options:\n$optionsText');
-    }
     if (materialsContext.isNotEmpty) {
       systemInstruction
         ..writeln()
@@ -286,6 +283,13 @@ class GemmaSessionService {
     final prompt = StringBuffer()
       ..writeln('--- QUIZ QUESTION ---')
       ..writeln('Question: ${question.questionText}');
+
+    if (question.type == QuestionType.multipleChoice && question.options.isNotEmpty) {
+      prompt.writeln('Options:');
+      for (var i = 0; i < question.options.length; i++) {
+        prompt.writeln('${String.fromCharCode(65 + i)}) ${question.options[i]}');
+      }
+    }
 
     return gemma.Message.text(
       text: prompt.toString().trimRight(),
