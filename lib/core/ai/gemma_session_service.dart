@@ -109,7 +109,8 @@ class GemmaSessionService {
 
     await _inference.createSession(
       systemInstruction: systemInstruction.toString(),
-      temperature: 0.7,
+      temperature: 0.8,
+      topK: 40,
       supportImage: hasImages,
       promptDialect: gemma.PromptDialect.gemma4,
       toolChoice: gemma.ToolChoice.auto,
@@ -117,21 +118,24 @@ class GemmaSessionService {
       supportsFunctionCalls: true,
     );
 
-    final replayChain = <gemma.Message>[
-      _buildQuestionPromptMessage(question),
-      ...replayMessages,
-    ];
-    await _inference.replayMessages(replayChain);
-
-    // Queue all images to be included with first user message
+    // Collect all material images
     final allImages = <Uint8List>[];
     for (final p in prepared) {
       allImages.addAll(p.images);
     }
+
+    final replayChain = <gemma.Message>[
+      _buildQuestionPromptMessage(question),
+      ...replayMessages,
+    ];
+    
+    // Re-queue material images before replaying conversation history
     if (allImages.isNotEmpty) {
-      debugPrint('[Tutor] Queuing ${allImages.length} images');
+      debugPrint('[Tutor] Re-queuing ${allImages.length} images for replay');
       await _inference.addImagesToQueue(allImages);
     }
+    
+    await _inference.replayMessages(replayChain);
   }
 
   /// Send user message incrementally. No history param — InferenceChat maintains state.
@@ -146,7 +150,11 @@ class GemmaSessionService {
     final replyBuffer = StringBuffer();
     final thinkingBuffer = StringBuffer();
     final toolCalls = <String>[];
-    await _inference.addTextQuery(userMessage);
+    
+    // Check if this is the first message (has pending images)
+    // If so, mark as prefix for replay
+    final isFirstMessage = _inference.hasPendingImages;
+    await _inference.addTextQuery(userMessage, prefix: isFirstMessage);
 
     try {
       await for (final response in _inference.generateResponses()) {
@@ -160,16 +168,23 @@ class GemmaSessionService {
             throw StateError(error);
           }
           yield TutorReply(response.token);
-        } else if (response is gemma.FunctionCallResponse) {
-          toolCalls.add('${response.name}(${response.args})');
-          final error = guard.recordToolCall(response.name, response.args);
-          if (error != null) {
-            throw StateError(error);
-          }
-          if (response.name == 'evaluate_understanding') {
-            final score = (response.args['score'] as num?)?.toDouble();
-            if (score != null) {
-              yield TutorEvaluation(score: score);
+        } else if (response is gemma.FunctionCallResponse || response is gemma.ParallelFunctionCallResponse) {
+          // Handle both single and parallel function calls
+          final calls = response is gemma.FunctionCallResponse
+              ? [response]
+              : (response as gemma.ParallelFunctionCallResponse).calls;
+          
+          for (final call in calls) {
+            toolCalls.add('${call.name}(${call.args})');
+            final error = guard.recordToolCall(call.name, call.args);
+            if (error != null) {
+              throw StateError(error);
+            }
+            if (call.name == 'evaluate_understanding') {
+              final score = (call.args['score'] as num?)?.toDouble();
+              if (score != null) {
+                yield TutorEvaluation(score: score);
+              }
             }
           }
         }
@@ -217,6 +232,7 @@ class GemmaSessionService {
     await _inference.createSession(
       systemInstruction: systemInstruction.toString(),
       temperature: 0.7,
+      topK: 40,
       supportImage: hasImages,
       promptDialect: gemma.PromptDialect.gemma4,
       toolChoice: gemma.ToolChoice.auto,
@@ -287,7 +303,11 @@ class GemmaSessionService {
     final replyBuffer = StringBuffer();
     final thinkingBuffer = StringBuffer();
     final toolCalls = <String>[];
-    await _inference.addTextQuery(message);
+    
+    // Check if this is the first message (has pending images)
+    // If so, mark as prefix for replay
+    final isFirstMessage = _inference.hasPendingImages;
+    await _inference.addTextQuery(message, prefix: isFirstMessage);
 
     try {
       await for (final response in _inference.generateResponses()) {
@@ -301,8 +321,15 @@ class GemmaSessionService {
             throw StateError(error);
           }
           yield TutorReply(response.token);
-        } else if (response is gemma.FunctionCallResponse) {
-          toolCalls.add('${response.name}(${response.args})');
+        } else if (response is gemma.FunctionCallResponse || response is gemma.ParallelFunctionCallResponse) {
+          // Handle both single and parallel function calls
+          final calls = response is gemma.FunctionCallResponse
+              ? [response]
+              : (response as gemma.ParallelFunctionCallResponse).calls;
+          
+          for (final call in calls) {
+            toolCalls.add('${call.name}(${call.args})');
+          }
         }
       }
     } finally {

@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-
-import '../../app/theme.dart';
+import 'package:intl/intl.dart';
+import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../widgets/math_markdown.dart';
 import '../../widgets/quex_ui.dart';
 
 class QuizDetailScreen extends ConsumerStatefulWidget {
@@ -22,6 +24,20 @@ class QuizDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
+  Future<void> _handleFinishQuiz(List<Question> questions) async {
+    final scored = questions.where((q) => q.score != null).toList();
+    if (scored.isEmpty) return;
+    
+    final totalScore = scored.fold(0.0, (sum, q) => sum + q.score!);
+    final finalScore = (totalScore / questions.length * 100).round();
+    
+    await QuizDAO().complete(widget.quizId, finalScore);
+    ref.invalidate(sessionBundleProvider(widget.sessionId));
+    
+    if (!mounted) return;
+    context.pop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -36,74 +52,79 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
           onPressed: () => context.pop(),
         ),
       ),
-      body: Column(
-        children: [
-          // Question list
-          Expanded(
-            child: bundle.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('Error: $e')),
-              data: (b) {
-                if (b == null) {
-                  return const QuexEmptyState(
-                    icon: Icons.quiz_outlined,
-                    title: 'Quiz not found',
-                    message: 'This quiz may have been deleted.',
-                  );
-                }
+      body: bundle.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
+        data: (b) {
+          if (b == null) {
+            return const QuexEmptyState(
+              icon: Icons.quiz_outlined,
+              title: 'Quiz not found',
+              message: 'This quiz may have been deleted.',
+            );
+          }
 
-                final questions = b.questions;
-                final scored = questions.where((q) => q.score != null).toList();
-                final totalScore = scored.isEmpty
-                    ? null
-                    : scored.fold(0.0, (sum, q) => sum + q.score!) /
-                        questions.length;
+          final questions = b.questions;
+          final scored = questions.where((q) => q.score != null).toList();
+          final totalScore = scored.isEmpty
+              ? null
+              : scored.fold(0.0, (sum, q) => sum + q.score!) /
+                  questions.length;
 
-                return CustomScrollView(
-                  slivers: [
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                        child: _ScoreHeader(
-                          totalScore: totalScore,
-                          answered: scored.length,
-                          total: questions.length,
-                          scheme: scheme,
-                          theme: theme,
-                        ),
+          return CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+                  child: _ScoreHeader(
+                    quiz: b.quiz,
+                    totalScore: totalScore,
+                    answered: scored.length,
+                    total: questions.length,
+                    scheme: scheme,
+                    theme: theme,
+                  ),
+                ),
+              ),
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _QuestionTile(
+                        question: questions[index],
+                        index: index,
+                        sessionId: widget.sessionId,
+                        quizId: widget.quizId,
+                        scheme: scheme,
+                        theme: theme,
                       ),
                     ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) => Padding(
-                            padding: const EdgeInsets.only(bottom: 10),
-                            child: _QuestionTile(
-                              question: questions[index],
-                              index: index,
-                              sessionId: widget.sessionId,
-                              quizId: widget.quizId,
-                              scheme: scheme,
-                              theme: theme,
-                            ),
-                          ),
-                          childCount: questions.length,
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-        ],
+                    childCount: questions.length,
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+      floatingActionButton: bundle.maybeWhen(
+        data: (b) => b != null && b.questions.isNotEmpty
+            ? FloatingActionButton.extended(
+                onPressed: () => _handleFinishQuiz(b.questions),
+                icon: const Icon(Icons.check_circle),
+                label: const Text('Finish Quiz'),
+              )
+            : null,
+        orElse: () => null,
       ),
     );
   }
 }
 
 class _ScoreHeader extends StatelessWidget {
+  final Quiz quiz;
   final double? totalScore;
   final int answered;
   final int total;
@@ -111,6 +132,7 @@ class _ScoreHeader extends StatelessWidget {
   final ThemeData theme;
 
   const _ScoreHeader({
+    required this.quiz,
     required this.totalScore,
     required this.answered,
     required this.total,
@@ -118,40 +140,59 @@ class _ScoreHeader extends StatelessWidget {
     required this.theme,
   });
 
+  String _formatDate(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = DateTime(dt.year, dt.month, dt.day);
+    final diff = today.difference(date).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    if (dt.year == now.year) return DateFormat('MMM d').format(dt);
+    return DateFormat('MMM d, y').format(dt);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return QuexPanel(
-      padding: const EdgeInsets.all(20),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '$total Questions',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  totalScore == null
-                      ? 'Tap a question to start chatting with Quex!'
-                      : '$answered answered · tap any to continue',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _formatDate(quiz.createdAt),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
           ),
-          if (totalScore != null) ...[
-            const SizedBox(width: 16),
-            _ScoreRing(score: totalScore!, scheme: scheme, theme: theme),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '$total Questions',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: scheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$answered answered',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (totalScore != null) ...[
+              const SizedBox(width: 16),
+              _ScoreRing(score: totalScore!, scheme: scheme, theme: theme),
+            ],
           ],
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -260,28 +301,22 @@ class _QuestionTile extends StatelessWidget {
       opacity: question.id == null ? 0.5 : 1.0,
       child: Card(
         margin: EdgeInsets.zero,
+        color: scheme.surfaceContainerLow,
+        elevation: 0,
         child: InkWell(
-          borderRadius: Br.lg,
+          borderRadius: BorderRadius.circular(12),
           onTap: () => _onTap(context),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '${index + 1}',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: scheme.primary,
-                      fontWeight: FontWeight.w700,
-                    ),
+                Text(
+                  '${index + 1}.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -289,71 +324,26 @@ class _QuestionTile extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: scheme.surfaceContainerHighest,
-                              borderRadius: Br.full,
-                            ),
-                            child: Text(
-                              question.type == QuestionType.multipleChoice
-                                  ? 'Multiple choice'
-                                  : 'Text answer',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                          const Spacer(),
-                          _scoreBadge(question.score),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        question.questionText,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (question.score != null) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          question.score! >= 0.8
-                              ? 'Correct!'
-                              : question.score! >= 0.4
-                                  ? 'Partial credit'
-                                  : 'Needs review',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: _scoreColor(question.score),
+                      MathMarkdownBody(
+                        data: question.questionText,
+                        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                          p: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
+                            color: scheme.onSurface,
+                            height: 1.35,
                           ),
                         ),
-                      ] else ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Text(
-                              'Tap to discuss with Quex',
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: scheme.primary,
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            Icon(Icons.chevron_right,
-                                size: 14, color: scheme.primary),
-                          ],
+                        textStyle: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: scheme.onSurface,
+                          height: 1.35,
                         ),
-                      ],
+                      ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 12),
+                _scoreBadge(question.score),
               ],
             ),
           ),

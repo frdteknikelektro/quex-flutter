@@ -21,6 +21,9 @@ class GemmaInferenceService {
   /// True if active chat session exists.
   bool get hasActiveSession => _chat != null;
 
+  /// True if there are pending images queued for the next message.
+  bool get hasPendingImages => _pendingImages.isNotEmpty;
+
   static const int _maxOutputTokens = 8192;
 
   /// Initialize the inference service by creating the model.
@@ -122,9 +125,13 @@ class GemmaInferenceService {
   /// Add a text query chunk to the current session.
   /// If pending images exist, includes the first image with the text,
   /// then adds remaining images as separate queries.
+  ///
+  /// If [prefix] is true, the message is marked as a prefix for replay
+  /// when sessions are recreated (e.g., for material context).
   Future<void> addTextQuery(
     String message, {
     bool noTool = false,
+    bool prefix = false,
   }) async {
     if (_chat == null) {
       throw StateError('No active chat. Call createSession() first.');
@@ -141,12 +148,14 @@ class GemmaInferenceService {
           isUser: true,
         ),
         noTool,
+        prefix,
       );
       _pendingImages.clear();
     } else {
       await _chat!.addQueryChunk(
         gemma.Message.text(text: message, isUser: true),
         noTool,
+        prefix,
       );
     }
   }

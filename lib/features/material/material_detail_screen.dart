@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import '../../widgets/math_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -154,77 +154,6 @@ class _TextViewState extends ConsumerState<_TextView> {
     setState(() => _isEditing = false);
   }
 
-  /// Converts single newlines to paragraph breaks for plain text lines,
-  /// while preserving tight lists, headings, blockquotes, and code fences.
-  static String _prepareMarkdown(String content) {
-    final lines = content.split('\n');
-    final buffer = StringBuffer();
-    // Block-level markers: list items, headings, blockquotes, code fences
-    final blockPattern = RegExp(r'^\s*([-*+]|\d+\.|>|```|#{1,6}\s)');
-
-    for (int i = 0; i < lines.length; i++) {
-      buffer.write(lines[i]);
-      if (i < lines.length - 1) {
-        final cur = lines[i];
-        final next = lines[i + 1];
-        final curIsBlock = cur.isEmpty || blockPattern.hasMatch(cur);
-        final nextIsBlock = next.isEmpty || blockPattern.hasMatch(next);
-        // Only double the newline between two plain-text lines
-        buffer.write(curIsBlock || nextIsBlock ? '\n' : '\n\n');
-      }
-    }
-    return buffer.toString();
-  }
-
-  MarkdownStyleSheet _mdStyle(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return MarkdownStyleSheet.fromTheme(theme).copyWith(
-      p: theme.textTheme.bodyLarge?.copyWith(
-        color: scheme.onSurface,
-        height: 1.6,
-      ),
-      h1: theme.textTheme.headlineSmall?.copyWith(
-        fontWeight: FontWeight.w800,
-        color: scheme.onSurface,
-      ),
-      h2: theme.textTheme.titleLarge?.copyWith(
-        fontWeight: FontWeight.w700,
-        color: scheme.onSurface,
-      ),
-      h3: theme.textTheme.titleMedium?.copyWith(
-        fontWeight: FontWeight.w700,
-        color: scheme.onSurface,
-      ),
-      strong: theme.textTheme.bodyLarge?.copyWith(
-        fontWeight: FontWeight.w700,
-        color: scheme.onSurface,
-        height: 1.6,
-      ),
-      em: theme.textTheme.bodyLarge?.copyWith(
-        fontStyle: FontStyle.italic,
-        color: scheme.onSurface,
-        height: 1.6,
-      ),
-      blockquoteDecoration: BoxDecoration(
-        color: scheme.primaryContainer.withValues(alpha: 0.4),
-        borderRadius: Br.sm,
-        border: Border(
-          left: BorderSide(color: scheme.primary, width: 3),
-        ),
-      ),
-      codeblockDecoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: Br.sm,
-      ),
-      code: theme.textTheme.bodyMedium?.copyWith(
-        fontFamily: 'monospace',
-        color: scheme.primary,
-        backgroundColor: scheme.surfaceContainerHighest,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -328,12 +257,12 @@ class _TextViewState extends ConsumerState<_TextView> {
               children: [
                 _MetaRow(material: widget.material),
                 const SizedBox(height: Sp.md),
-                MarkdownBody(
+                MathMarkdownBody(
                   data: widget.material.content.isEmpty
                       ? '_No content yet. Tap ✏️ to add notes._'
-                      : _prepareMarkdown(widget.material.content),
-                  selectable: true,
-                  styleSheet: _mdStyle(context),
+                      : widget.material.content,
+                  textStyle: theme.textTheme.bodyMedium
+                      ?.copyWith(color: scheme.onSurface),
                 ),
               ],
             ),

@@ -2,8 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../widgets/math_markdown.dart';
 import 'package:go_router/go_router.dart';
 import 'package:open_filex/open_filex.dart';
 
@@ -184,10 +185,9 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       await _ensureTutorSession(question, materials, messages);
     } catch (e) {
       if (mounted) {
-        final message =
-            e is StateError && e.message.contains('model')
-                ? 'Could not load model: $e'
-                : 'Failed to start chat session. Please try again.';
+        final message = e is StateError && e.message.contains('model')
+            ? 'Could not load model: $e'
+            : 'Failed to start chat session. Please try again.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );
@@ -563,7 +563,7 @@ class _ScoreBadgeRow extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
@@ -618,9 +618,8 @@ class _QuestionCard extends StatelessWidget {
       alignment: Alignment.centerLeft,
       child: Container(
         width: double.infinity,
-        margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.82,
+          maxWidth: MediaQuery.sizeOf(context).width * 0.78,
         ),
         decoration: BoxDecoration(
           color: scheme.surfaceContainerHighest,
@@ -633,7 +632,7 @@ class _QuestionCard extends StatelessWidget {
           border: Border.all(color: scheme.outlineVariant),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -646,9 +645,16 @@ class _QuestionCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
-                question.questionText,
-                style: theme.textTheme.titleMedium?.copyWith(
+              MathMarkdownBody(
+                data: question.questionText,
+                styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                  p: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
+                    height: 1.25,
+                  ),
+                ),
+                textStyle: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: scheme.onSurface,
                   height: 1.25,
@@ -675,9 +681,15 @@ class _QuestionCard extends StatelessWidget {
                           ),
                         ),
                         Expanded(
-                          child: Text(
-                            entry.value,
-                            style: theme.textTheme.bodyMedium?.copyWith(
+                          child: MathMarkdownBody(
+                            data: entry.value,
+                            styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                              p: theme.textTheme.bodyMedium?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                height: 1.35,
+                              ),
+                            ),
+                            textStyle: theme.textTheme.bodyMedium?.copyWith(
                               color: scheme.onSurfaceVariant,
                               height: 1.35,
                             ),
@@ -790,12 +802,15 @@ class _ThreadList extends StatelessWidget {
                 ),
                 child: streamingContent!.isEmpty
                     ? _TypingIndicator(scheme: scheme)
-                    : MarkdownBody(
+                    : MathMarkdownBody(
                         data: streamingContent!,
-                        styleSheet:
-                            MarkdownStyleSheet.fromTheme(theme).copyWith(
-                          p: theme.textTheme.bodyMedium
-                              ?.copyWith(color: scheme.onSurface),
+                        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                          p: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                        textStyle: theme.textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurface,
                         ),
                       ),
               ),
@@ -832,11 +847,15 @@ class _ThreadList extends StatelessWidget {
                         color: scheme.onPrimaryContainer,
                       ),
                     )
-                  : MarkdownBody(
+                  : MathMarkdownBody(
                       data: msg.content,
                       styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                        p: theme.textTheme.bodyMedium
-                            ?.copyWith(color: scheme.onSurface),
+                        p: theme.textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurface,
+                        ),
+                      ),
+                      textStyle: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurface,
                       ),
                     ),
             ),

@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import '../../widgets/math_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:open_filex/open_filex.dart';
@@ -618,13 +619,14 @@ class _MessageList extends StatelessWidget {
                 ),
                 child: streamingContent!.isEmpty
                     ? _TypingIndicator(scheme: scheme)
-                    : MarkdownBody(
+                    : MathMarkdownBody(
                         data: streamingContent!,
-                        styleSheet:
-                            MarkdownStyleSheet.fromTheme(theme).copyWith(
+                        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
                           p: theme.textTheme.bodyMedium
                               ?.copyWith(color: scheme.onSurface),
                         ),
+                        textStyle: theme.textTheme.bodyMedium
+                            ?.copyWith(color: scheme.onSurface),
                       ),
               ),
             ),
@@ -660,12 +662,14 @@ class _MessageList extends StatelessWidget {
                         color: scheme.onPrimaryContainer,
                       ),
                     )
-                  : MarkdownBody(
+                  : MathMarkdownBody(
                       data: msg.content,
                       styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
                         p: theme.textTheme.bodyMedium
                             ?.copyWith(color: scheme.onSurface),
                       ),
+                      textStyle: theme.textTheme.bodyMedium
+                          ?.copyWith(color: scheme.onSurface),
                     ),
             ),
           ),

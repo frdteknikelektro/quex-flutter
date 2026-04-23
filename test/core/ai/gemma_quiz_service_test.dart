@@ -13,6 +13,7 @@ class _StuckGemmaInferenceService extends GemmaInferenceService {
   int addTextQueryCalls = 0;
   int createSessionCalls = 0;
   gemma.ToolChoice? lastToolChoice;
+  String? lastSystemInstruction;
 
   @override
   bool get isInitialized => true;
@@ -33,6 +34,7 @@ class _StuckGemmaInferenceService extends GemmaInferenceService {
   }) async {
     createSessionCalls++;
     lastToolChoice = toolChoice;
+    lastSystemInstruction = systemInstruction;
     expect(promptDialect, gemma.PromptDialect.gemma4);
   }
 
@@ -54,6 +56,7 @@ class _QueuedGemmaInferenceService extends GemmaInferenceService {
   final List<String> textQueries = [];
   final List<String> toolResponses = [];
   int createSessionCalls = 0;
+  String? lastSystemInstruction;
 
   @override
   bool get isInitialized => true;
@@ -73,6 +76,7 @@ class _QueuedGemmaInferenceService extends GemmaInferenceService {
     gemma.ToolChoice toolChoice = gemma.ToolChoice.auto,
   }) async {
     createSessionCalls++;
+    lastSystemInstruction = systemInstruction;
   }
 
   @override
@@ -96,6 +100,39 @@ class _QueuedGemmaInferenceService extends GemmaInferenceService {
 }
 
 void main() {
+  test('quiz system instruction requires tool-only plain question output',
+      () async {
+    final service = _StuckGemmaInferenceService();
+    final quizService = GemmaQuizService(service);
+    final session = Session(
+      id: 1,
+      profileId: 1,
+      title: 'Plant Cells',
+      emoji: '🧫',
+      gradeOverride: 3,
+      createdAt: DateTime.utc(2026, 1, 1),
+    );
+
+    await expectLater(
+      quizService.runQuizAgent(session: session, materials: const []),
+      emitsError(isA<StateError>()),
+    );
+
+    expect(service.createSessionCalls, 1);
+    expect(service.lastSystemInstruction, isNotNull);
+    expect(
+      service.lastSystemInstruction,
+      allOf(
+        contains(
+            'Generate quiz content only through the generate_question tool'),
+        contains(
+            'Write plain question text only, with no numbering such as "1." or "Question 1"'),
+        contains(
+            'Use multipleChoice for factual recall with 3-4 plain options and no option letters'),
+      ),
+    );
+  });
+
   test('quiz agent stops after repeated analyze retries', () async {
     final service = _StuckGemmaInferenceService();
     final quizService = GemmaQuizService(service);
@@ -182,20 +219,6 @@ void main() {
         ],
         [
           gemma.FunctionCallResponse(
-            name: 'generate_question',
-            args: {
-              'type': 'multipleChoice',
-              'questionText': 'How do plants make food?',
-              'options': [
-                'Through photosynthesis',
-                'By sleeping',
-                'By moving fast',
-              ],
-            },
-          ),
-        ],
-        [
-          gemma.FunctionCallResponse(
             name: 'review_quiz',
             args: {
               'issues_found': [],
@@ -239,8 +262,10 @@ void main() {
         .runQuizAgent(session: session, materials: [material], maxQuestions: 2)
         .toList();
 
-    final questions =
-        events.whereType<QuizQuestionGenerated>().map((e) => e.question).toList();
+    final questions = events
+        .whereType<QuizQuestionGenerated>()
+        .map((e) => e.question)
+        .toList();
 
     expect(questions, hasLength(2));
     expect(questions.map((q) => q.questionText), [
@@ -248,15 +273,118 @@ void main() {
       'Why do plants need sunlight?',
     ]);
     expect(
-      service.toolResponses,
-      equals([
-        'plan',
-        'complete_step',
-        'analyze_materials',
-        'generate_question',
-        'generate_question',
+        service.toolResponses,
+        containsAllInOrder([
+          'plan',
+          'complete_step',
+          'analyze_materials',
+          'generate_question',
+          'generate_question',
+          'review_quiz',
+          'finish_run',
+        ]));
+    expect(events.whereType<QuizGenerationComplete>(), isNotEmpty);
+  });
+
+  test('normalizes numbered question and option labels from tool output',
+      () async {
+    final service = _QueuedGemmaInferenceService(
+      Queue.of([
+        [
+          gemma.FunctionCallResponse(
+            name: 'plan',
+            args: {
+              'steps': [
+                'Plan',
+                'Analyze',
+                'Generate',
+                'Review',
+                'Finish',
+              ],
+            },
+          ),
+          gemma.FunctionCallResponse(
+            name: 'complete_step',
+            args: {'index': 0},
+          ),
+          gemma.FunctionCallResponse(
+            name: 'analyze_materials',
+            args: {
+              'question_count': 1,
+              'topics': ['Plants'],
+            },
+          ),
+        ],
+        [
+          gemma.FunctionCallResponse(
+            name: 'generate_question',
+            args: {
+              'type': 'multipleChoice',
+              'questionText': '1. What is photosynthesis?',
+              'options': [
+                'A. The process plants use to make food',
+                'B. A kind of leaf',
+                'C. A type of soil',
+              ],
+            },
+          ),
+        ],
+        [
+          gemma.FunctionCallResponse(
+            name: 'review_quiz',
+            args: {
+              'issues_found': [],
+              'regenerate_indices': [],
+              'ready_to_submit': true,
+            },
+          ),
+        ],
+        [
+          gemma.FunctionCallResponse(
+            name: 'finish_run',
+            args: {
+              'summary': 'Created one plant question',
+              'total_questions': 1,
+            },
+          ),
+        ],
       ]),
     );
-    expect(events.whereType<QuizGenerationComplete>(), isNotEmpty);
+
+    final quizService = GemmaQuizService(service);
+    final session = Session(
+      id: 1,
+      profileId: 1,
+      title: 'Plant Cells',
+      emoji: '🧫',
+      gradeOverride: 3,
+      createdAt: DateTime.utc(2026, 1, 1),
+    );
+    final material = StudyMaterial(
+      id: 1,
+      sessionId: 1,
+      kind: MaterialKind.text,
+      title: 'Plant basics',
+      content: 'Plants use sunlight to make food through photosynthesis.',
+      pageIndex: 0,
+      createdAt: DateTime.utc(2026, 1, 1),
+    );
+
+    final events = await quizService
+        .runQuizAgent(session: session, materials: [material], maxQuestions: 1)
+        .toList();
+
+    final questions = events
+        .whereType<QuizQuestionGenerated>()
+        .map((e) => e.question)
+        .toList();
+
+    expect(questions, hasLength(1));
+    expect(questions.single.questionText, 'What is photosynthesis?');
+    expect(questions.single.options, [
+      'The process plants use to make food',
+      'A kind of leaf',
+      'A type of soil',
+    ]);
   });
 }

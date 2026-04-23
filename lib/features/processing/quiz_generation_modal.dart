@@ -14,7 +14,7 @@ import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 
-enum _ModalStep { materialSelection, detecting, generating, complete }
+enum _ModalStep { materialSelection, generating, complete }
 
 class QuizGenerationModal extends ConsumerStatefulWidget {
   final int sessionId;
@@ -123,6 +123,16 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     return '';
   }
 
+  String _cleanQuestionText(String value) {
+    final cleaned = value
+        .replaceFirst(
+          RegExp(r'^\s*(?:question\s*)?\d+[\s.)\-:]+', caseSensitive: false),
+          '',
+        )
+        .trim();
+    return cleaned.isEmpty ? value.trim() : cleaned;
+  }
+
   Future<void> _onGenerateTapped() async {
     final session = _session;
     if (session == null) return;
@@ -131,77 +141,20 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
         _allMaterials.where((m) => _selectedIds.contains(m.id)).toList();
     if (selected.isEmpty) return;
 
-    // Create quiz row before detection so we have an ID ready
+    // Create quiz row before generation so we have an ID ready
     if (_quizId == null) {
       final quizId = await QuizDAO().insert(Quiz(
         sessionId: session.id!,
-        questionCount: 10, // placeholder; updated after detection
+        questionCount: 10, // placeholder; updated after planning
         createdAt: DateTime.now(),
       ));
       if (!mounted) return;
       setState(() => _quizId = quizId);
     }
 
-    // Detection phase
-    setState(() => _step = _ModalStep.detecting);
-
-    List<String> detected = [];
-    try {
-      final service = await _ensureModel();
-      _quizService = GemmaQuizService(service);
-      detected =
-          await _quizService!.detectQuestionsInMaterials(materials: selected);
-    } catch (_) {
-      detected = [];
-    }
-
-    if (!mounted) return;
-
+    // Go directly to AI generation
     setState(() => _step = _ModalStep.generating);
-
-    if (detected.isNotEmpty) {
-      await _runExtractionPath(detected, session);
-    } else {
-      await _startAiGeneration(selected, session);
-    }
-  }
-
-  Future<void> _runExtractionPath(
-      List<String> detectedTexts, Session session) async {
-    final qid = _quizId;
-    if (qid == null || !mounted) return;
-
-    // Update quiz with actual question count
-    await QuizDAO().updateQuestionCount(qid, detectedTexts.length);
-
-    setState(() {
-      _totalCount = detectedTexts.length;
-      _generatedCount = 0;
-    });
-
-    final questions = <Question>[];
-    for (var i = 0; i < detectedTexts.length; i++) {
-      final q = Question(
-        quizId: -1,
-        source: QuestionSource.extracted,
-        type: QuestionType.textAnswer,
-        questionText: detectedTexts[i],
-        options: const [],
-        orderIndex: i,
-      );
-      questions.add(q);
-
-      if (mounted) {
-        setState(() {
-          _generatedCount = i + 1;
-          _generatedQuestions.add('Q${i + 1}: ${detectedTexts[i]}');
-        });
-        _scrollToBottom();
-      }
-      await Future.delayed(const Duration(milliseconds: 80));
-    }
-
-    await _saveAndNavigate(questions);
+    await _startAiGeneration(selected, session);
   }
 
   Future<void> _startAiGeneration(
@@ -263,22 +216,13 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       case QuizStepCompleted(:final index):
         setState(() => _completedSteps.add(index));
         _scrollToBottom();
-      case QuizPlanned(:final questionCount, :final topics):
+      case QuizPlanned(:final questionCount):
         setState(() {
           _totalCount = questionCount;
-          _generatedQuestions.add('Plan: ${topics.join(", ")}');
         });
         _scrollToBottom();
-      case QuizUnderReview(:final issues):
-        if (issues.isNotEmpty) {
-          _generatedQuestions.add('Review: ${issues.length} issue(s) found');
-        }
-        _scrollToBottom();
-      case QuizRegenerating(:final index):
-        _generatedQuestions.add('Regenerating Q${index + 1}...');
-        _scrollToBottom();
-      case QuizSubmitted(:final summary):
-        debugPrint('Quiz submitted: $summary');
+      case QuizSubmitted():
+        debugPrint('Quiz submitted');
       case QuizThinkingToken(:final token):
         setState(() {
           _isThinking = true;
@@ -302,7 +246,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
           final finalText = _extractedQuestionText.isEmpty
               ? question.questionText
               : _extractedQuestionText;
-          _generatedQuestions.add('Q$index: $finalText');
+          _generatedQuestions.add(_cleanQuestionText(finalText));
           _currentQuestionBuffer.clear();
           _extractedQuestionText = '';
         });
@@ -343,7 +287,6 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
 
   String _statusText() {
     if (_step == _ModalStep.materialSelection) return 'Pick your materials';
-    if (_step == _ModalStep.detecting) return 'Scanning materials…';
     if (_isLoadingModel) return 'Loading brain...';
     if (_isComplete) return 'Quiz is ready! 🎉';
     if (_totalCount > 0) return 'Question $_generatedCount of $_totalCount';
@@ -521,19 +464,14 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                       size: 64,
                       color: scheme.primary,
                     )
-                  : _step == _ModalStep.detecting
+                  : _totalCount > 0
                       ? const _PulsingIcon(
-                          key: ValueKey('scan'),
-                          emoji: '🔍',
+                          key: ValueKey('pencil'),
+                          emoji: '✏️',
                         )
-                      : _totalCount > 0
-                          ? const _PulsingIcon(
-                              key: ValueKey('pencil'),
-                              emoji: '✏️',
-                            )
-                          : const _PulsingBrain(
-                              key: ValueKey('brain'),
-                            ),
+                      : const _PulsingBrain(
+                          key: ValueKey('brain'),
+                        ),
             ),
             const SizedBox(height: 16),
             AnimatedSwitcher(
@@ -639,7 +577,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           children: [
                             Expanded(
                               child: Text(
-                                'Writing Q${_generatedCount + 1} of $_totalCount',
+                                'Writing question ${_generatedCount + 1} of $_totalCount',
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: scheme.primary,
                                   fontStyle: FontStyle.italic,

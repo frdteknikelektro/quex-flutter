@@ -460,6 +460,17 @@ class _QuizSection extends StatefulWidget {
 class _QuizSectionState extends State<_QuizSection> {
   final _deletedIds = <int>{};
 
+  String _formatQuizDate(DateTime dt) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final date = DateTime(dt.year, dt.month, dt.day);
+    final diff = today.difference(date).inDays;
+    if (diff == 0) return 'Today';
+    if (diff == 1) return 'Yesterday';
+    if (dt.year == now.year) return DateFormat('MMM d').format(dt);
+    return DateFormat('MMM d, y').format(dt);
+  }
+
   @override
   void didUpdateWidget(_QuizSection oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -509,24 +520,58 @@ class _QuizSectionState extends State<_QuizSection> {
                 child: Card(
                   elevation: 0,
                   color: scheme.surfaceContainerLow,
-                  child: ListTile(
-                    leading: Icon(
-                      quiz.isCompleted ? Icons.check_circle : Icons.pending,
-                      color: quiz.isCompleted
-                          ? scheme.primary
-                          : scheme.onSurfaceVariant,
-                    ),
-                    title: Text(
-                      quiz.isCompleted
-                          ? 'Score ${quiz.score}/${quiz.questionCount}'
-                          : 'In progress',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
+                  child: InkWell(
+                    onTap: () => context
+                        .push('/session/${widget.sessionId}/quiz/${quiz.id}/detail'),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: quiz.isCompleted
+                                  ? scheme.primaryContainer
+                                  : scheme.surfaceContainerHighest,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            alignment: Alignment.center,
+                            child: Icon(
+                              quiz.isCompleted ? Icons.check_circle : Icons.pending,
+                              color: quiz.isCompleted
+                                  ? scheme.primary
+                                  : scheme.onSurfaceVariant,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  quiz.isCompleted
+                                      ? 'Score ${quiz.score}%'
+                                      : 'In progress',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                Text(
+                                  '${quiz.questionCount} questions · ${_formatQuizDate(quiz.createdAt)}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const Icon(Icons.chevron_right),
+                        ],
                       ),
                     ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => context
-                        .go('/session/${widget.sessionId}/quiz/${quiz.id}'),
                   ),
                 ),
               ),
