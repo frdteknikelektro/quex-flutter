@@ -55,3 +55,17 @@ class QuizGenerationError extends QuizGenerationEvent {
   final String message;
   QuizGenerationError(this.message);
 }
+
+// Question extraction phase
+class QuizExtractionStarted extends QuizGenerationEvent {
+  QuizExtractionStarted();
+}
+
+class QuizExtractionComplete extends QuizGenerationEvent {
+  final String extractedQuestions;
+  QuizExtractionComplete(this.extractedQuestions);
+}
+
+class QuizExtractionEmpty extends QuizGenerationEvent {
+  QuizExtractionEmpty();
+}

@@ -139,7 +139,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
               ),
             ],
           ),
-          floatingActionButton: bundle.materials.isNotEmpty
+          floatingActionButton: bundle.quizzes.isNotEmpty
               ? FloatingActionButton.extended(
                   onPressed: _openQuizGenerationModal,
                   icon: const Icon(Icons.auto_fix_high),

@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,13 +9,15 @@ import '../../app/theme.dart';
 import '../../core/ai/gemma_inference_service.dart';
 import '../../core/ai/gemma_service_host.dart';
 import '../../core/ai/gemma_quiz_service.dart';
+import '../../core/ai/material_preprocessor.dart';
 import '../../core/ai/quiz_generation_event.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../widgets/math_markdown.dart';
+import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
-enum _ModalStep { materialSelection, generating, complete }
+enum _ModalStep { materialSelection, extracting, extractionReview, generating, complete }
 
 class QuizGenerationModal extends ConsumerStatefulWidget {
   final int sessionId;
@@ -48,10 +50,13 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   bool _isComplete = false;
   bool _isLoadingModel = false;
   bool _isGenerating = false;
+  bool _isExtracting = false;
   StreamSubscription<QuizGenerationEvent>? _subscription;
   int? _quizId;
   GemmaQuizService? _quizService;
   Session? _session;
+  String? _extractedQuestions;
+  List<StudyMaterial> _selectedMaterials = [];
 
   @override
   void initState() {
@@ -112,6 +117,9 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
         _allMaterials.where((m) => _selectedIds.contains(m.id)).toList();
     if (selected.isEmpty) return;
 
+    // Store selected materials for Session 2
+    _selectedMaterials = selected;
+
     // Create quiz row before generation so we have an ID ready
     if (_quizId == null) {
       final quizId = await QuizDAO().insert(Quiz(
@@ -123,20 +131,13 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       setState(() => _quizId = quizId);
     }
 
-    // Go directly to AI generation
-    setState(() => _step = _ModalStep.generating);
-    await _startAiGeneration(selected, session);
+    // Start with Session 1: extraction
+    setState(() => _step = _ModalStep.extracting);
+    await _startExtraction(selected, session);
   }
 
-  Future<void> _startAiGeneration(
+  Future<void> _startExtraction(
       List<StudyMaterial> selected, Session session) async {
-    const questionCount = 10;
-    final qid = _quizId;
-    if (qid == null) return;
-
-    // Update quiz with actual question count
-    await QuizDAO().updateQuestionCount(qid, questionCount);
-
     try {
       final service = await _ensureModel();
       _quizService ??= GemmaQuizService(service);
@@ -144,7 +145,55 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       final stream = _quizService!.runQuizAgent(
         session: session,
         materials: selected,
-        maxQuestions: questionCount,
+      );
+
+      _subscription = stream.listen(
+        _handleEvent,
+        onError: (Object e) => _showErrorAndPop(e.toString()),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoadingModel = false);
+      _showErrorAndPop(e.toString());
+    }
+  }
+
+  Future<void> _continueToGeneration() async {
+    final session = _session;
+    if (session == null) return;
+
+    final qid = _quizId;
+    if (qid == null) return;
+
+    // Add visual separation before Session 2
+    setState(() {
+      _streamBuffer.write('\n\n');
+    });
+
+    setState(() => _step = _ModalStep.generating);
+
+    try {
+      await _ensureModel();
+
+      // Prepare materials for Session 2
+      final prepared = await MaterialPreprocessor.prepare(_selectedMaterials);
+      final hasImages = prepared.any((p) => p.images.isNotEmpty);
+      final textContext = prepared
+          .map((p) => p.textChunk)
+          .where((t) => t.isNotEmpty)
+          .join('\n\n');
+
+      final allImages = <Uint8List>[];
+      for (final prep in prepared) {
+        allImages.addAll(prep.images);
+      }
+
+      final stream = _quizService!.runGenerationSession(
+        session: session,
+        textContext: textContext,
+        images: allImages,
+        hasImages: hasImages,
+        extractedQuestions: _extractedQuestions,
       );
 
       _subscription = stream.listen(
@@ -196,6 +245,23 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       case QuizQuestionGenerated():
         // No longer used
         break;
+      case QuizExtractionStarted():
+        setState(() => _isExtracting = true);
+        _scrollToBottom();
+      case QuizExtractionComplete(:final extractedQuestions):
+        setState(() {
+          _extractedQuestions = extractedQuestions;
+          _isExtracting = false;
+          _step = _ModalStep.extractionReview;
+        });
+        _scrollToBottom();
+      case QuizExtractionEmpty():
+        setState(() {
+          _extractedQuestions = null;
+          _isExtracting = false;
+          _step = _ModalStep.extractionReview;
+        });
+        _scrollToBottom();
       case QuizThinkingToken(:final token):
         setState(() {
           _isThinking = true;
@@ -208,7 +274,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
           _streamBuffer.write(token);
         });
         _scrollToBottom();
-      case QuizGenerationStarted(:final total):
+      case QuizGenerationStarted():
         setState(() => _isGenerating = true);
         _scrollToBottom();
       case QuizGenerationComplete(:final questions):
@@ -221,6 +287,9 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   Future<void> _saveAndNavigate(List<Question> questions) async {
     final qid = _quizId;
     if (qid == null || !mounted) return;
+
+    // Update quiz with actual question count
+    await QuizDAO().updateQuestionCount(qid, questions.length);
 
     final withId = questions.map((q) => q.copyWith(quizId: qid)).toList();
     await QuestionDAO().insertAll(withId);
@@ -249,8 +318,14 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     if (_step == _ModalStep.materialSelection) return 'Pick your materials';
     if (_isLoadingModel) return 'Loading brain...';
     if (_isComplete) return 'Quiz is ready! 🎉';
+    if (_isExtracting) return 'Extracting existing questions...';
     if (_isGenerating) return 'Generating quiz...';
     if (_isThinking) return 'Quex is thinking...';
+    if (_step == _ModalStep.extractionReview) {
+      return _extractedQuestions != null
+          ? 'Found existing questions'
+          : 'No existing questions found';
+    }
     return 'Getting ready...';
   }
 
@@ -263,6 +338,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       body: SafeArea(
         child: switch (_step) {
           _ModalStep.materialSelection => _buildMaterialSelection(scheme),
+          _ModalStep.extractionReview => _buildExtractionReview(scheme),
           _ => _buildGeneratingView(scheme),
         },
       ),
@@ -383,6 +459,93 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                         ? 'Select materials first'
                         : 'Generate quiz  (${_selectedIds.length})',
                   ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildExtractionReview(ColorScheme scheme) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Close button
+        Align(
+          alignment: Alignment.centerLeft,
+          child: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: _cancel,
+          ),
+        ),
+
+        // Content
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.all(Sp.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _extractedQuestions != null
+                      ? 'Found existing questions'
+                      : 'No existing questions',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (_extractedQuestions != null) ...[
+                  Text(
+                    'These questions were found in your materials. Quex will use these to generate your quiz.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        borderRadius: Br.md,
+                      ),
+                      padding: const EdgeInsets.all(12),
+                      child: SingleChildScrollView(
+                        child: MathMarkdownBody(
+                          data: _extractedQuestions!,
+                          styleSheet: MarkdownStyleSheet(
+                            listBullet: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurface,
+                            ),
+                            listIndent: 32,
+                          ),
+                          textStyle: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurface,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ] else ...[
+                  Text(
+                    'No quiz questions were found in your materials. Quex will generate questions from scratch.',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+
+        // Continue button
+        Padding(
+          padding: const EdgeInsets.all(Sp.md),
+          child: FilledButton(
+            onPressed: _continueToGeneration,
+            child: const Text('Continue to generate quiz'),
           ),
         ),
       ],
@@ -517,6 +680,12 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                     if (_streamBuffer.isNotEmpty)
                       MathMarkdownBody(
                         data: _streamBuffer.toString(),
+                        styleSheet: MarkdownStyleSheet(
+                          listBullet: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurface,
+                          ),
+                          listIndent: 32,
+                        ),
                         textStyle: theme.textTheme.bodyMedium?.copyWith(
                           color: scheme.onSurface,
                         ),
