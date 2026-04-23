@@ -13,6 +13,7 @@ import '../../core/ai/quiz_generation_event.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../widgets/math_markdown.dart';
 
 enum _ModalStep { materialSelection, generating, complete }
 
@@ -33,8 +34,7 @@ class QuizGenerationModal extends ConsumerStatefulWidget {
 
 class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   final _thinkingBuffer = StringBuffer();
-  final _currentQuestionBuffer = StringBuffer();
-  final _generatedQuestions = <String>[];
+  final _streamBuffer = StringBuffer();
   List<String> _planSteps = [];
   final Set<int> _completedSteps = {};
   final _scrollController = ScrollController();
@@ -47,9 +47,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   bool _isThinking = false;
   bool _isComplete = false;
   bool _isLoadingModel = false;
-  int _generatedCount = 0;
-  int _totalCount = 0;
-  String _extractedQuestionText = '';
+  bool _isGenerating = false;
   StreamSubscription<QuizGenerationEvent>? _subscription;
   int? _quizId;
   GemmaQuizService? _quizService;
@@ -105,33 +103,6 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     return _gemmaHost.ensureInitialized();
   }
 
-  String _extractQuestionTextFromJson(String jsonBuffer) {
-    try {
-      final parsed = jsonDecode(jsonBuffer) as Map<String, dynamic>;
-      return parsed['args']?['questionText'] as String? ?? '';
-    } catch (_) {}
-
-    final completeMatch =
-        RegExp(r'"questionText"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"')
-            .firstMatch(jsonBuffer);
-    if (completeMatch != null) return completeMatch.group(1) ?? '';
-
-    final partialMatch =
-        RegExp(r'"questionText"\s*:\s*"(.*)').firstMatch(jsonBuffer);
-    if (partialMatch != null) return partialMatch.group(1) ?? '';
-
-    return '';
-  }
-
-  String _cleanQuestionText(String value) {
-    final cleaned = value
-        .replaceFirst(
-          RegExp(r'^\s*(?:question\s*)?\d+[\s.)\-:]+', caseSensitive: false),
-          '',
-        )
-        .trim();
-    return cleaned.isEmpty ? value.trim() : cleaned;
-  }
 
   Future<void> _onGenerateTapped() async {
     final session = _session;
@@ -216,13 +187,15 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       case QuizStepCompleted(:final index):
         setState(() => _completedSteps.add(index));
         _scrollToBottom();
-      case QuizPlanned(:final questionCount):
-        setState(() {
-          _totalCount = questionCount;
-        });
-        _scrollToBottom();
+      case QuizPlanned():
+        // No longer used
+        break;
       case QuizSubmitted():
-        debugPrint('Quiz submitted');
+        // No longer used
+        break;
+      case QuizQuestionGenerated():
+        // No longer used
+        break;
       case QuizThinkingToken(:final token):
         setState(() {
           _isThinking = true;
@@ -231,25 +204,12 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
         _scrollToBottom();
       case QuizTextToken(:final token):
         setState(() {
-          _currentQuestionBuffer.write(token);
-          _extractedQuestionText =
-              _extractQuestionTextFromJson(_currentQuestionBuffer.toString());
+          _isGenerating = true;
+          _streamBuffer.write(token);
         });
         _scrollToBottom();
       case QuizGenerationStarted(:final total):
-        setState(() => _totalCount = total);
-      case QuizQuestionGenerated(:final question, :final index, :final total):
-        setState(() {
-          _isThinking = false;
-          _generatedCount = index;
-          _totalCount = total;
-          final finalText = _extractedQuestionText.isEmpty
-              ? question.questionText
-              : _extractedQuestionText;
-          _generatedQuestions.add(_cleanQuestionText(finalText));
-          _currentQuestionBuffer.clear();
-          _extractedQuestionText = '';
-        });
+        setState(() => _isGenerating = true);
         _scrollToBottom();
       case QuizGenerationComplete(:final questions):
         _saveAndNavigate(questions);
@@ -289,7 +249,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     if (_step == _ModalStep.materialSelection) return 'Pick your materials';
     if (_isLoadingModel) return 'Loading brain...';
     if (_isComplete) return 'Quiz is ready! 🎉';
-    if (_totalCount > 0) return 'Question $_generatedCount of $_totalCount';
+    if (_isGenerating) return 'Generating quiz...';
     if (_isThinking) return 'Quex is thinking...';
     return 'Getting ready...';
   }
@@ -433,8 +393,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     final theme = Theme.of(context);
     final hasStream = _planSteps.isNotEmpty ||
         _thinkingBuffer.isNotEmpty ||
-        _generatedQuestions.isNotEmpty ||
-        (_totalCount > 0 && _generatedCount < _totalCount && !_isComplete);
+        _streamBuffer.isNotEmpty ||
+        _isGenerating;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -464,7 +424,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                       size: 64,
                       color: scheme.primary,
                     )
-                  : _totalCount > 0
+                  : _isGenerating
                       ? const _PulsingIcon(
                           key: ValueKey('pencil'),
                           emoji: '✏️',
@@ -540,7 +500,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           ),
                         );
                       }),
-                      if (_generatedQuestions.isNotEmpty ||
+                      if (_streamBuffer.isNotEmpty ||
                           _thinkingBuffer.isNotEmpty)
                         const Divider(height: 16),
                     ],
@@ -552,40 +512,13 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           fontStyle: FontStyle.italic,
                         ),
                       ),
-                    if (_thinkingBuffer.isNotEmpty &&
-                        (_generatedQuestions.isNotEmpty ||
-                            _extractedQuestionText.isNotEmpty))
+                    if (_thinkingBuffer.isNotEmpty && _streamBuffer.isNotEmpty)
                       const Divider(height: 16),
-                    ..._generatedQuestions.map(
-                      (q) => Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
-                        child: Text(
-                          q,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurface,
-                          ),
-                        ),
-                      ),
-                    ),
-                    if (_totalCount > 0 &&
-                        _generatedCount < _totalCount &&
-                        !_isComplete)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                'Writing question ${_generatedCount + 1} of $_totalCount',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: scheme.primary,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                              ),
-                            ),
-                            const _AnimatedEllipsis(),
-                          ],
+                    if (_streamBuffer.isNotEmpty)
+                      MathMarkdownBody(
+                        data: _streamBuffer.toString(),
+                        textStyle: theme.textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurface,
                         ),
                       ),
                   ],
@@ -595,19 +528,6 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
           ),
         ),
         const SizedBox(height: 20),
-        if (!_isComplete)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Sp.md),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: LinearProgressIndicator(
-                minHeight: 6,
-                value: _totalCount > 0 ? _generatedCount / _totalCount : null,
-                backgroundColor: scheme.primaryContainer,
-                valueColor: AlwaysStoppedAnimation<Color>(scheme.primary),
-              ),
-            ),
-          ),
         const Spacer(flex: 1),
       ],
     );
