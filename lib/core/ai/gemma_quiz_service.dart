@@ -84,7 +84,7 @@ RULES:
 - DO NOT include all answer options if present
 - Use simple paragraph format, not a list
 - Separate questions with newlines
-- If no questions are found, respond with "NO_QUESTIONS_FOUND"
+- If no questions are found, respond with an empty string
 - Preserve the original language of the questions
 ''';
 
@@ -176,7 +176,7 @@ RULES:
     final extracted = buffer.toString().trim();
 
     // Check if no questions found
-    if (extracted.contains('NO_QUESTIONS_FOUND') || extracted.length < 10) {
+    if (extracted.isEmpty || extracted.length < 10) {
       yield QuizExtractionEmpty();
     } else {
       yield QuizExtractionComplete(extracted);
