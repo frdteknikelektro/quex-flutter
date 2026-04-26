@@ -14,6 +14,7 @@ import '../../core/ai/quiz_generation_event.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/math_markdown.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
@@ -80,7 +81,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
         await ref.read(sessionBundleProvider(widget.sessionId).future);
     if (!mounted || bundle == null) return;
     if (bundle.materials.isEmpty) {
-      _showErrorAndPop('Add study materials first.');
+      final l10n = AppLocalizations.of(context)!;
+      _showErrorAndPop(l10n.quizGenAddMaterialsFirst);
       return;
     }
     setState(() {
@@ -221,9 +223,10 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
 
   void _showErrorAndPop(String message) {
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context)!;
     Navigator.of(context).pop();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Quiz generation failed: $message')),
+      SnackBar(content: Text(l10n.quizGenFailed(message))),
     );
   }
 
@@ -315,18 +318,19 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   }
 
   String _statusText() {
-    if (_step == _ModalStep.materialSelection) return 'Pick your materials';
-    if (_isLoadingModel) return 'Loading brain...';
-    if (_isComplete) return 'Quiz is ready! 🎉';
-    if (_isExtracting) return 'Extracting existing questions...';
-    if (_isGenerating) return 'Generating quiz...';
-    if (_isThinking) return 'Quex is thinking...';
+    final l10n = AppLocalizations.of(context)!;
+    if (_step == _ModalStep.materialSelection) return l10n.quizGenPickMaterials;
+    if (_isLoadingModel) return l10n.quizGenLoadingBrain;
+    if (_isComplete) return l10n.quizGenReady;
+    if (_isExtracting) return l10n.quizGenExtracting;
+    if (_isGenerating) return l10n.quizGenGenerating;
+    if (_isThinking) return l10n.quizGenThinking;
     if (_step == _ModalStep.extractionReview) {
       return _extractedQuestions != null
-          ? 'Found existing questions'
-          : 'No existing questions found';
+          ? l10n.quizGenFoundQuestions
+          : l10n.quizGenNoQuestions;
     }
-    return 'Getting ready...';
+    return l10n.quizGenGettingReady;
   }
 
   @override
@@ -346,6 +350,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   }
 
   Widget _buildMaterialSelection(ColorScheme scheme) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -372,7 +377,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Which materials to quiz on?',
+                        l10n.quizGenWhichMaterials,
                         style: theme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                           color: scheme.onSurface,
@@ -380,7 +385,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Quex will scan these for existing questions.',
+                        l10n.quizGenScanMaterials,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: scheme.onSurfaceVariant,
                         ),
@@ -451,13 +456,13 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      const Text('Loading model…'),
+                      Text(l10n.quizGenLoadingModel),
                     ],
                   )
                 : Text(
                     _selectedIds.isEmpty
-                        ? 'Select materials first'
-                        : 'Generate quiz  (${_selectedIds.length})',
+                        ? l10n.quizGenSelectFirst
+                        : l10n.quizGenGenerate(_selectedIds.length),
                   ),
           ),
         ),
@@ -466,6 +471,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   }
 
   Widget _buildExtractionReview(ColorScheme scheme) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -488,8 +494,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
               children: [
                 Text(
                   _extractedQuestions != null
-                      ? 'Found existing questions'
-                      : 'No existing questions',
+                      ? l10n.quizGenFoundTitle
+                      : l10n.quizGenNoQuestionsTitle,
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: scheme.onSurface,
@@ -498,7 +504,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                 const SizedBox(height: 16),
                 if (_extractedQuestions != null) ...[
                   Text(
-                    'These questions were found in your materials. Quex will use these to generate your quiz.',
+                    l10n.quizGenFoundDescription,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -529,7 +535,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                   ),
                 ] else ...[
                   Text(
-                    'No quiz questions were found in your materials. Quex will generate questions from scratch.',
+                    l10n.quizGenNoQuestionsDescription,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -545,7 +551,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
           padding: const EdgeInsets.all(Sp.md),
           child: FilledButton(
             onPressed: _continueToGeneration,
-            child: const Text('Continue to generate quiz'),
+            child: Text(l10n.quizGenContinue),
           ),
         ),
       ],

@@ -16,6 +16,7 @@ import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../generated/l10n/app_localizations.dart';
 import '../../features/processing/quiz_generation_modal.dart';
 import 'material_actions.dart';
 import 'pdf_page_picker.dart';
@@ -123,15 +124,16 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
   }
 
   Future<bool?> _confirmDelete(BuildContext ctx) {
+    final l10n = AppLocalizations.of(ctx)!;
     return showDialog<bool>(
       context: ctx,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete material?'),
-        content: const Text('This note will be permanently removed.'),
+        title: Text(l10n.materialDeleteQuestion),
+        content: Text(l10n.materialDeleteConfirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -139,7 +141,7 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
               backgroundColor: Theme.of(dialogContext).colorScheme.error,
               foregroundColor: Theme.of(dialogContext).colorScheme.onError,
             ),
-            child: const Text('Delete'),
+            child: Text(l10n.delete),
           ),
         ],
       ),
@@ -159,6 +161,7 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final sessionAsync = ref.watch(sessionProvider(widget.sessionId));
     final materialsAsync = ref.watch(materialsProvider(widget.sessionId));
 
@@ -166,10 +169,10 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (e, _) =>
-          Scaffold(body: Center(child: Text('Failed to load session: $e'))),
+          Scaffold(body: Center(child: Text(l10n.materialFailedToLoadSession(e.toString())))),
       data: (session) {
         if (session == null) {
-          return const Scaffold(body: Center(child: Text('Session not found')));
+          return Scaffold(body: Center(child: Text(l10n.materialSessionNotFound)));
         }
 
         return materialsAsync.when(
@@ -181,7 +184,7 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
           error: (e, _) => _buildScaffold(
             session: session,
             hasMaterials: false,
-            body: Center(child: Text('Could not load files: $e')),
+            body: Center(child: Text(l10n.materialCouldNotLoadFiles(e.toString()))),
           ),
           data: (materials) {
             if (_lastKnownCount != materials.length) {
@@ -245,6 +248,7 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
     required bool hasMaterials,
     required Widget body,
   }) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -259,7 +263,7 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Study Materials',
+              l10n.sessionDetailStudyMaterials,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -279,7 +283,7 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openAddSheet,
         icon: const Icon(Icons.add),
-        label: const Text('Add material'),
+        label: Text(l10n.materialAddMaterial),
       ),
       bottomNavigationBar: hasMaterials
           ? _GenerateQuizBar(
@@ -342,19 +346,21 @@ class _MaterialFileTile extends StatelessWidget {
     );
   }
 
-  String _subtitleText() {
+  String _subtitleText(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final date = DateFormat.MMMd().format(material.createdAt);
     return switch (material.kind) {
       MaterialKind.photo =>
-        '${material.content.split('\n').where((p) => p.isNotEmpty).length} photo(s)  ·  $date',
+        '${l10n.materialPhotosCount(material.content.split('\n').where((p) => p.isNotEmpty).length)}  ·  $date',
       MaterialKind.document =>
         '${pathlib.extension(material.content).replaceFirst('.', '').toUpperCase()}  ·  $date',
-      MaterialKind.text => 'Text  ·  $date',
+      MaterialKind.text => l10n.materialTextSubtitle(date),
     };
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -364,7 +370,7 @@ class _MaterialFileTile extends StatelessWidget {
           final result = await OpenFilex.open(material.content);
           if (result.type != ResultType.done && context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Could not open: ${result.message}')),
+              SnackBar(content: Text(l10n.materialCouldNotOpen(result.message))),
             );
           }
         } else {
@@ -382,7 +388,7 @@ class _MaterialFileTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       subtitle: Text(
-        _subtitleText(),
+        _subtitleText(context),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style:
@@ -391,8 +397,8 @@ class _MaterialFileTile extends StatelessWidget {
       trailing: PopupMenuButton<String>(
         icon: Icon(Icons.more_vert, size: 20, color: scheme.onSurfaceVariant),
         itemBuilder: (_) => [
-          const PopupMenuItem(value: 'rename', child: Text('Rename')),
-          const PopupMenuItem(value: 'delete', child: Text('Delete')),
+          PopupMenuItem(value: 'rename', child: Text(l10n.edit)),
+          PopupMenuItem(value: 'delete', child: Text(l10n.delete)),
         ],
         onSelected: (value) {
           if (value == 'rename') onMenuRename();
@@ -458,6 +464,7 @@ class _MaterialEmptyStateState extends State<_MaterialEmptyState>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -472,7 +479,7 @@ class _MaterialEmptyStateState extends State<_MaterialEmptyState>
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: Sp.xl),
           child: Text(
-            'Your study folder is empty',
+            l10n.materialFolderEmpty,
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
               color: scheme.onSurface,
@@ -484,7 +491,7 @@ class _MaterialEmptyStateState extends State<_MaterialEmptyState>
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: Sp.xl),
           child: Text(
-            'Tap "Add material" to drop in notes, documents, or photos.',
+            l10n.materialFolderEmptySubtitle,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: scheme.onSurfaceVariant,
             ),
@@ -565,12 +572,13 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
 
     switch (_kind) {
       case MaterialKind.photo:
+        final l10n = AppLocalizations.of(context)!;
         if (_selectedPhotos.isEmpty) {
-          _showSnack('Add at least one photo.');
+          _showSnack(l10n.materialAddAtLeastOnePhoto);
           return;
         }
         if (title.isEmpty) {
-          _showSnack('Add a title.');
+          _showSnack(l10n.materialAddTitle);
           return;
         }
         setState(() => _copying = true);
@@ -581,8 +589,9 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
         content = paths.join('\n');
 
       case MaterialKind.document:
+        final l10n = AppLocalizations.of(context)!;
         if (_selectedFiles.isEmpty) {
-          _showSnack('Pick at least one PDF.');
+          _showSnack(l10n.materialPickAtLeastOnePdf);
           return;
         }
         setState(() => _copying = true);
@@ -607,9 +616,10 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
         return;
 
       case MaterialKind.text:
+        final l10n = AppLocalizations.of(context)!;
         final text = _contentController.text.trim();
         if (title.isEmpty || text.isEmpty) {
-          _showSnack('Add a title and content.');
+          _showSnack(l10n.materialAddTitleAndContent);
           return;
         }
         content = text;
@@ -627,7 +637,8 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
     }
   }
 
-  Widget _buildPhotoView(ColorScheme scheme) {
+  Widget _buildPhotoView(ColorScheme scheme, BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -682,7 +693,7 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
               child: OutlinedButton.icon(
                 onPressed: _pickFromCamera,
                 icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                label: const Text('Camera'),
+                label: Text(l10n.materialCamera),
               ),
             ),
             const SizedBox(width: Sp.sm),
@@ -690,7 +701,7 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
               child: OutlinedButton.icon(
                 onPressed: _pickFromGallery,
                 icon: const Icon(Icons.photo_library_outlined, size: 18),
-                label: const Text('Gallery'),
+                label: Text(l10n.materialGallery),
               ),
             ),
           ],
@@ -698,14 +709,15 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
         const SizedBox(height: Sp.sm),
         TextField(
           controller: _titleController,
-          decoration: const InputDecoration(labelText: 'Title'),
+          decoration: InputDecoration(labelText: l10n.materialTitle),
           textCapitalization: TextCapitalization.sentences,
         ),
       ],
     );
   }
 
-  Widget _buildDocView(ColorScheme scheme) {
+  Widget _buildDocView(ColorScheme scheme, BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -753,7 +765,7 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
         OutlinedButton.icon(
           onPressed: _pickFiles,
           icon: const Icon(Icons.upload_file, size: 18),
-          label: Text(_selectedFiles.isEmpty ? 'Pick PDF' : 'Add more'),
+          label: Text(_selectedFiles.isEmpty ? l10n.materialPickPdf : l10n.materialAddMore),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size(double.infinity, 48),
           ),
@@ -762,14 +774,15 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
     );
   }
 
-  Widget _buildTextView() {
+  Widget _buildTextView(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
           controller: _titleController,
-          decoration: const InputDecoration(
-            labelText: 'Title',
+          decoration: InputDecoration(
+            labelText: l10n.materialTitle,
             hintText: 'e.g. Multiplying fractions',
           ),
           textCapitalization: TextCapitalization.sentences,
@@ -779,9 +792,9 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
           controller: _contentController,
           maxLines: 6,
           minLines: 3,
-          decoration: const InputDecoration(
-            labelText: 'Notes / content',
-            hintText: 'Paste notes or type content here.',
+          decoration: InputDecoration(
+            labelText: l10n.materialNotesContent,
+            hintText: l10n.materialNotesHint,
           ),
         ),
       ],
@@ -790,6 +803,7 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final isBusy = _saving || _copying;
@@ -826,7 +840,7 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
               ),
             ),
             Text(
-              'Add to Study Folder',
+              l10n.materialAddToFolder,
               style: theme.textTheme.titleLarge
                   ?.copyWith(fontWeight: FontWeight.w800),
               textAlign: TextAlign.center,
@@ -847,9 +861,9 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
             const SizedBox(height: Sp.md),
             // Per-kind form
             switch (_kind) {
-              MaterialKind.photo => _buildPhotoView(scheme),
-              MaterialKind.document => _buildDocView(scheme),
-              MaterialKind.text => _buildTextView(),
+              MaterialKind.photo => _buildPhotoView(scheme, context),
+              MaterialKind.document => _buildDocView(scheme, context),
+              MaterialKind.text => _buildTextView(context),
             },
             const SizedBox(height: Sp.lg),
             FilledButton(
@@ -861,7 +875,7 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white),
                     )
-                  : const Text('Save file'),
+                  : Text(l10n.materialSaveFile),
             ),
           ],
         ),
@@ -891,8 +905,14 @@ class _KindSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final kinds = [
+      (kind: MaterialKind.photo, emoji: '📷', label: l10n.materialKindPhoto),
+      (kind: MaterialKind.document, emoji: '📄', label: l10n.materialKindPdf),
+      (kind: MaterialKind.text, emoji: '📝', label: l10n.materialKindText),
+    ];
     return Row(
-      children: _kinds.map((entry) {
+      children: kinds.map((entry) {
         final isSelected = selected == entry.kind;
         return Expanded(
           child: Padding(
@@ -949,6 +969,7 @@ class _GenerateQuizBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
@@ -966,7 +987,7 @@ class _GenerateQuizBar extends StatelessWidget {
         child: FilledButton.icon(
           onPressed: onPressed,
           icon: const Icon(Icons.auto_fix_high),
-          label: const Text('Generate quiz'),
+          label: Text(l10n.sessionDetailGenerateQuiz),
         ),
       ),
     );

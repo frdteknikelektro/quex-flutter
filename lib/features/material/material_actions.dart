@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../generated/l10n/app_localizations.dart';
 
 /// Shared material action helpers used by both the list screen
 /// (`material_screen.dart`) and the detail screen (`material_detail_screen.dart`).
@@ -73,15 +74,16 @@ Future<bool> deleteMaterial(
 }
 
 Future<bool?> _confirmDelete(BuildContext ctx) {
+  final l10n = AppLocalizations.of(ctx)!;
   return showDialog<bool>(
     context: ctx,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('Delete material?'),
-      content: const Text('This note will be permanently removed.'),
+      title: Text(l10n.materialDeleteQuestion),
+      content: Text(l10n.materialDeleteConfirm),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(false),
-          child: const Text('Cancel'),
+          child: Text(l10n.cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(dialogContext).pop(true),
@@ -89,7 +91,7 @@ Future<bool?> _confirmDelete(BuildContext ctx) {
             backgroundColor: Theme.of(dialogContext).colorScheme.error,
             foregroundColor: Theme.of(dialogContext).colorScheme.onError,
           ),
-          child: const Text('Delete'),
+          child: Text(l10n.delete),
         ),
       ],
     ),
@@ -122,23 +124,24 @@ class _RenameDialogState extends State<_RenameDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return AlertDialog(
-      title: const Text('Rename'),
+      title: Text(l10n.materialActionsRename),
       content: TextField(
         controller: _controller,
         autofocus: true,
         textCapitalization: TextCapitalization.sentences,
-        decoration: const InputDecoration(labelText: 'Title'),
+        decoration: InputDecoration(labelText: l10n.materialTitle),
         onSubmitted: (v) => Navigator.of(context).pop(v.trim()),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(l10n.cancel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
-          child: const Text('Save'),
+          child: Text(l10n.save),
         ),
       ],
     );

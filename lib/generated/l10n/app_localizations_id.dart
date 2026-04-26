@@ -151,7 +151,8 @@ class AppLocalizationsId extends AppLocalizations {
   String get clearAllSessionsQuestion => 'Hapus semua sesi?';
 
   @override
-  String get clearAllSessionsConfirm => 'Ini akan menghapus permanen semua sesi belajar, materi, kuis, dan riwayat chat untuk profil ini.';
+  String get clearAllSessionsConfirm =>
+      'Ini akan menghapus permanen semua sesi belajar, materi, kuis, dan riwayat chat untuk profil ini.';
 
   @override
   String get allSessionsCleared => 'Semua sesi dihapus';
@@ -192,4 +193,631 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get createAndStartStudying => 'Buat & Mulai Belajar';
+
+  @override
+  String homeFailedToLoadSessions(String error) {
+    return 'Gagal memuat sesi: $error';
+  }
+
+  @override
+  String get homeRecentSessions => 'Sesi Terbaru';
+
+  @override
+  String homeFailedToLoadProfiles(String error) {
+    return 'Gagal memuat profil: $error';
+  }
+
+  @override
+  String get homeGoodMorning => 'Selamat pagi';
+
+  @override
+  String get homeGoodAfternoon => 'Selamat siang';
+
+  @override
+  String get homeGoodEvening => 'Selamat malam';
+
+  @override
+  String get homeSeeLess => 'Lihat lebih sedikit';
+
+  @override
+  String get homeSeeMore => 'Lihat lebih banyak';
+
+  @override
+  String get homeToday => 'Hari ini';
+
+  @override
+  String get homeYesterday => 'Kemarin';
+
+  @override
+  String get homeLetsStartLearning => 'Mari mulai belajar!';
+
+  @override
+  String get homeCreateFirstSession =>
+      'Buat sesi belajar pertama Anda dan meluncur ke dunia yang menyenangkan!';
+
+  @override
+  String get homeStartMyAdventure => 'Mulai petualangan saya!';
+
+  @override
+  String get homeNoProfilesYet => 'Belum ada profil';
+
+  @override
+  String get homeSwitchToProfile =>
+      'Beralih ke profil untuk memulai alur belajar baru.';
+
+  @override
+  String get newSessionAddTitleFirst => 'Tambahkan judul sesi terlebih dahulu.';
+
+  @override
+  String get newSessionTitle => 'Judul sesi';
+
+  @override
+  String get newSessionTitleHint => 'contoh. Latihan pecahan';
+
+  @override
+  String get newSessionPickEmoji => 'Pilih emoji';
+
+  @override
+  String newSessionGrade(int grade) {
+    return 'Kelas $grade';
+  }
+
+  @override
+  String get newSessionCreating => 'Membuat...';
+
+  @override
+  String sessionDetailFailedToLoad(String error) {
+    return 'Gagal memuat sesi: $error';
+  }
+
+  @override
+  String get sessionDetailNotFound => 'Sesi tidak ditemukan';
+
+  @override
+  String get sessionDetailGenerateQuiz => 'Buat kuis';
+
+  @override
+  String sessionDetailGradeAndDate(int grade, String date) {
+    return 'Kelas $grade  •  $date';
+  }
+
+  @override
+  String get sessionDetailAddNotes => 'Tambahkan catatan dan referensi';
+
+  @override
+  String get sessionDetailOneMaterial => '1 materi belajar';
+
+  @override
+  String sessionDetailMaterialsCount(int count) {
+    return '$count materi belajar';
+  }
+
+  @override
+  String get sessionDetailStudyMaterials => 'Materi Belajar';
+
+  @override
+  String get sessionDetailChatWithAI => 'Chat dengan AI';
+
+  @override
+  String get sessionDetailChatSubtitle => 'Tanyakan tentang catatan Anda';
+
+  @override
+  String get sessionDetailWhichMaterials => 'Materi mana yang ingin dibahas?';
+
+  @override
+  String get sessionDetailQuexWillUse =>
+      'Quex hanya akan menggunakan materi ini dalam percakapan.';
+
+  @override
+  String get sessionDetailMaterialKindText => 'Teks';
+
+  @override
+  String get sessionDetailMaterialKindDocument => 'Dokumen';
+
+  @override
+  String get sessionDetailMaterialKindPhoto => 'Foto';
+
+  @override
+  String get sessionDetailSelectAtLeastOne => 'Pilih setidaknya satu materi';
+
+  @override
+  String sessionDetailStartChat(int count) {
+    return 'Mulai chat ($count)';
+  }
+
+  @override
+  String get sessionDetailRecentQuizzes => 'Kuis Terbaru';
+
+  @override
+  String sessionDetailScore(int score) {
+    return 'Skor $score%';
+  }
+
+  @override
+  String get sessionDetailInProgress => 'Sedang berlangsung';
+
+  @override
+  String sessionDetailQuestionsCount(int count) {
+    return '$count pertanyaan';
+  }
+
+  @override
+  String get sessionDetailAddMaterialsFirst =>
+      'Tambahkan materi belajar terlebih dahulu, lalu buat kuis.';
+
+  @override
+  String get sessionDetailReadyToMakeQuiz => 'Siap membuat kuis?';
+
+  @override
+  String get sessionDetailEditSession => 'Edit Sesi';
+
+  @override
+  String get materialDeleteQuestion => 'Hapus materi?';
+
+  @override
+  String get materialDeleteConfirm => 'Catatan ini akan dihapus permanen.';
+
+  @override
+  String materialFailedToLoadSession(String error) {
+    return 'Gagal memuat sesi: $error';
+  }
+
+  @override
+  String get materialSessionNotFound => 'Sesi tidak ditemukan';
+
+  @override
+  String materialCouldNotLoadFiles(String error) {
+    return 'Gagal memuat file: $error';
+  }
+
+  @override
+  String get materialAddMaterial => 'Tambah materi';
+
+  @override
+  String materialCouldNotOpen(String message) {
+    return 'Tidak dapat membuka: $message';
+  }
+
+  @override
+  String get materialFolderEmpty => 'Folder belajar Anda kosong';
+
+  @override
+  String get materialFolderEmptySubtitle =>
+      'Ketuk \"Tambah materi\" untuk memasukkan catatan, dokumen, atau foto.';
+
+  @override
+  String get materialAddToFolder => 'Tambah ke Folder Belajar';
+
+  @override
+  String get materialCamera => 'Kamera';
+
+  @override
+  String get materialGallery => 'Galeri';
+
+  @override
+  String get materialTitle => 'Judul';
+
+  @override
+  String get materialPickPdf => 'Pilih PDF';
+
+  @override
+  String get materialAddMore => 'Tambah lagi';
+
+  @override
+  String get materialNotesContent => 'Catatan / konten';
+
+  @override
+  String get materialNotesHint => 'Tempel catatan atau ketik konten di sini.';
+
+  @override
+  String get materialSaveFile => 'Simpan file';
+
+  @override
+  String get materialKindPhoto => 'Foto';
+
+  @override
+  String get materialKindPdf => 'PDF';
+
+  @override
+  String get materialKindText => 'Teks';
+
+  @override
+  String get materialAddAtLeastOnePhoto => 'Tambahkan setidaknya satu foto.';
+
+  @override
+  String get materialAddTitle => 'Tambahkan judul.';
+
+  @override
+  String get materialPickAtLeastOnePdf => 'Pilih setidaknya satu PDF.';
+
+  @override
+  String get materialAddTitleAndContent => 'Tambahkan judul dan konten.';
+
+  @override
+  String materialPhotosCount(int count) {
+    return '$count foto';
+  }
+
+  @override
+  String materialTextSubtitle(String date) {
+    return 'Teks  ·  $date';
+  }
+
+  @override
+  String materialDetailCouldNotLoad(String error) {
+    return 'Gagal memuat materi: $error';
+  }
+
+  @override
+  String get materialDetailNotFound => 'Materi tidak ditemukan';
+
+  @override
+  String get materialDetailEditing => 'Mengedit';
+
+  @override
+  String get materialDetailStartWriting => 'Mulai menulis…';
+
+  @override
+  String get materialDetailNoContent =>
+      '_Belum ada konten. Ketuk ✏️ untuk menambahkan catatan._';
+
+  @override
+  String get materialDetailNoImages => 'Tidak ada gambar ditemukan';
+
+  @override
+  String get materialDetailOpening => 'Membuka…';
+
+  @override
+  String get materialDetailOpenExternal => 'Buka di aplikasi eksternal';
+
+  @override
+  String get materialDetailFileMissing =>
+      'File hilang dari disk. Mungkin telah dihapus.';
+
+  @override
+  String materialDetailCouldNotOpenFile(String message) {
+    return 'Tidak dapat membuka file: $message';
+  }
+
+  @override
+  String get materialDetailAdded => 'Ditambahkan';
+
+  @override
+  String get materialDetailLocation => 'Lokasi';
+
+  @override
+  String materialDetailWords(int count) {
+    return '$count kata';
+  }
+
+  @override
+  String get materialActionsRename => 'Ganti Nama';
+
+  @override
+  String pdfPickerCouldNotOpen(String error) {
+    return 'Tidak dapat membuka PDF: $error';
+  }
+
+  @override
+  String pdfPickerFailedToSave(String error) {
+    return 'Gagal menyimpan halaman: $error';
+  }
+
+  @override
+  String get pdfPickerLoading => 'Memuat halaman...';
+
+  @override
+  String pdfPickerPagesCount(int count) {
+    return '$count halaman — ketuk untuk memilih';
+  }
+
+  @override
+  String get pdfPickerSelectPages => 'Pilih halaman untuk melanjutkan';
+
+  @override
+  String pdfPickerAddPages(int count) {
+    return 'Tambah $count halaman';
+  }
+
+  @override
+  String pdfPickerPage(int number) {
+    return 'Halaman $number';
+  }
+
+  @override
+  String chatCouldNotLoadModel(String error) {
+    return 'Tidak dapat memuat model: $error';
+  }
+
+  @override
+  String get chatFailedToStartSession =>
+      'Gagal memulai sesi chat. Silakan coba lagi.';
+
+  @override
+  String get chatSessionInterrupted => 'Sesi terganggu. Silakan coba lagi.';
+
+  @override
+  String chatError(String error) {
+    return 'Error: $error';
+  }
+
+  @override
+  String get chatSessionNotFound => 'Sesi tidak ditemukan';
+
+  @override
+  String get chatResetQuestion => 'Reset chat?';
+
+  @override
+  String get chatResetConfirm => 'Semua pesan akan dihapus.';
+
+  @override
+  String get chatReset => 'Reset';
+
+  @override
+  String get chatThinking => 'Berpikir…';
+
+  @override
+  String get chatThoughtProcess => 'Proses berpikir';
+
+  @override
+  String get chatAskQuex => 'Tanya apa saja ke Quex';
+
+  @override
+  String get chatAskQuexSubtitle =>
+      'Tanyakan tentang catatan Anda, dapatkan ringkasan, atau minta petunjuk kuis.';
+
+  @override
+  String get chatQuickSummarize => 'Ringkas';
+
+  @override
+  String get chatQuickQuizHints => 'Petunjuk kuis';
+
+  @override
+  String get chatQuickExplainSimply => 'Jelaskan dengan sederhana';
+
+  @override
+  String chatAskAbout(String topic) {
+    return 'Tanya tentang \"$topic\"';
+  }
+
+  @override
+  String get chatSession => 'Sesi';
+
+  @override
+  String get chatSuggestedTopics => 'Topik yang disarankan';
+
+  @override
+  String get chatAskQuexHint => 'Tanya Quex…';
+
+  @override
+  String get quizDetailTitle => 'Pertanyaan Kuis';
+
+  @override
+  String quizDetailError(String error) {
+    return 'Error: $error';
+  }
+
+  @override
+  String get quizDetailNotFound => 'Kuis tidak ditemukan';
+
+  @override
+  String get quizDetailDeleted => 'Kuis ini mungkin telah dihapus.';
+
+  @override
+  String get quizDetailFinish => 'Selesaikan Kuis';
+
+  @override
+  String get quizDetailToday => 'Hari ini';
+
+  @override
+  String get quizDetailYesterday => 'Kemarin';
+
+  @override
+  String quizDetailQuestionsCount(int count) {
+    return '$count Pertanyaan';
+  }
+
+  @override
+  String quizDetailAnswered(int count) {
+    return '$count dijawab';
+  }
+
+  @override
+  String questionChatFailedToPreload(String error) {
+    return 'Gagal memuat sesi chat: $error';
+  }
+
+  @override
+  String get questionChatNotFound => 'Pertanyaan tidak ditemukan';
+
+  @override
+  String questionChatTitle(int number) {
+    return 'Pertanyaan $number';
+  }
+
+  @override
+  String get questionChatScoreCorrect => 'Benar! 🎉 Tidak perlu penjelasan.';
+
+  @override
+  String get questionChatScorePartial => 'Nilai sebagian — teruslah!';
+
+  @override
+  String get questionChatScoreIncorrect => 'Belum tepat — mari kita diskusikan';
+
+  @override
+  String get questionChatQuestionLabel => 'Pertanyaan';
+
+  @override
+  String get questionChatTalkToQuex => 'Bicara dengan Quex…';
+
+  @override
+  String summaryFailedToLoad(String error) {
+    return 'Gagal memuat ringkasan: $error';
+  }
+
+  @override
+  String get summaryQuizNotFound => 'Kuis tidak ditemukan';
+
+  @override
+  String summaryFailedToLoadSession(String error) {
+    return 'Gagal memuat sesi: $error';
+  }
+
+  @override
+  String get summaryTitle => 'Ringkasan';
+
+  @override
+  String get summaryChat => 'Chat';
+
+  @override
+  String get summarySession => 'Sesi';
+
+  @override
+  String get summaryResults => 'Hasil';
+
+  @override
+  String get summaryResultsSubtitle =>
+      'Tinjau kuis dan teruskan loop pembelajaran.';
+
+  @override
+  String get summaryQuizCompleted => 'Kuis selesai';
+
+  @override
+  String get summaryQuizInProgress => 'Kuis masih berlangsung';
+
+  @override
+  String summaryOf(int total) {
+    return 'dari $total';
+  }
+
+  @override
+  String get summaryCorrect => 'Benar';
+
+  @override
+  String get summaryTotal => 'Total';
+
+  @override
+  String get summaryNextSteps => 'Langkah selanjutnya';
+
+  @override
+  String get summaryNextStepsSubtitle => 'Teruskan sesi ke depan.';
+
+  @override
+  String get summaryDiscuss => 'Diskusi';
+
+  @override
+  String get summaryRetryQuiz => 'Ulangi kuis';
+
+  @override
+  String get summarySessionDetails => 'Detail sesi';
+
+  @override
+  String get summaryReview => 'Tinjau';
+
+  @override
+  String get summaryReviewSubtitle =>
+      'Fokus pada pertanyaan yang perlu ditinjau ulang.';
+
+  @override
+  String get summaryNoMissed => 'Tidak ada pertanyaan terlewat. Bagus sekali.';
+
+  @override
+  String summaryYourAnswer(String answer) {
+    return 'Jawaban Anda: $answer';
+  }
+
+  @override
+  String get summaryChatToLearn =>
+      'Chat dengan Quex untuk belajar lebih lanjut.';
+
+  @override
+  String get quizGenAddMaterialsFirst =>
+      'Tambahkan materi belajar terlebih dahulu.';
+
+  @override
+  String quizGenFailed(String message) {
+    return 'Gagal membuat kuis: $message';
+  }
+
+  @override
+  String get quizGenPickMaterials => 'Pilih materi Anda';
+
+  @override
+  String get quizGenLoadingBrain => 'Memuat otak...';
+
+  @override
+  String get quizGenReady => 'Kuis siap! 🎉';
+
+  @override
+  String get quizGenExtracting => 'Mengekstrak pertanyaan yang ada...';
+
+  @override
+  String get quizGenGenerating => 'Membuat kuis...';
+
+  @override
+  String get quizGenThinking => 'Quex sedang berpikir...';
+
+  @override
+  String get quizGenFoundQuestions => 'Pertanyaan yang ditemukan';
+
+  @override
+  String get quizGenNoQuestions => 'Tidak ada pertanyaan yang ditemukan';
+
+  @override
+  String get quizGenGettingReady => 'Bersiap...';
+
+  @override
+  String get quizGenWhichMaterials => 'Materi mana yang akan dikuis?';
+
+  @override
+  String get quizGenScanMaterials =>
+      'Quex akan memindai ini untuk pertanyaan yang ada.';
+
+  @override
+  String get quizGenLoadingModel => 'Memuat model…';
+
+  @override
+  String get quizGenSelectFirst => 'Pilih materi terlebih dahulu';
+
+  @override
+  String quizGenGenerate(int count) {
+    return 'Buat kuis ($count)';
+  }
+
+  @override
+  String get quizGenFoundTitle => 'Pertanyaan yang ditemukan';
+
+  @override
+  String get quizGenNoQuestionsTitle => 'Tidak ada pertanyaan';
+
+  @override
+  String get quizGenFoundDescription =>
+      'Pertanyaan ini ditemukan dalam materi Anda. Quex akan menggunakan ini untuk membuat kuis Anda.';
+
+  @override
+  String get quizGenNoQuestionsDescription =>
+      'Tidak ada pertanyaan kuis yang ditemukan dalam materi Anda. Quex akan membuat pertanyaan dari awal.';
+
+  @override
+  String get quizGenContinue => 'Lanjutkan untuk membuat kuis';
+
+  @override
+  String get quizDebugTitle => 'Kuis yang Dibuat';
+
+  @override
+  String get quizDebugQuestionsGenerated => 'Pertanyaan yang Dibuat';
+
+  @override
+  String quizDebugReadyToReview(int count, String s) {
+    return '$count pertanyaan$s siap ditinjau.';
+  }
+
+  @override
+  String get quizDebugMultipleChoice => 'Pilihan Ganda';
+
+  @override
+  String get quizDebugTextAnswer => 'Jawaban Teks';
+
+  @override
+  String get quizDebugViewQuiz => 'Lihat Kuis';
 }

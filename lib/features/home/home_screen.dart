@@ -7,6 +7,7 @@ import '../../app/router.dart';
 import '../../app/theme.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../generated/l10n/app_localizations.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -18,6 +19,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final profilesAsync = ref.watch(profilesProvider);
     final activeProfileId = ref.watch(activeProfileProvider);
 
@@ -44,7 +46,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
         return sessionsAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(child: Text('Failed to load sessions: $error')),
+          error: (error, _) => Center(child: Text(l10n.homeFailedToLoadSessions(error.toString()))),
           data: (sessions) {
             return RefreshIndicator(
               onRefresh: () async {
@@ -61,7 +63,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     const SizedBox(height: 32),
                     if (sessions.isNotEmpty) ...[
                       Text(
-                        'Recent Sessions',
+                        l10n.homeRecentSessions,
                         style: Theme.of(context).textTheme.titleSmall?.copyWith(
                               fontWeight: FontWeight.w700,
                             ),
@@ -83,7 +85,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         body: Center(child: CircularProgressIndicator()),
       ),
       error: (error, _) => Scaffold(
-        body: Center(child: Text('Failed to load profiles: $error')),
+        body: Center(child: Text(l10n.homeFailedToLoadProfiles(error.toString()))),
       ),
     );
   }
@@ -94,21 +96,22 @@ class _GreetingHeader extends StatelessWidget {
 
   const _GreetingHeader({required this.profileName});
 
-  String _getGreeting() {
+  String _getGreeting(AppLocalizations l10n) {
     final hour = DateTime.now().hour;
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 12) return l10n.homeGoodMorning;
+    if (hour < 18) return l10n.homeGoodAfternoon;
+    return l10n.homeGoodEvening;
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${_getGreeting()}!',
+          '${_getGreeting(l10n)}!',
           style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
@@ -146,6 +149,7 @@ class _RecentSessionsListState extends State<_RecentSessionsList> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final displayCount = _isExpanded ? widget.sessions.length : _initialCount.clamp(0, widget.sessions.length);
     final hasMore = widget.sessions.length > _initialCount;
 
@@ -164,7 +168,7 @@ class _RecentSessionsListState extends State<_RecentSessionsList> {
                 duration: const Duration(milliseconds: 200),
                 child: const Icon(Icons.keyboard_arrow_down),
               ),
-              label: Text(_isExpanded ? 'See less' : 'See more'),
+              label: Text(_isExpanded ? l10n.homeSeeLess : l10n.homeSeeMore),
             ),
           ),
       ],
@@ -178,14 +182,15 @@ class _SessionTile extends StatelessWidget {
   const _SessionTile({required this.session});
 
   String _formatDate(DateTime dt, BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final date = DateTime(dt.year, dt.month, dt.day);
     final diff = today.difference(date).inDays;
     final locale = Localizations.localeOf(context).toString();
     
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
+    if (diff == 0) return l10n.homeToday;
+    if (diff == 1) return l10n.homeYesterday;
     if (dt.year == now.year) return DateFormat('MMM d', locale).format(dt);
     return DateFormat('MMM d, y', locale).format(dt);
   }
@@ -296,6 +301,7 @@ class _EmptySessionsState extends State<_EmptySessions>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
     final quexColors = Theme.of(context).extension<QuexColors>();
     final screenHeight = MediaQuery.of(context).size.height;
@@ -342,7 +348,7 @@ class _EmptySessionsState extends State<_EmptySessions>
           ),
           const SizedBox(height: 32),
           Text(
-            "Let's start learning!",
+            l10n.homeLetsStartLearning,
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                   fontWeight: FontWeight.w900,
                   color: scheme.primary,
@@ -353,7 +359,7 @@ class _EmptySessionsState extends State<_EmptySessions>
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 32),
             child: Text(
-              'Create your very first study session and blast off into a world of fun!',
+              l10n.homeCreateFirstSession,
               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: scheme.onSurfaceVariant,
                     height: 1.4,
@@ -365,7 +371,7 @@ class _EmptySessionsState extends State<_EmptySessions>
           FilledButton.icon(
             onPressed: widget.onCreate,
             icon: const Icon(Icons.rocket_launch),
-            label: const Text('Start my adventure!'),
+            label: Text(l10n.homeStartMyAdventure),
             style: FilledButton.styleFrom(
               minimumSize: const Size(200, 56),
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -386,6 +392,7 @@ class _NoProfileState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
 
     return Center(
@@ -401,14 +408,14 @@ class _NoProfileState extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'No profiles yet',
+              l10n.homeNoProfilesYet,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Switch to a profile to start a new study flow.',
+              l10n.homeSwitchToProfile,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),

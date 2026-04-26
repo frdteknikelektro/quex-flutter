@@ -272,5 +272,912 @@
   "createAndStartStudying": "Create & Start Studying",
   "@createAndStartStudying": {
     "description": "Button to create profile and start"
+  },
+  "homeFailedToLoadSessions": "Failed to load sessions: {error}",
+  "@homeFailedToLoadSessions": {
+    "description": "Error message when sessions fail to load",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "homeRecentSessions": "Recent Sessions",
+  "@homeRecentSessions": {
+    "description": "Label for recent sessions list"
+  },
+  "homeFailedToLoadProfiles": "Failed to load profiles: {error}",
+  "@homeFailedToLoadProfiles": {
+    "description": "Error message when profiles fail to load",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "homeGoodMorning": "Good morning",
+  "@homeGoodMorning": {
+    "description": "Morning greeting"
+  },
+  "homeGoodAfternoon": "Good afternoon",
+  "@homeGoodAfternoon": {
+    "description": "Afternoon greeting"
+  },
+  "homeGoodEvening": "Good evening",
+  "@homeGoodEvening": {
+    "description": "Evening greeting"
+  },
+  "homeSeeLess": "See less",
+  "@homeSeeLess": {
+    "description": "Button to show fewer sessions"
+  },
+  "homeSeeMore": "See more",
+  "@homeSeeMore": {
+    "description": "Button to show more sessions"
+  },
+  "homeToday": "Today",
+  "@homeToday": {
+    "description": "Label for today's date"
+  },
+  "homeYesterday": "Yesterday",
+  "@homeYesterday": {
+    "description": "Label for yesterday's date"
+  },
+  "homeLetsStartLearning": "Let's start learning!",
+  "@homeLetsStartLearning": {
+    "description": "Empty state title for no sessions"
+  },
+  "homeCreateFirstSession": "Create your very first study session and blast off into a world of fun!",
+  "@homeCreateFirstSession": {
+    "description": "Empty state subtitle for no sessions"
+  },
+  "homeStartMyAdventure": "Start my adventure!",
+  "@homeStartMyAdventure": {
+    "description": "Button to create first session"
+  },
+  "homeNoProfilesYet": "No profiles yet",
+  "@homeNoProfilesYet": {
+    "description": "Empty state title when no profiles exist"
+  },
+  "homeSwitchToProfile": "Switch to a profile to start a new study flow.",
+  "@homeSwitchToProfile": {
+    "description": "Empty state subtitle when no profiles exist"
+  },
+  "newSessionAddTitleFirst": "Add a session title first.",
+  "@newSessionAddTitleFirst": {
+    "description": "Validation error when session title is empty"
+  },
+  "newSessionTitle": "Session title",
+  "@newSessionTitle": {
+    "description": "Label for session title field"
+  },
+  "newSessionTitleHint": "e.g. Fractions practice",
+  "@newSessionTitleHint": {
+    "description": "Hint text for session title field"
+  },
+  "newSessionPickEmoji": "Pick an emoji",
+  "@newSessionPickEmoji": {
+    "description": "Label for emoji picker"
+  },
+  "newSessionGrade": "Grade {grade}",
+  "@newSessionGrade": {
+    "description": "Display grade number",
+    "placeholders": {
+      "grade": {
+        "type": "int"
+      }
+    }
+  },
+  "newSessionCreating": "Creating...",
+  "@newSessionCreating": {
+    "description": "Button text while creating session"
+  },
+  "sessionDetailFailedToLoad": "Failed to load session: {error}",
+  "@sessionDetailFailedToLoad": {
+    "description": "Error message when session fails to load",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionDetailNotFound": "Session not found",
+  "@sessionDetailNotFound": {
+    "description": "Error message when session doesn't exist"
+  },
+  "sessionDetailGenerateQuiz": "Generate quiz",
+  "@sessionDetailGenerateQuiz": {
+    "description": "Button to generate quiz"
+  },
+  "sessionDetailGradeAndDate": "Grade {grade}  •  {date}",
+  "@sessionDetailGradeAndDate": {
+    "description": "Session grade and creation date",
+    "placeholders": {
+      "grade": {
+        "type": "int"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionDetailAddNotes": "Add notes and references",
+  "@sessionDetailAddNotes": {
+    "description": "Subtitle when no materials exist"
+  },
+  "sessionDetailOneMaterial": "1 study material",
+  "@sessionDetailOneMaterial": {
+    "description": "Subtitle when there is 1 material"
+  },
+  "sessionDetailMaterialsCount": "{count} study materials",
+  "@sessionDetailMaterialsCount": {
+    "description": "Subtitle with material count",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionDetailStudyMaterials": "Study Materials",
+  "@sessionDetailStudyMaterials": {
+    "description": "Label for study materials section"
+  },
+  "sessionDetailChatWithAI": "Chat with AI",
+  "@sessionDetailChatWithAI": {
+    "description": "Label for chat with AI section"
+  },
+  "sessionDetailChatSubtitle": "Ask questions about your notes",
+  "@sessionDetailChatSubtitle": {
+    "description": "Subtitle for chat with AI"
+  },
+  "sessionDetailWhichMaterials": "Which materials to chat about?",
+  "@sessionDetailWhichMaterials": {
+    "description": "Title for material picker sheet"
+  },
+  "sessionDetailQuexWillUse": "Quex will use only these in the conversation.",
+  "@sessionDetailQuexWillUse": {
+    "description": "Subtitle for material picker sheet"
+  },
+  "sessionDetailMaterialKindText": "Text",
+  "@sessionDetailMaterialKindText": {
+    "description": "Material kind label for text"
+  },
+  "sessionDetailMaterialKindDocument": "Document",
+  "@sessionDetailMaterialKindDocument": {
+    "description": "Material kind label for document"
+  },
+  "sessionDetailMaterialKindPhoto": "Photo",
+  "@sessionDetailMaterialKindPhoto": {
+    "description": "Material kind label for photo"
+  },
+  "sessionDetailSelectAtLeastOne": "Select at least one material",
+  "@sessionDetailSelectAtLeastOne": {
+    "description": "Button text when no materials selected"
+  },
+  "sessionDetailStartChat": "Start chat ({count})",
+  "@sessionDetailStartChat": {
+    "description": "Button to start chat with selected materials",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionDetailRecentQuizzes": "Recent Quizzes",
+  "@sessionDetailRecentQuizzes": {
+    "description": "Label for recent quizzes section"
+  },
+  "sessionDetailScore": "Score {score}%",
+  "@sessionDetailScore": {
+    "description": "Quiz score display",
+    "placeholders": {
+      "score": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionDetailInProgress": "In progress",
+  "@sessionDetailInProgress": {
+    "description": "Quiz status when not completed"
+  },
+  "sessionDetailQuestionsCount": "{count} questions",
+  "@sessionDetailQuestionsCount": {
+    "description": "Number of questions in quiz",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "sessionDetailAddMaterialsFirst": "Add study materials first, then generate a quiz.",
+  "@sessionDetailAddMaterialsFirst": {
+    "description": "Message when no materials exist for quiz"
+  },
+  "sessionDetailReadyToMakeQuiz": "Ready to make a quiz?",
+  "@sessionDetailReadyToMakeQuiz": {
+    "description": "Empty state title for quiz section"
+  },
+  "sessionDetailEditSession": "Edit Session",
+  "@sessionDetailEditSession": {
+    "description": "Title for edit session bottom sheet"
+  },
+  "materialDeleteQuestion": "Delete material?",
+  "@materialDeleteQuestion": {
+    "description": "Confirmation dialog title for deleting material"
+  },
+  "materialDeleteConfirm": "This note will be permanently removed.",
+  "@materialDeleteConfirm": {
+    "description": "Confirmation message for deleting material"
+  },
+  "materialFailedToLoadSession": "Failed to load session: {error}",
+  "@materialFailedToLoadSession": {
+    "description": "Error message when session fails to load",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "materialSessionNotFound": "Session not found",
+  "@materialSessionNotFound": {
+    "description": "Error message when session doesn't exist"
+  },
+  "materialCouldNotLoadFiles": "Could not load files: {error}",
+  "@materialCouldNotLoadFiles": {
+    "description": "Error message when materials fail to load",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "materialAddMaterial": "Add material",
+  "@materialAddMaterial": {
+    "description": "Button to add material"
+  },
+  "materialCouldNotOpen": "Could not open: {message}",
+  "@materialCouldNotOpen": {
+    "description": "Error message when file fails to open",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "materialFolderEmpty": "Your study folder is empty",
+  "@materialFolderEmpty": {
+    "description": "Empty state title for no materials"
+  },
+  "materialFolderEmptySubtitle": "Tap \"Add material\" to drop in notes, documents, or photos.",
+  "@materialFolderEmptySubtitle": {
+    "description": "Empty state subtitle for no materials"
+  },
+  "materialAddToFolder": "Add to Study Folder",
+  "@materialAddToFolder": {
+    "description": "Title for add material bottom sheet"
+  },
+  "materialCamera": "Camera",
+  "@materialCamera": {
+    "description": "Button to pick from camera"
+  },
+  "materialGallery": "Gallery",
+  "@materialGallery": {
+    "description": "Button to pick from gallery"
+  },
+  "materialTitle": "Title",
+  "@materialTitle": {
+    "description": "Label for title field"
+  },
+  "materialPickPdf": "Pick PDF",
+  "@materialPickPdf": {
+    "description": "Button to pick PDF file"
+  },
+  "materialAddMore": "Add more",
+  "@materialAddMore": {
+    "description": "Button to add more files"
+  },
+  "materialNotesContent": "Notes / content",
+  "@materialNotesContent": {
+    "description": "Label for notes/content field"
+  },
+  "materialNotesHint": "Paste notes or type content here.",
+  "@materialNotesHint": {
+    "description": "Hint text for notes field"
+  },
+  "materialSaveFile": "Save file",
+  "@materialSaveFile": {
+    "description": "Button to save file"
+  },
+  "materialKindPhoto": "Photo",
+  "@materialKindPhoto": {
+    "description": "Material kind label for photo"
+  },
+  "materialKindPdf": "PDF",
+  "@materialKindPdf": {
+    "description": "Material kind label for PDF"
+  },
+  "materialKindText": "Text",
+  "@materialKindText": {
+    "description": "Material kind label for text"
+  },
+  "materialAddAtLeastOnePhoto": "Add at least one photo.",
+  "@materialAddAtLeastOnePhoto": {
+    "description": "Validation error when no photos selected"
+  },
+  "materialAddTitle": "Add a title.",
+  "@materialAddTitle": {
+    "description": "Validation error when title is empty"
+  },
+  "materialPickAtLeastOnePdf": "Pick at least one PDF.",
+  "@materialPickAtLeastOnePdf": {
+    "description": "Validation error when no PDF selected"
+  },
+  "materialAddTitleAndContent": "Add a title and content.",
+  "@materialAddTitleAndContent": {
+    "description": "Validation error when title or content is empty"
+  },
+  "materialPhotosCount": "{count} photo(s)",
+  "@materialPhotosCount": {
+    "description": "Number of photos",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "materialTextSubtitle": "Text  ·  {date}",
+  "@materialTextSubtitle": {
+    "description": "Subtitle for text material",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "materialDetailCouldNotLoad": "Could not load material: {error}",
+  "@materialDetailCouldNotLoad": {
+    "description": "Error message when material fails to load",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "materialDetailNotFound": "Material not found",
+  "@materialDetailNotFound": {
+    "description": "Error message when material doesn't exist"
+  },
+  "materialDetailEditing": "Editing",
+  "@materialDetailEditing": {
+    "description": "Title when editing material"
+  },
+  "materialDetailStartWriting": "Start writing…",
+  "@materialDetailStartWriting": {
+    "description": "Hint text for empty content field"
+  },
+  "materialDetailNoContent": "_No content yet. Tap ✏️ to add notes._",
+  "@materialDetailNoContent": {
+    "description": "Placeholder text when material has no content"
+  },
+  "materialDetailNoImages": "No images found",
+  "@materialDetailNoImages": {
+    "description": "Error message when no images found"
+  },
+  "materialDetailOpening": "Opening…",
+  "@materialDetailOpening": {
+    "description": "Button text while opening file"
+  },
+  "materialDetailOpenExternal": "Open in external app",
+  "@materialDetailOpenExternal": {
+    "description": "Button to open file in external app"
+  },
+  "materialDetailFileMissing": "File missing on disk. It may have been removed.",
+  "@materialDetailFileMissing": {
+    "description": "Error message when file is missing"
+  },
+  "materialDetailCouldNotOpenFile": "Could not open file: {message}",
+  "@materialDetailCouldNotOpenFile": {
+    "description": "Error message when file fails to open",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "materialDetailAdded": "Added",
+  "@materialDetailAdded": {
+    "description": "Label for added date"
+  },
+  "materialDetailLocation": "Location",
+  "@materialDetailLocation": {
+    "description": "Label for file location"
+  },
+  "materialDetailWords": "{count} words",
+  "@materialDetailWords": {
+    "description": "Word count for text material",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "materialActionsRename": "Rename",
+  "@materialActionsRename": {
+    "description": "Title for rename dialog"
+  },
+  "pdfPickerCouldNotOpen": "Could not open PDF: {error}",
+  "@pdfPickerCouldNotOpen": {
+    "description": "Error message when PDF fails to open",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pdfPickerFailedToSave": "Failed to save pages: {error}",
+  "@pdfPickerFailedToSave": {
+    "description": "Error message when pages fail to save",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "pdfPickerLoading": "Loading pages...",
+  "@pdfPickerLoading": {
+    "description": "Loading message for PDF pages"
+  },
+  "pdfPickerPagesCount": "{count} pages — tap to select",
+  "@pdfPickerPagesCount": {
+    "description": "Subtitle showing page count",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pdfPickerSelectPages": "Select pages to continue",
+  "@pdfPickerSelectPages": {
+    "description": "Button text when no pages selected"
+  },
+  "pdfPickerAddPages": "Add {count} page(s)",
+  "@pdfPickerAddPages": {
+    "description": "Button text with page count",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pdfPickerPage": "Page {number}",
+  "@pdfPickerPage": {
+    "description": "Page number label",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "chatCouldNotLoadModel": "Could not load model: {error}",
+  "@chatCouldNotLoadModel": {
+    "description": "Error message when model fails to load",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "chatFailedToStartSession": "Failed to start chat session. Please try again.",
+  "@chatFailedToStartSession": {
+    "description": "Error message when chat session fails to start"
+  },
+  "chatSessionInterrupted": "Session interrupted. Please try again.",
+  "@chatSessionInterrupted": {
+    "description": "Error message when session is interrupted"
+  },
+  "chatError": "Error: {error}",
+  "@chatError": {
+    "description": "Generic error message",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "chatSessionNotFound": "Session not found",
+  "@chatSessionNotFound": {
+    "description": "Error message when session doesn't exist"
+  },
+  "chatResetQuestion": "Reset chat?",
+  "@chatResetQuestion": {
+    "description": "Confirmation dialog title for resetting chat"
+  },
+  "chatResetConfirm": "All messages will be deleted.",
+  "@chatResetConfirm": {
+    "description": "Confirmation message for resetting chat"
+  },
+  "chatReset": "Reset",
+  "@chatReset": {
+    "description": "Button to reset chat"
+  },
+  "chatThinking": "Thinking…",
+  "@chatThinking": {
+    "description": "Label when AI is thinking"
+  },
+  "chatThoughtProcess": "Thought process",
+  "@chatThoughtProcess": {
+    "description": "Label for thought process section"
+  },
+  "chatAskQuex": "Ask Quex anything",
+  "@chatAskQuex": {
+    "description": "Empty state title for chat"
+  },
+  "chatAskQuexSubtitle": "Ask about your notes, get a summary, or request quiz hints.",
+  "@chatAskQuexSubtitle": {
+    "description": "Empty state subtitle for chat"
+  },
+  "chatQuickSummarize": "Summarize",
+  "@chatQuickSummarize": {
+    "description": "Quick prompt label for summarization"
+  },
+  "chatQuickQuizHints": "Quiz hints",
+  "@chatQuickQuizHints": {
+    "description": "Quick prompt label for quiz hints"
+  },
+  "chatQuickExplainSimply": "Explain simply",
+  "@chatQuickExplainSimply": {
+    "description": "Quick prompt label for simple explanation"
+  },
+  "chatAskAbout": "Ask about \"{topic}\"",
+  "@chatAskAbout": {
+    "description": "Suggestion chip label",
+    "placeholders": {
+      "topic": {
+        "type": "String"
+      }
+    }
+  },
+  "chatSession": "Session",
+  "@chatSession": {
+    "description": "Label for session in tips panel"
+  },
+  "chatSuggestedTopics": "Suggested topics",
+  "@chatSuggestedTopics": {
+    "description": "Label for suggested topics in tips panel"
+  },
+  "chatAskQuexHint": "Ask Quex…",
+  "@chatAskQuexHint": {
+    "description": "Hint text for chat input field"
+  },
+  "quizDetailTitle": "Quiz Questions",
+  "@quizDetailTitle": {
+    "description": "Title for quiz detail screen"
+  },
+  "quizDetailError": "Error: {error}",
+  "@quizDetailError": {
+    "description": "Error message in quiz detail",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "quizDetailNotFound": "Quiz not found",
+  "@quizDetailNotFound": {
+    "description": "Error message when quiz not found"
+  },
+  "quizDetailDeleted": "This quiz may have been deleted.",
+  "@quizDetailDeleted": {
+    "description": "Message when quiz may be deleted"
+  },
+  "quizDetailFinish": "Finish Quiz",
+  "@quizDetailFinish": {
+    "description": "Button to finish quiz"
+  },
+  "quizDetailToday": "Today",
+  "@quizDetailToday": {
+    "description": "Date label for today"
+  },
+  "quizDetailYesterday": "Yesterday",
+  "@quizDetailYesterday": {
+    "description": "Date label for yesterday"
+  },
+  "quizDetailQuestionsCount": "{count} Questions",
+  "@quizDetailQuestionsCount": {
+    "description": "Number of questions",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quizDetailAnswered": "{count} answered",
+  "@quizDetailAnswered": {
+    "description": "Number of answered questions",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "questionChatFailedToPreload": "Failed to preload chat session: {error}",
+  "@questionChatFailedToPreload": {
+    "description": "Error message when question chat preload fails",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "questionChatNotFound": "Question not found",
+  "@questionChatNotFound": {
+    "description": "Error message when question not found"
+  },
+  "questionChatTitle": "Question {number}",
+  "@questionChatTitle": {
+    "description": "Title for question chat screen",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "questionChatScoreCorrect": "Correct! 🎉 No explanation needed.",
+  "@questionChatScoreCorrect": {
+    "description": "Score message for correct answer"
+  },
+  "questionChatScorePartial": "Partial credit — keep going!",
+  "@questionChatScorePartial": {
+    "description": "Score message for partial credit"
+  },
+  "questionChatScoreIncorrect": "Not quite — let's keep discussing",
+  "@questionChatScoreIncorrect": {
+    "description": "Score message for incorrect answer"
+  },
+  "questionChatQuestionLabel": "Question",
+  "@questionChatQuestionLabel": {
+    "description": "Label for question card"
+  },
+  "questionChatTalkToQuex": "Talk to Quex…",
+  "@questionChatTalkToQuex": {
+    "description": "Hint text for question chat input field"
+  },
+  "summaryFailedToLoad": "Failed to load summary: {error}",
+  "@summaryFailedToLoad": {
+    "description": "Error message when summary fails to load",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "summaryQuizNotFound": "Quiz not found",
+  "@summaryQuizNotFound": {
+    "description": "Error message when quiz not found"
+  },
+  "summaryFailedToLoadSession": "Failed to load session: {error}",
+  "@summaryFailedToLoadSession": {
+    "description": "Error message when session fails to load",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "summaryTitle": "Summary",
+  "@summaryTitle": {
+    "description": "Title for summary screen"
+  },
+  "summaryChat": "Chat",
+  "@summaryChat": {
+    "description": "Button to go to chat"
+  },
+  "summarySession": "Session",
+  "@summarySession": {
+    "description": "Default session title"
+  },
+  "summaryResults": "Results",
+  "@summaryResults": {
+    "description": "Section header for results"
+  },
+  "summaryResultsSubtitle": "Review the quiz and keep the learning loop going.",
+  "@summaryResultsSubtitle": {
+    "description": "Subtitle for results section"
+  },
+  "summaryQuizCompleted": "Quiz completed",
+  "@summaryQuizCompleted": {
+    "description": "Status when quiz is completed"
+  },
+  "summaryQuizInProgress": "Quiz still in progress",
+  "@summaryQuizInProgress": {
+    "description": "Status when quiz is in progress"
+  },
+  "summaryOf": "of {total}",
+  "@summaryOf": {
+    "description": "Of total count",
+    "placeholders": {
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "summaryCorrect": "Correct",
+  "@summaryCorrect": {
+    "description": "Label for correct count"
+  },
+  "summaryTotal": "Total",
+  "@summaryTotal": {
+    "description": "Label for total count"
+  },
+  "summaryNextSteps": "Next steps",
+  "@summaryNextSteps": {
+    "description": "Section header for next steps"
+  },
+  "summaryNextStepsSubtitle": "Keep the session moving forward.",
+  "@summaryNextStepsSubtitle": {
+    "description": "Subtitle for next steps section"
+  },
+  "summaryDiscuss": "Discuss",
+  "@summaryDiscuss": {
+    "description": "Button to discuss quiz"
+  },
+  "summaryRetryQuiz": "Retry quiz",
+  "@summaryRetryQuiz": {
+    "description": "Button to retry quiz"
+  },
+  "summarySessionDetails": "Session details",
+  "@summarySessionDetails": {
+    "description": "Button to go to session details"
+  },
+  "summaryReview": "Review",
+  "@summaryReview": {
+    "description": "Section header for review"
+  },
+  "summaryReviewSubtitle": "Focus on the questions that need another pass.",
+  "@summaryReviewSubtitle": {
+    "description": "Subtitle for review section"
+  },
+  "summaryNoMissed": "No missed questions. Nice work.",
+  "@summaryNoMissed": {
+    "description": "Message when no questions were missed"
+  },
+  "summaryYourAnswer": "Your answer: {answer}",
+  "@summaryYourAnswer": {
+    "description": "Label for user's answer",
+    "placeholders": {
+      "answer": {
+        "type": "String"
+      }
+    }
+  },
+  "summaryChatToLearn": "Chat with Quex to learn more.",
+  "@summaryChatToLearn": {
+    "description": "Prompt to chat for more info"
+  },
+  "quizGenAddMaterialsFirst": "Add study materials first.",
+  "@quizGenAddMaterialsFirst": {
+    "description": "Error when no materials exist"
+  },
+  "quizGenFailed": "Quiz generation failed: {message}",
+  "@quizGenFailed": {
+    "description": "Error message when quiz generation fails",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "quizGenPickMaterials": "Pick your materials",
+  "@quizGenPickMaterials": {
+    "description": "Status text for material selection"
+  },
+  "quizGenLoadingBrain": "Loading brain...",
+  "@quizGenLoadingBrain": {
+    "description": "Status text while loading model"
+  },
+  "quizGenReady": "Quiz is ready! 🎉",
+  "@quizGenReady": {
+    "description": "Status text when quiz is complete"
+  },
+  "quizGenExtracting": "Extracting existing questions...",
+  "@quizGenExtracting": {
+    "description": "Status text while extracting questions"
+  },
+  "quizGenGenerating": "Generating quiz...",
+  "@quizGenGenerating": {
+    "description": "Status text while generating quiz"
+  },
+  "quizGenThinking": "Quex is thinking...",
+  "@quizGenThinking": {
+    "description": "Status text while AI is thinking"
+  },
+  "quizGenFoundQuestions": "Found existing questions",
+  "@quizGenFoundQuestions": {
+    "description": "Status when existing questions found"
+  },
+  "quizGenNoQuestions": "No existing questions found",
+  "@quizGenNoQuestions": {
+    "description": "Status when no existing questions"
+  },
+  "quizGenGettingReady": "Getting ready...",
+  "@quizGenGettingReady": {
+    "description": "Default status text"
+  },
+  "quizGenWhichMaterials": "Which materials to quiz on?",
+  "@quizGenWhichMaterials": {
+    "description": "Title for material selection"
+  },
+  "quizGenScanMaterials": "Quex will scan these for existing questions.",
+  "@quizGenScanMaterials": {
+    "description": "Subtitle for material selection"
+  },
+  "quizGenLoadingModel": "Loading model…",
+  "@quizGenLoadingModel": {
+    "description": "Button text while loading model"
+  },
+  "quizGenSelectFirst": "Select materials first",
+  "@quizGenSelectFirst": {
+    "description": "Button text when no materials selected"
+  },
+  "quizGenGenerate": "Generate quiz ({count})",
+  "@quizGenGenerate": {
+    "description": "Button to generate quiz",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "quizGenFoundTitle": "Found existing questions",
+  "@quizGenFoundTitle": {
+    "description": "Title when questions found"
+  },
+  "quizGenNoQuestionsTitle": "No existing questions",
+  "@quizGenNoQuestionsTitle": {
+    "description": "Title when no questions"
+  },
+  "quizGenFoundDescription": "These questions were found in your materials. Quex will use these to generate your quiz.",
+  "@quizGenFoundDescription": {
+    "description": "Description when questions found"
+  },
+  "quizGenNoQuestionsDescription": "No quiz questions were found in your materials. Quex will generate questions from scratch.",
+  "@quizGenNoQuestionsDescription": {
+    "description": "Description when no questions"
+  },
+  "quizGenContinue": "Continue to generate quiz",
+  "@quizGenContinue": {
+    "description": "Button to continue to generation"
+  },
+  "quizDebugTitle": "Generated Quiz",
+  "@quizDebugTitle": {
+    "description": "Title for quiz debug screen"
+  },
+  "quizDebugQuestionsGenerated": "Questions Generated",
+  "@quizDebugQuestionsGenerated": {
+    "description": "Section header for generated questions"
+  },
+  "quizDebugReadyToReview": "{count} question{s} ready to review.",
+  "@quizDebugReadyToReview": {
+    "description": "Count of questions ready to review",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "s": {
+        "type": "String"
+      }
+    }
+  },
+  "quizDebugMultipleChoice": "Multiple Choice",
+  "@quizDebugMultipleChoice": {
+    "description": "Question type label"
+  },
+  "quizDebugTextAnswer": "Text Answer",
+  "@quizDebugTextAnswer": {
+    "description": "Question type label"
+  },
+  "quizDebugViewQuiz": "View Quiz",
+  "@quizDebugViewQuiz": {
+    "description": "Button to view quiz"
   }
 }

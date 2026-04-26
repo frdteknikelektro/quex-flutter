@@ -7,6 +7,7 @@ import 'package:pdfx/pdfx.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../app/theme.dart';
+import '../../generated/l10n/app_localizations.dart';
 
 /// Full-screen modal that lets users pick pages from a PDF file.
 ///
@@ -153,6 +154,7 @@ class _PdfPagePickerModalState extends State<PdfPagePickerModal> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -171,7 +173,7 @@ class _PdfPagePickerModalState extends State<PdfPagePickerModal> {
             ),
             if (_document != null && !_loading)
               Text(
-                '${_document!.pagesCount} pages — tap to select',
+                l10n.pdfPickerPagesCount(_document!.pagesCount),
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -183,20 +185,21 @@ class _PdfPagePickerModalState extends State<PdfPagePickerModal> {
           onPressed: _saving ? null : () => Navigator.of(context).pop(null),
         ),
       ),
-      body: _buildBody(scheme, theme),
-      bottomNavigationBar: _buildBottomBar(scheme, theme),
+      body: _buildBody(scheme, theme, context),
+      bottomNavigationBar: _buildBottomBar(scheme, theme, context),
     );
   }
 
-  Widget _buildBody(ColorScheme scheme, ThemeData theme) {
+  Widget _buildBody(ColorScheme scheme, ThemeData theme, BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     if (_loading) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: Sp.md),
-            Text('Loading pages...'),
+            const CircularProgressIndicator(),
+            const SizedBox(height: Sp.md),
+            Text(l10n.pdfPickerLoading),
           ],
         ),
       );
@@ -250,7 +253,8 @@ class _PdfPagePickerModalState extends State<PdfPagePickerModal> {
     );
   }
 
-  Widget _buildBottomBar(ColorScheme scheme, ThemeData theme) {
+  Widget _buildBottomBar(ColorScheme scheme, ThemeData theme, BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final count = _selected.length;
     return SafeArea(
       child: Padding(
@@ -276,7 +280,7 @@ class _PdfPagePickerModalState extends State<PdfPagePickerModal> {
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
-                  : Text(count == 0 ? 'Select pages to continue' : 'Add $count page${count == 1 ? '' : 's'}'),
+                  : Text(count == 0 ? l10n.pdfPickerSelectPages : l10n.pdfPickerAddPages(count)),
             ),
           ],
         ),
@@ -306,6 +310,7 @@ class _PageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -344,7 +349,7 @@ class _PageTile extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   color: Colors.black54,
                   child: Text(
-                    'Page $pageNumber',
+                    l10n.pdfPickerPage(pageNumber),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       color: Colors.white,

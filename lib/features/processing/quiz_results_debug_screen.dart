@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/models/models.dart';
+import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/quex_ui.dart';
 
 class QuizResultsDebugScreen extends StatelessWidget {
@@ -18,12 +19,13 @@ class QuizResultsDebugScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Generated Quiz'),
+        title: Text(l10n.quizDebugTitle),
         automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(
@@ -32,14 +34,17 @@ class QuizResultsDebugScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              'Questions Generated',
+              l10n.quizDebugQuestionsGenerated,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
             ),
             const SizedBox(height: 12),
             Text(
-              '${questions.length} question${questions.length == 1 ? '' : 's'} ready to review.',
+              l10n.quizDebugReadyToReview(
+                questions.length,
+                questions.length == 1 ? '' : 's',
+              ),
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
@@ -79,8 +84,8 @@ class QuizResultsDebugScreen extends StatelessWidget {
                               children: [
                                 Text(
                                   q.type == QuestionType.multipleChoice
-                                      ? 'Multiple Choice'
-                                      : 'Text Answer',
+                                      ? l10n.quizDebugMultipleChoice
+                                      : l10n.quizDebugTextAnswer,
                                   style: theme.textTheme.labelSmall?.copyWith(
                                     color: scheme.onSurfaceVariant,
                                   ),
@@ -150,7 +155,7 @@ class QuizResultsDebugScreen extends StatelessWidget {
         onPressed: () =>
             context.go('/session/$sessionId/quiz/$quizId/detail'),
         icon: const Icon(Icons.arrow_forward),
-        label: const Text('View Quiz'),
+        label: Text(l10n.quizDebugViewQuiz),
       ),
     );
   }

@@ -16,6 +16,7 @@ import '../../core/ai/tutor_event.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../generated/l10n/app_localizations.dart';
 
 class QuestionChatScreen extends ConsumerStatefulWidget {
   final int sessionId;
@@ -100,11 +101,12 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     }).catchError((Object error) {
       debugPrint('Failed to preload tutor session: $error');
       if (!mounted) return;
+      final l10n = AppLocalizations.of(context)!;
       setState(() {
         _sessionService = null;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to preload chat session: $error')),
+        SnackBar(content: Text(l10n.questionChatFailedToPreload(error.toString()))),
       );
     });
   }
@@ -185,9 +187,10 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       await _ensureTutorSession(question, materials, messages);
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         final message = e is StateError && e.message.contains('model')
-            ? 'Could not load model: $e'
-            : 'Failed to start chat session. Please try again.';
+            ? l10n.chatCouldNotLoadModel(e.toString())
+            : l10n.chatFailedToStartSession;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message)),
         );
@@ -271,6 +274,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       debugPrint('Tutor stream error: $e');
 
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         setState(() {
           _sessionService = null;
           _streamingContent = null;
@@ -278,9 +282,9 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
           _sending = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Session interrupted. Please try again.'),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Text(l10n.chatSessionInterrupted),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -289,6 +293,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -316,12 +321,12 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     return questionAsync.when(
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
+      error: (e, _) => Scaffold(body: Center(child: Text(l10n.chatError(e.toString())))),
       data: (question) {
         if (question == null) {
           return Scaffold(
             appBar: AppBar(leading: const BackButton()),
-            body: const Center(child: Text('Question not found')),
+            body: Center(child: Text(l10n.questionChatNotFound)),
           );
         }
 
@@ -332,7 +337,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
               onPressed: () => context.pop(),
             ),
             title: Text(
-              'Question ${question.orderIndex + 1}',
+              l10n.questionChatTitle(question.orderIndex + 1),
               style: theme.textTheme.titleMedium
                   ?.copyWith(fontWeight: FontWeight.w700),
             ),
@@ -492,9 +497,10 @@ class _MaterialsStrip extends StatelessWidget {
                 if (m.kind == MaterialKind.document) {
                   final result = await OpenFilex.open(m.content);
                   if (result.type != ResultType.done && context.mounted) {
+                    final l10n = AppLocalizations.of(context)!;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                          content: Text('Could not open: ${result.message}')),
+                          content: Text(l10n.materialCouldNotOpen(result.message))),
                     );
                   }
                 } else {
@@ -543,21 +549,22 @@ class _ScoreBadgeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final Color color;
     final String label;
     final IconData icon;
 
     if (score >= 0.8) {
       color = const Color(0xFF4CAF50);
-      label = 'Correct! 🎉 No explanation needed.';
+      label = l10n.questionChatScoreCorrect;
       icon = Icons.check_circle;
     } else if (score >= 0.4) {
       color = const Color(0xFFFFB347);
-      label = 'Partial credit — keep going!';
+      label = l10n.questionChatScorePartial;
       icon = Icons.remove_circle;
     } else {
       color = const Color(0xFFFF6B6B);
-      label = 'Not quite — let\'s keep discussing';
+      label = l10n.questionChatScoreIncorrect;
       icon = Icons.cancel;
     }
 
@@ -611,6 +618,7 @@ class _QuestionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final hasOptions = question.type == QuestionType.multipleChoice &&
         question.options.isNotEmpty;
 
@@ -637,7 +645,7 @@ class _QuestionCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Question',
+                l10n.questionChatQuestionLabel,
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w700,
@@ -887,6 +895,7 @@ class _ThinkingBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final labelColor = scheme.onSurfaceVariant;
     final bgColor = scheme.surfaceContainerLow;
     final borderColor = scheme.outlineVariant;
@@ -930,7 +939,7 @@ class _ThinkingBubble extends StatelessWidget {
                             size: 14, color: labelColor),
                       ),
                     Text(
-                      isStreaming ? 'Thinking…' : 'Thought process',
+                      isStreaming ? l10n.chatThinking : l10n.chatThoughtProcess,
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: labelColor,
                         fontWeight: FontWeight.w600,
@@ -1056,6 +1065,7 @@ class _InputBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Container(
       padding: EdgeInsets.fromLTRB(
         16,
@@ -1077,7 +1087,7 @@ class _InputBar extends StatelessWidget {
                 enabled: !sending && !modelLoading && canSend,
                 textInputAction: TextInputAction.newline,
                 decoration: InputDecoration(
-                  hintText: 'Talk to Quex…',
+                  hintText: l10n.questionChatTalkToQuex,
                   hintStyle: TextStyle(color: scheme.onSurfaceVariant),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),

@@ -6,6 +6,7 @@ import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../generated/l10n/app_localizations.dart';
 
 class NewSessionScreen extends ConsumerStatefulWidget {
   const NewSessionScreen({super.key});
@@ -89,10 +90,11 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
   }
 
   Future<void> _createSession() async {
+    final l10n = AppLocalizations.of(context)!;
     final title = _titleController.text.trim();
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Add a session title first.')),
+        SnackBar(content: Text(l10n.newSessionAddTitleFirst)),
       );
       return;
     }
@@ -153,12 +155,13 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final title = _titleController.text.trim();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('New Session')),
+      appBar: AppBar(title: Text(l10n.newSession)),
       body: SafeArea(
         child: Center(
           child: ConstrainedBox(
@@ -198,7 +201,7 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
                         ),
                         const SizedBox(height: Sp.md),
                         Text(
-                          title.isEmpty ? 'Session title' : title,
+                          title.isEmpty ? l10n.newSessionTitle : title,
                           style: theme.textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.w700,
                             color: title.isEmpty
@@ -211,7 +214,7 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Grade $_grade',
+                          l10n.newSessionGrade(_grade),
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
@@ -228,9 +231,9 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
                     TextField(
                       controller: _titleController,
                       onChanged: (_) => setState(() {}),
-                      decoration: const InputDecoration(
-                        labelText: 'Session title',
-                        hintText: 'e.g. Fractions practice',
+                      decoration: InputDecoration(
+                        labelText: l10n.newSessionTitle,
+                        hintText: l10n.newSessionTitleHint,
                       ),
                       textCapitalization: TextCapitalization.sentences,
                     ),
@@ -244,7 +247,7 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Pick an emoji',
+                          l10n.newSessionPickEmoji,
                           style: theme.textTheme.labelMedium?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
@@ -281,12 +284,12 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
                     DropdownButtonFormField<int>(
                       // ignore: deprecated_member_use
                       value: _grade,
-                      decoration: const InputDecoration(labelText: 'Grade Level'),
+                      decoration: InputDecoration(labelText: l10n.gradeLevel),
                       items: List.generate(
                         12,
                         (i) => DropdownMenuItem(
                           value: i + 1,
-                          child: Text('Grade ${i + 1}'),
+                          child: Text(l10n.newSessionGrade(i + 1)),
                         ),
                       ),
                       onChanged: (value) =>
@@ -312,7 +315,7 @@ class _NewSessionScreenState extends ConsumerState<NewSessionScreen>
                                 ),
                               )
                             : const Icon(Icons.arrow_forward),
-                        label: Text(_saving ? 'Creating...' : 'Continue'),
+                        label: Text(_saving ? l10n.newSessionCreating : l10n.continueButton),
                       ),
                     ),
                   ),

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/breakpoints.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/quex_ui.dart';
 import '../processing/quiz_generation_modal.dart';
 
@@ -20,6 +21,7 @@ class SummaryScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
     final bundleAsync = ref.watch(quizBundleProvider(quizId));
     final sessionAsync = ref.watch(sessionBundleProvider(sessionId));
     final compact = MediaQuery.sizeOf(context).width < QuexBreakpoints.tablet;
@@ -29,12 +31,12 @@ class SummaryScreen extends ConsumerWidget {
         body: Center(child: CircularProgressIndicator()),
       ),
       error: (error, _) => Scaffold(
-        body: Center(child: Text('Failed to load summary: $error')),
+        body: Center(child: Text(l10n.summaryFailedToLoad(error.toString()))),
       ),
       data: (bundle) {
         if (bundle == null) {
-          return const Scaffold(
-            body: Center(child: Text('Quiz not found')),
+          return Scaffold(
+            body: Center(child: Text(l10n.summaryQuizNotFound)),
           );
         }
 
@@ -46,17 +48,17 @@ class SummaryScreen extends ConsumerWidget {
             body: Center(child: CircularProgressIndicator()),
           ),
           error: (error, _) => Scaffold(
-            body: Center(child: Text('Failed to load session: $error')),
+            body: Center(child: Text(l10n.summaryFailedToLoadSession(error.toString()))),
           ),
           data: (sessionBundle) {
             final session = sessionBundle?.session;
             return Scaffold(
               appBar: AppBar(
-                title: const Text('Summary'),
+                title: Text(l10n.summaryTitle),
                 actions: [
                   TextButton(
                     onPressed: () => context.go('/session/$sessionId/chat'),
-                    child: const Text('Chat'),
+                    child: Text(l10n.summaryChat),
                   ),
                 ],
               ),
@@ -69,7 +71,7 @@ class SummaryScreen extends ConsumerWidget {
                             score: score,
                             total: bundle.questions.length,
                             quizCompleted: bundle.quiz.isCompleted,
-                            sessionTitle: session?.title ?? 'Session',
+                            sessionTitle: session?.title ?? l10n.summarySession,
                           ),
                           const SizedBox(height: 16),
                           _SummaryActions(sessionId: sessionId, quizId: quizId),
@@ -87,7 +89,7 @@ class SummaryScreen extends ConsumerWidget {
                                   score: score,
                                   total: bundle.questions.length,
                                   quizCompleted: bundle.quiz.isCompleted,
-                                  sessionTitle: session?.title ?? 'Session',
+                                  sessionTitle: session?.title ?? l10n.summarySession,
                                 ),
                                 const SizedBox(height: 16),
                                 _SummaryActions(sessionId: sessionId, quizId: quizId),
@@ -124,14 +126,15 @@ class _SummaryHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final percent = total == 0 ? 0.0 : score / total;
     return QuexPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const QuexSectionHeader(
-            title: 'Results',
-            subtitle: 'Review the quiz and keep the learning loop going.',
+          QuexSectionHeader(
+            title: l10n.summaryResults,
+            subtitle: l10n.summaryResultsSubtitle,
           ),
           const SizedBox(height: 16),
           Text(
@@ -141,7 +144,7 @@ class _SummaryHero extends StatelessWidget {
                 ),
           ),
           const SizedBox(height: 8),
-          Text(quizCompleted ? 'Quiz completed' : 'Quiz still in progress'),
+          Text(quizCompleted ? l10n.summaryQuizCompleted : l10n.summaryQuizInProgress),
           const SizedBox(height: 20),
           Center(
             child: SizedBox(
@@ -161,7 +164,7 @@ class _SummaryHero extends StatelessWidget {
                                 fontWeight: FontWeight.w900,
                               ),
                         ),
-                        Text('of $total'),
+                        Text(l10n.summaryOf(total)),
                       ],
                     ),
                   ),
@@ -174,7 +177,7 @@ class _SummaryHero extends StatelessWidget {
             children: [
               Expanded(
                 child: QuexMetricCard(
-                  label: 'Correct',
+                  label: l10n.summaryCorrect,
                   value: '$score',
                   icon: Icons.check_circle_outline,
                 ),
@@ -182,7 +185,7 @@ class _SummaryHero extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: QuexMetricCard(
-                  label: 'Total',
+                  label: l10n.summaryTotal,
                   value: '$total',
                   icon: Icons.quiz_outlined,
                 ),
@@ -206,13 +209,14 @@ class _SummaryActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return QuexPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const QuexSectionHeader(
-            title: 'Next steps',
-            subtitle: 'Keep the session moving forward.',
+          QuexSectionHeader(
+            title: l10n.summaryNextSteps,
+            subtitle: l10n.summaryNextStepsSubtitle,
           ),
           const SizedBox(height: 16),
           Wrap(
@@ -222,7 +226,7 @@ class _SummaryActions extends StatelessWidget {
               FilledButton.icon(
                 onPressed: () => context.go('/session/$sessionId/chat'),
                 icon: const Icon(Icons.chat_bubble_outline),
-                label: const Text('Discuss'),
+                label: Text(l10n.summaryDiscuss),
               ),
               FilledButton.tonalIcon(
                 onPressed: () => showDialog(
@@ -231,12 +235,12 @@ class _SummaryActions extends StatelessWidget {
                   builder: (_) => QuizGenerationModal(sessionId: sessionId),
                 ),
                 icon: const Icon(Icons.replay_outlined),
-                label: const Text('Retry quiz'),
+                label: Text(l10n.summaryRetryQuiz),
               ),
               OutlinedButton.icon(
                 onPressed: () => context.go('/session/$sessionId'),
                 icon: const Icon(Icons.open_in_new),
-                label: const Text('Session details'),
+                label: Text(l10n.summarySessionDetails),
               ),
             ],
           ),
@@ -253,19 +257,20 @@ class _MissedQuestions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final missed = questions.where((q) => q.score != null && q.score! < 0.5).toList();
 
     return QuexPanel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const QuexSectionHeader(
-            title: 'Review',
-            subtitle: 'Focus on the questions that need another pass.',
+          QuexSectionHeader(
+            title: l10n.summaryReview,
+            subtitle: l10n.summaryReviewSubtitle,
           ),
           const SizedBox(height: 16),
           if (missed.isEmpty)
-            const Text('No missed questions. Nice work.')
+            Text(l10n.summaryNoMissed)
           else
             ...missed.map(
               (question) => Padding(
@@ -281,10 +286,10 @@ class _MissedQuestions extends StatelessWidget {
                             ),
                       ),
                       const SizedBox(height: 10),
-                      Text('Your answer: ${question.userAnswerText ?? question.userAnswer ?? '—'}'),
+                      Text(l10n.summaryYourAnswer(question.userAnswerText ?? question.userAnswer ?? '—')),
                       const SizedBox(height: 8),
                       Text(
-                        'Chat with Quex to learn more.',
+                        l10n.summaryChatToLearn,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           fontStyle: FontStyle.italic,
                         ),

@@ -18,6 +18,7 @@ import '../../core/ai/tutor_event.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../generated/l10n/app_localizations.dart';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final int sessionId;
@@ -161,9 +162,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await _ensureModel();
     } catch (error) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Could not load model: $error'),
+            content: Text(l10n.chatCouldNotLoadModel(error.toString())),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -176,10 +178,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await _ensureCoachSession(bundle.session, chatMaterials);
     } catch (e) {
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to start chat session. Please try again.'),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Text(l10n.chatFailedToStartSession),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -260,6 +263,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       debugPrint('Coach stream error: $e');
 
       if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
         setState(() {
           _coachSessionInitialized = false;
           _sessionService = null;
@@ -268,9 +272,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           _sending = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Session interrupted. Please try again.'),
-            duration: Duration(seconds: 3),
+          SnackBar(
+            content: Text(l10n.chatSessionInterrupted),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -279,6 +283,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final compact = MediaQuery.sizeOf(context).width < QuexBreakpoints.tablet;
@@ -288,12 +293,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return bundleAsync.when(
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
+      error: (e, _) => Scaffold(body: Center(child: Text(l10n.chatError(e.toString())))),
       data: (bundle) {
         if (bundle == null) {
           return Scaffold(
             appBar: AppBar(leading: const BackButton()),
-            body: const Center(child: Text('Session not found')),
+            body: Center(child: Text(l10n.chatSessionNotFound)),
           );
         }
 
@@ -377,25 +382,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         : () async {
                             final confirm = await showDialog<bool>(
                               context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('Reset chat?'),
-                                content:
-                                    const Text('All messages will be deleted.'),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx, false),
-                                    child: const Text('Cancel'),
-                                  ),
-                                  FilledButton(
-                                    onPressed: () => Navigator.pop(ctx, true),
-                                    child: const Text('Reset'),
-                                  ),
-                                ],
-                              ),
+                              builder: (ctx) {
+                                final l10n = AppLocalizations.of(ctx)!;
+                                return AlertDialog(
+                                  title: Text(l10n.chatResetQuestion),
+                                  content: Text(l10n.chatResetConfirm),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(ctx, false),
+                                      child: Text(l10n.cancel),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: Text(l10n.chatReset),
+                                    ),
+                                  ],
+                                );
+                              },
                             );
                             if (confirm == true) _resetChat();
                           },
-                    child: const Text('Reset'),
+                    child: Text(l10n.chatReset),
                   ),
                 ),
             ],
@@ -508,9 +515,10 @@ class _MaterialsStrip extends StatelessWidget {
                 if (m.kind == MaterialKind.document) {
                   final result = await OpenFilex.open(m.content);
                   if (result.type != ResultType.done && context.mounted) {
+                    final l10n = AppLocalizations.of(context)!;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                          content: Text('Could not open: ${result.message}')),
+                          content: Text(l10n.materialCouldNotOpen(result.message))),
                     );
                   }
                 } else {
@@ -700,6 +708,7 @@ class _ThinkingBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final labelColor = scheme.onSurfaceVariant;
     final bgColor = scheme.surfaceContainerLow;
     final borderColor = scheme.outlineVariant;
@@ -742,7 +751,7 @@ class _ThinkingBubble extends StatelessWidget {
                             size: 14, color: labelColor),
                       ),
                     Text(
-                      isStreaming ? 'Thinking…' : 'Thought process',
+                      isStreaming ? l10n.chatThinking : l10n.chatThoughtProcess,
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: labelColor,
                         fontWeight: FontWeight.w600,
@@ -857,14 +866,14 @@ class _EmptyChat extends StatelessWidget {
     required this.onSuggestionTap,
   });
 
-  static const _quickPrompts = [
-    ('Summarize', 'Summarize this session for me'),
-    ('Quiz hints', 'Give me quiz hints for this session'),
-    ('Explain simply', 'Explain this session simply'),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    final quickPrompts = [
+      (l10n.chatQuickSummarize, 'Summarize this session for me'),
+      (l10n.chatQuickQuizHints, 'Give me quiz hints for this session'),
+      (l10n.chatQuickExplainSimply, 'Explain this session simply'),
+    ];
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -875,14 +884,14 @@ class _EmptyChat extends StatelessWidget {
                 size: 48, color: scheme.outlineVariant),
             const SizedBox(height: 16),
             Text(
-              'Ask Quex anything',
+              l10n.chatAskQuex,
               style: theme.textTheme.titleSmall
                   ?.copyWith(fontWeight: FontWeight.w700),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'Ask about your notes, get a summary, or request quiz hints.',
+              l10n.chatAskQuexSubtitle,
               style: theme.textTheme.bodySmall
                   ?.copyWith(color: scheme.onSurfaceVariant),
               textAlign: TextAlign.center,
@@ -892,7 +901,7 @@ class _EmptyChat extends StatelessWidget {
               spacing: 8,
               runSpacing: 8,
               alignment: WrapAlignment.center,
-              children: _quickPrompts
+              children: quickPrompts
                   .map((p) => ActionChip(
                         label: Text(p.$1),
                         onPressed: () => onSuggestionTap(p.$2),
@@ -908,7 +917,7 @@ class _EmptyChat extends StatelessWidget {
                 children: suggestions
                     .take(4)
                     .map((s) => ActionChip(
-                          label: Text('Ask about "$s"'),
+                          label: Text(l10n.chatAskAbout(s)),
                           onPressed: () => onSuggestionTap('Tell me about $s'),
                         ))
                     .toList(),
@@ -938,13 +947,14 @@ class _TipsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Session',
+            l10n.chatSession,
             style: theme.textTheme.titleSmall
                 ?.copyWith(fontWeight: FontWeight.w700),
           ),
@@ -957,7 +967,7 @@ class _TipsPanel extends StatelessWidget {
           if (suggestions.isNotEmpty) ...[
             const SizedBox(height: 20),
             Text(
-              'Suggested topics',
+              l10n.chatSuggestedTopics,
               style: theme.textTheme.titleSmall
                   ?.copyWith(fontWeight: FontWeight.w700),
             ),
@@ -1006,6 +1016,7 @@ class _InputBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Container(
       padding: EdgeInsets.fromLTRB(
         16,
@@ -1029,7 +1040,7 @@ class _InputBar extends StatelessWidget {
                 maxLines: 4,
                 minLines: 1,
                 decoration: InputDecoration(
-                  hintText: 'Ask Quex…',
+                  hintText: l10n.chatAskQuexHint,
                   hintStyle: TextStyle(color: scheme.onSurfaceVariant),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),

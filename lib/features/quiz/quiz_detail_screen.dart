@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/math_markdown.dart';
 import '../../widgets/quex_ui.dart';
 
@@ -40,13 +41,14 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final bundle = ref.watch(quizBundleProvider(widget.quizId));
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Quiz Questions'),
+        title: Text(l10n.quizDetailTitle),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
@@ -54,13 +56,13 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
       ),
       body: bundle.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        error: (e, _) => Center(child: Text(l10n.quizDetailError(e.toString()))),
         data: (b) {
           if (b == null) {
-            return const QuexEmptyState(
+            return QuexEmptyState(
               icon: Icons.quiz_outlined,
-              title: 'Quiz not found',
-              message: 'This quiz may have been deleted.',
+              title: l10n.quizDetailNotFound,
+              message: l10n.quizDetailDeleted,
             );
           }
 
@@ -114,7 +116,7 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
             ? FloatingActionButton.extended(
                 onPressed: () => _handleFinishQuiz(b.questions),
                 icon: const Icon(Icons.check_circle),
-                label: const Text('Finish Quiz'),
+                label: Text(l10n.quizDetailFinish),
               )
             : null,
         orElse: () => null,
@@ -140,24 +142,26 @@ class _ScoreHeader extends StatelessWidget {
     required this.theme,
   });
 
-  String _formatDate(DateTime dt) {
+  String _formatDate(DateTime dt, BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final date = DateTime(dt.year, dt.month, dt.day);
     final diff = today.difference(date).inDays;
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
+    if (diff == 0) return l10n.quizDetailToday;
+    if (diff == 1) return l10n.quizDetailYesterday;
     if (dt.year == now.year) return DateFormat('MMM d').format(dt);
     return DateFormat('MMM d, y').format(dt);
   }
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          _formatDate(quiz.createdAt),
+          _formatDate(quiz.createdAt, context),
           style: theme.textTheme.bodySmall?.copyWith(
             color: scheme.onSurfaceVariant,
           ),
@@ -170,7 +174,7 @@ class _ScoreHeader extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    '$total Questions',
+                    l10n.quizDetailQuestionsCount(total),
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w800,
                       color: scheme.primary,
@@ -178,7 +182,7 @@ class _ScoreHeader extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '$answered answered',
+                    l10n.quizDetailAnswered(answered),
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),

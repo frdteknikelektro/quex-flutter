@@ -12,6 +12,7 @@ import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/quex_ui.dart';
 import 'material_actions.dart';
 
@@ -31,6 +32,7 @@ class MaterialDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
     final materialsAsync = ref.watch(materialsProvider(sessionId));
 
     return materialsAsync.when(
@@ -39,7 +41,7 @@ class MaterialDetailScreen extends ConsumerWidget {
       ),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
-        body: Center(child: Text('Could not load material: $e')),
+        body: Center(child: Text(l10n.materialDetailCouldNotLoad(e.toString()))),
       ),
       data: (materials) {
         StudyMaterial? material;
@@ -53,7 +55,7 @@ class MaterialDetailScreen extends ConsumerWidget {
         if (material == null) {
           return Scaffold(
             appBar: AppBar(),
-            body: const Center(child: Text('Material not found')),
+            body: Center(child: Text(l10n.materialDetailNotFound)),
           );
         }
 
@@ -77,11 +79,12 @@ class _MaterialMenu extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l10n = AppLocalizations.of(context)!;
     return PopupMenuButton<String>(
       icon: Icon(Icons.more_vert, color: iconColor),
-      itemBuilder: (_) => const [
-        PopupMenuItem(value: 'rename', child: Text('Rename')),
-        PopupMenuItem(value: 'delete', child: Text('Delete')),
+      itemBuilder: (_) => [
+        PopupMenuItem(value: 'rename', child: Text(l10n.edit)),
+        PopupMenuItem(value: 'delete', child: Text(l10n.delete)),
       ],
       onSelected: (value) async {
         if (value == 'rename') {
@@ -156,6 +159,7 @@ class _TextViewState extends ConsumerState<_TextView> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -166,7 +170,7 @@ class _TextViewState extends ConsumerState<_TextView> {
               onPressed: _saving ? null : _handleCancel,
             ),
             title: Text(
-              'Editing',
+              l10n.materialDetailEditing,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
               ),
@@ -185,7 +189,7 @@ class _TextViewState extends ConsumerState<_TextView> {
                 TextButton(
                   onPressed: _handleSave,
                   child: Text(
-                    'Save',
+                    l10n.save,
                     style: TextStyle(
                       color: scheme.primary,
                       fontWeight: FontWeight.w700,
@@ -206,7 +210,7 @@ class _TextViewState extends ConsumerState<_TextView> {
             actions: [
               IconButton(
                 icon: const Icon(Icons.edit_outlined),
-                tooltip: 'Edit',
+                tooltip: l10n.edit,
                 onPressed: _enterEditMode,
               ),
               _MaterialMenu(material: widget.material),
@@ -232,7 +236,7 @@ class _TextViewState extends ConsumerState<_TextView> {
                       height: 1.6,
                     ),
                     decoration: InputDecoration(
-                      hintText: 'Start writing…',
+                      hintText: l10n.materialDetailStartWriting,
                       hintStyle: theme.textTheme.bodyLarge?.copyWith(
                         color: scheme.onSurfaceVariant,
                         height: 1.6,
@@ -259,7 +263,7 @@ class _TextViewState extends ConsumerState<_TextView> {
                 const SizedBox(height: Sp.md),
                 MathMarkdownBody(
                   data: widget.material.content.isEmpty
-                      ? '_No content yet. Tap ✏️ to add notes._'
+                      ? l10n.materialDetailNoContent
                       : widget.material.content,
                   textStyle: theme.textTheme.bodyMedium
                       ?.copyWith(color: scheme.onSurface),
@@ -309,10 +313,11 @@ class _PhotoViewState extends State<_PhotoView> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     if (_paths.isEmpty) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(child: Text('No images found')),
+        body: Center(child: Text(l10n.materialDetailNoImages)),
       );
     }
 
@@ -498,19 +503,20 @@ class _DocumentViewState extends State<_DocumentView> {
   }
 
   Future<void> _openExternally() async {
+    final l10n = AppLocalizations.of(context)!;
     if (_opening) return;
     setState(() => _opening = true);
     try {
       final result = await OpenFilex.open(_path);
       if (result.type != ResultType.done && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open file: ${result.message}')),
+          SnackBar(content: Text(l10n.materialDetailCouldNotOpenFile(result.message))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not open file: $e')),
+          SnackBar(content: Text(l10n.materialDetailCouldNotOpenFile(e.toString()))),
         );
       }
     } finally {
@@ -520,6 +526,7 @@ class _DocumentViewState extends State<_DocumentView> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final file = File(_path);
@@ -603,14 +610,14 @@ class _DocumentViewState extends State<_DocumentView> {
                             )
                           : const Icon(Icons.open_in_new),
                       label: Text(
-                        _opening ? 'Opening…' : 'Open in external app',
+                        _opening ? l10n.materialDetailOpening : l10n.materialDetailOpenExternal,
                       ),
                     ),
                   ),
                   if (!exists) ...[
                     const SizedBox(height: Sp.sm),
                     Text(
-                      'File missing on disk. It may have been removed.',
+                      l10n.materialDetailFileMissing,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: scheme.error,
@@ -623,12 +630,12 @@ class _DocumentViewState extends State<_DocumentView> {
             const SizedBox(height: Sp.md),
             _DetailRow(
               icon: Icons.calendar_today_outlined,
-              label: 'Added',
+              label: l10n.materialDetailAdded,
               value: createdOn,
             ),
             _DetailRow(
               icon: Icons.folder_outlined,
-              label: 'Location',
+              label: l10n.materialDetailLocation,
               value: _path,
               mono: true,
             ),
@@ -701,6 +708,7 @@ class _MetaRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
     final dateLabel = DateFormat.yMMMMd().format(material.createdAt);
     final wordCount = material.content
@@ -714,7 +722,7 @@ class _MetaRow extends StatelessWidget {
         Icon(Icons.edit_note, size: 18, color: scheme.onSurfaceVariant),
         const SizedBox(width: 6),
         Text(
-          '$wordCount words  ·  $dateLabel',
+          '${l10n.materialDetailWords(wordCount)}  ·  $dateLabel',
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: scheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,

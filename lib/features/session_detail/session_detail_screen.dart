@@ -7,6 +7,7 @@ import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/quex_ui.dart';
 import '../processing/quiz_generation_modal.dart';
 
@@ -110,6 +111,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final bundleAsync = ref.watch(sessionBundleProvider(widget.sessionId));
 
     return bundleAsync.when(
@@ -117,24 +119,24 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
         body: Center(child: CircularProgressIndicator()),
       ),
       error: (error, _) => Scaffold(
-        body: Center(child: Text('Failed to load session: $error')),
+        body: Center(child: Text(l10n.sessionDetailFailedToLoad(error.toString()))),
       ),
       data: (bundle) {
         if (bundle == null) {
-          return const Scaffold(
-            body: Center(child: Text('Session not found')),
+          return Scaffold(
+            body: Center(child: Text(l10n.sessionDetailNotFound)),
           );
         }
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Session'),
+            title: Text(l10n.session),
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: TextButton(
                   onPressed: () => _showEditBottomSheet(bundle.session),
-                  child: const Text('Edit'),
+                  child: Text(l10n.edit),
                 ),
               ),
             ],
@@ -143,7 +145,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
               ? FloatingActionButton.extended(
                   onPressed: _openQuizGenerationModal,
                   icon: const Icon(Icons.auto_fix_high),
-                  label: const Text('Generate quiz'),
+                  label: Text(l10n.sessionDetailGenerateQuiz),
                 )
               : null,
           body: SingleChildScrollView(
@@ -190,6 +192,7 @@ class _SessionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final session = bundle.session;
@@ -204,7 +207,7 @@ class _SessionHeader extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Grade ${session.gradeOverride}  •  ${DateFormat.yMMMMd().format(session.createdAt)}',
+                l10n.sessionDetailGradeAndDate(session.gradeOverride, DateFormat.yMMMMd().format(session.createdAt)),
                 style: theme.textTheme.bodyLarge?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -264,12 +267,13 @@ class _NavigationCardState extends State<_NavigationCard> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final scheme = Theme.of(context).colorScheme;
     final subtitle = widget.materialCount == 0
-        ? 'Add notes and references'
+        ? l10n.sessionDetailAddNotes
         : widget.materialCount == 1
-            ? '1 study material'
-            : '${widget.materialCount} study materials';
+            ? l10n.sessionDetailOneMaterial
+            : l10n.sessionDetailMaterialsCount(widget.materialCount);
 
     return Card(
       elevation: 0,
@@ -278,7 +282,7 @@ class _NavigationCardState extends State<_NavigationCard> {
         children: [
           ListTile(
             leading: Icon(Icons.library_books_outlined, color: scheme.primary),
-            title: const Text('Study Materials'),
+            title: Text(l10n.sessionDetailStudyMaterials),
             subtitle: Text(subtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/session/${widget.sessionId}/material'),
@@ -286,8 +290,8 @@ class _NavigationCardState extends State<_NavigationCard> {
           const Divider(height: 1, indent: 16, endIndent: 16),
           ListTile(
             leading: Icon(Icons.chat_bubble_outline, color: scheme.primary),
-            title: const Text('Chat with AI'),
-            subtitle: const Text('Ask questions about your notes'),
+            title: Text(l10n.sessionDetailChatWithAI),
+            subtitle: Text(l10n.sessionDetailChatSubtitle),
             trailing: const Icon(Icons.chevron_right),
             onTap: _onChatTap,
           ),
@@ -322,6 +326,7 @@ class _ChatMaterialPickerSheetState extends State<_ChatMaterialPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -356,14 +361,14 @@ class _ChatMaterialPickerSheetState extends State<_ChatMaterialPickerSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Which materials to chat about?',
+                  l10n.sessionDetailWhichMaterials,
                   style: theme.textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Quex will use only these in the conversation.',
+                  l10n.sessionDetailQuexWillUse,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -387,9 +392,9 @@ class _ChatMaterialPickerSheetState extends State<_ChatMaterialPickerSheet> {
                   MaterialKind.photo => '🖼️',
                 };
                 final kindLabel = switch (m.kind) {
-                  MaterialKind.text => 'Text',
-                  MaterialKind.document => 'Document',
-                  MaterialKind.photo => 'Photo',
+                  MaterialKind.text => l10n.sessionDetailMaterialKindText,
+                  MaterialKind.document => l10n.sessionDetailMaterialKindDocument,
+                  MaterialKind.photo => l10n.sessionDetailMaterialKindPhoto,
                 };
                 return CheckboxListTile(
                   controlAffinity: ListTileControlAffinity.leading,
@@ -429,8 +434,8 @@ class _ChatMaterialPickerSheetState extends State<_ChatMaterialPickerSheet> {
                   : () => Navigator.of(context).pop(_selectedIds.toList()),
               child: Text(
                 _selectedIds.isEmpty
-                    ? 'Select at least one material'
-                    : 'Start chat (${_selectedIds.length})',
+                    ? l10n.sessionDetailSelectAtLeastOne
+                    : l10n.sessionDetailStartChat(_selectedIds.length),
               ),
             ),
           ),
@@ -460,13 +465,14 @@ class _QuizSection extends StatefulWidget {
 class _QuizSectionState extends State<_QuizSection> {
   final _deletedIds = <int>{};
 
-  String _formatQuizDate(DateTime dt) {
+  String _formatQuizDate(DateTime dt, BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final date = DateTime(dt.year, dt.month, dt.day);
     final diff = today.difference(date).inDays;
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
+    if (diff == 0) return l10n.homeToday;
+    if (diff == 1) return l10n.homeYesterday;
     if (dt.year == now.year) return DateFormat('MMM d').format(dt);
     return DateFormat('MMM d, y').format(dt);
   }
@@ -481,6 +487,7 @@ class _QuizSectionState extends State<_QuizSection> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final visible =
@@ -491,7 +498,7 @@ class _QuizSectionState extends State<_QuizSection> {
       children: [
         if (visible.isNotEmpty) ...[
           Text(
-            'Recent Quizzes',
+            l10n.sessionDetailRecentQuizzes,
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
@@ -553,14 +560,14 @@ class _QuizSectionState extends State<_QuizSection> {
                               children: [
                                 Text(
                                   quiz.isCompleted
-                                      ? 'Score ${quiz.score}%'
-                                      : 'In progress',
+                                      ? l10n.sessionDetailScore(quiz.score ?? 0)
+                                      : l10n.sessionDetailInProgress,
                                   style: theme.textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
                                 Text(
-                                  '${quiz.questionCount} questions · ${_formatQuizDate(quiz.createdAt)}',
+                                  '${l10n.sessionDetailQuestionsCount(quiz.questionCount)} · ${_formatQuizDate(quiz.createdAt, context)}',
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: scheme.onSurfaceVariant,
                                   ),
@@ -587,7 +594,7 @@ class _QuizSectionState extends State<_QuizSection> {
           ),
         ] else ...[
           Text(
-            'Add study materials first, then generate a quiz.',
+            l10n.sessionDetailAddMaterialsFirst,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: scheme.onSurfaceVariant,
             ),
@@ -610,6 +617,7 @@ class _QuizEmptyState extends StatefulWidget {
 class _QuizEmptyStateState extends State<_QuizEmptyState> {
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -620,7 +628,7 @@ class _QuizEmptyStateState extends State<_QuizEmptyState> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Ready to make a quiz?',
+              l10n.sessionDetailReadyToMakeQuiz,
               textAlign: TextAlign.center,
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w700,
@@ -633,7 +641,7 @@ class _QuizEmptyStateState extends State<_QuizEmptyState> {
               child: FilledButton.icon(
                 onPressed: widget.onGenerate,
                 icon: const Icon(Icons.auto_fix_high),
-                label: const Text('Generate quiz'),
+                label: Text(l10n.sessionDetailGenerateQuiz),
               ),
             ),
           ],
@@ -704,6 +712,7 @@ class _EditSessionBottomSheetState extends State<_EditSessionBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
@@ -736,7 +745,7 @@ class _EditSessionBottomSheetState extends State<_EditSessionBottomSheet> {
               ),
             ),
             Text(
-              'Edit Session',
+              l10n.sessionDetailEditSession,
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
               ),
@@ -744,14 +753,14 @@ class _EditSessionBottomSheetState extends State<_EditSessionBottomSheet> {
             const SizedBox(height: Sp.xl),
             TextField(
               controller: _titleController,
-              decoration: const InputDecoration(labelText: 'Session title'),
+              decoration: InputDecoration(labelText: l10n.newSessionTitle),
               textCapitalization: TextCapitalization.sentences,
             ),
             const SizedBox(height: Sp.lg),
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Pick an emoji',
+                l10n.newSessionPickEmoji,
                 style: theme.textTheme.labelMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -796,7 +805,7 @@ class _EditSessionBottomSheetState extends State<_EditSessionBottomSheet> {
                 Expanded(
                   child: OutlinedButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
+                    child: Text(l10n.cancel),
                   ),
                 ),
                 const SizedBox(width: Sp.md),
@@ -812,7 +821,7 @@ class _EditSessionBottomSheetState extends State<_EditSessionBottomSheet> {
                               color: Colors.white,
                             ),
                           )
-                        : const Text('Save'),
+                        : Text(l10n.save),
                   ),
                 ),
               ],
