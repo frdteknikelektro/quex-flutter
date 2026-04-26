@@ -485,36 +485,31 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                SegmentedButton<String>(
-                  segments: [
-                    ButtonSegment(
-                      value: '',
-                      label: Text(l10n.languageAuto),
+                DropdownButtonFormField<String>(
+                  value: _selectedLanguage ?? 'en',
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: scheme.surfaceContainerHighest,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
                     ),
-                    ButtonSegment(
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
                       value: 'en',
-                      label: Text(l10n.languageEnglish),
+                      child: Text('English'),
                     ),
-                    ButtonSegment(
+                    DropdownMenuItem(
                       value: 'id',
-                      label: Text(l10n.languageIndonesian),
+                      child: Text('Indonesian'),
                     ),
                   ],
-                  selected: {_selectedLanguage ?? ''},
-                  onSelectionChanged: (Set<String> selected) {
-                    final selectedValue = selected.firstOrNull;
-                    setState(() => _selectedLanguage = selectedValue);
-                    ref.read(languageNotifierProvider.notifier).setLanguage(selectedValue);
+                  onChanged: (value) {
+                    setState(() => _selectedLanguage = value);
+                    ref.read(languageNotifierProvider.notifier).setLanguage(value);
                   },
-                  style: SegmentedButton.styleFrom(
-                    backgroundColor: scheme.surfaceContainerHighest,
-                    foregroundColor: scheme.onSurface,
-                    selectedBackgroundColor: scheme.primaryContainer,
-                    selectedForegroundColor: scheme.onPrimaryContainer,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
                 ),
               ],
             ),
