@@ -1124,6 +1124,36 @@ abstract class AppLocalizations {
   /// **'Ask Quex…'**
   String get chatAskQuexHint;
 
+  /// Label in user bubble when a voice message was sent
+  ///
+  /// In en, this message translates to:
+  /// **'Voice message'**
+  String get chatVoiceMessage;
+
+  /// Tooltip on mic button
+  ///
+  /// In en, this message translates to:
+  /// **'Hold to speak'**
+  String get chatMicHold;
+
+  /// Snackbar when mic permission refused
+  ///
+  /// In en, this message translates to:
+  /// **'Microphone permission denied. Enable it in Settings.'**
+  String get chatMicPermissionDenied;
+
+  /// Snackbar on recording error
+  ///
+  /// In en, this message translates to:
+  /// **'Recording failed. Please try again.'**
+  String get chatMicError;
+
+  /// Placeholder text shown in input field while recording
+  ///
+  /// In en, this message translates to:
+  /// **'Listening...'**
+  String get chatListening;
+
   /// Title for quiz detail screen
   ///
   /// In en, this message translates to:

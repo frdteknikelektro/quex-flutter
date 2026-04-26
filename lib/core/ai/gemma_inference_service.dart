@@ -38,6 +38,7 @@ class GemmaInferenceService {
       maxTokens: maxTokens,
       preferredBackend: preferredBackend,
       supportImage: true,
+      supportAudio: true,
       maxNumImages: 64,
     );
 
@@ -58,6 +59,7 @@ class GemmaInferenceService {
     gemma.ModelType modelType = gemma.ModelType.gemmaIt,
     gemma.PromptDialect promptDialect = gemma.PromptDialect.gemma4,
     bool supportImage = false,
+    bool supportAudio = false,
     bool isThinking = false,
     List<gemma.Tool> tools = const [],
     bool supportsFunctionCalls = false,
@@ -78,6 +80,7 @@ class GemmaInferenceService {
       randomSeed: randomSeed,
       topK: topK,
       supportImage: supportImage,
+      supportAudio: supportAudio,
       isThinking: isThinking,
       tools: tools,
       supportsFunctionCalls: supportsFunctionCalls,
@@ -172,6 +175,16 @@ class GemmaInferenceService {
     for (final message in messages) {
       await _chat!.addQueryChunk(message);
     }
+  }
+
+  /// Add an audio-only query to the current session.
+  Future<void> addAudioQuery(Uint8List audioBytes) async {
+    if (_chat == null) {
+      throw StateError('No active chat. Call createSession() first.');
+    }
+    await _chat!.addQueryChunk(
+      gemma.Message.audioOnly(audioBytes: audioBytes, isUser: true),
+    );
   }
 
   /// Add an image query chunk to the current session.

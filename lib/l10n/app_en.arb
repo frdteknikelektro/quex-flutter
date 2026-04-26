@@ -849,6 +849,26 @@
   "@chatAskQuexHint": {
     "description": "Hint text for chat input field"
   },
+  "chatVoiceMessage": "Voice message",
+  "@chatVoiceMessage": {
+    "description": "Label in user bubble when a voice message was sent"
+  },
+  "chatMicHold": "Hold to speak",
+  "@chatMicHold": {
+    "description": "Tooltip on mic button"
+  },
+  "chatMicPermissionDenied": "Microphone permission denied. Enable it in Settings.",
+  "@chatMicPermissionDenied": {
+    "description": "Snackbar when mic permission refused"
+  },
+  "chatMicError": "Recording failed. Please try again.",
+  "@chatMicError": {
+    "description": "Snackbar on recording error"
+  },
+  "chatListening": "Listening...",
+  "@chatListening": {
+    "description": "Placeholder text shown in input field while recording"
+  },
   "quizDetailTitle": "Quiz Questions",
   "@quizDetailTitle": {
     "description": "Title for quiz detail screen"

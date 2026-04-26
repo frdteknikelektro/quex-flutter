@@ -27,6 +27,7 @@ class _StuckGemmaInferenceService extends GemmaInferenceService {
     gemma.ModelType modelType = gemma.ModelType.gemmaIt,
     gemma.PromptDialect promptDialect = gemma.PromptDialect.gemma4,
     bool supportImage = false,
+    bool supportAudio = false,
     bool isThinking = false,
     List<gemma.Tool> tools = const [],
     bool supportsFunctionCalls = false,
@@ -39,7 +40,7 @@ class _StuckGemmaInferenceService extends GemmaInferenceService {
   }
 
   @override
-  Future<void> addTextQuery(String message, {bool noTool = false}) async {
+  Future<void> addTextQuery(String message, {bool noTool = false, bool prefix = false}) async {
     addTextQueryCalls++;
   }
 
@@ -70,6 +71,7 @@ class _QueuedGemmaInferenceService extends GemmaInferenceService {
     gemma.ModelType modelType = gemma.ModelType.gemmaIt,
     gemma.PromptDialect promptDialect = gemma.PromptDialect.gemma4,
     bool supportImage = false,
+    bool supportAudio = false,
     bool isThinking = false,
     List<gemma.Tool> tools = const [],
     bool supportsFunctionCalls = false,
@@ -80,7 +82,7 @@ class _QueuedGemmaInferenceService extends GemmaInferenceService {
   }
 
   @override
-  Future<void> addTextQuery(String message, {bool noTool = false}) async {
+  Future<void> addTextQuery(String message, {bool noTool = false, bool prefix = false}) async {
     textQueries.add(message);
   }
 

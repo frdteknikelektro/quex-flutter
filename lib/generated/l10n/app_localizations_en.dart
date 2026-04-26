@@ -590,6 +590,22 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatAskQuexHint => 'Ask Quex…';
 
   @override
+  String get chatVoiceMessage => 'Voice message';
+
+  @override
+  String get chatMicHold => 'Hold to speak';
+
+  @override
+  String get chatMicPermissionDenied =>
+      'Microphone permission denied. Enable it in Settings.';
+
+  @override
+  String get chatMicError => 'Recording failed. Please try again.';
+
+  @override
+  String get chatListening => 'Listening...';
+
+  @override
   String get quizDetailTitle => 'Quiz Questions';
 
   @override

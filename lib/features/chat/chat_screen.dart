@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -15,10 +18,11 @@ import '../../core/ai/gemma_service_host.dart';
 import '../../core/ai/gemma_session_service.dart';
 import '../../core/ai/quex_ai.dart';
 import '../../core/ai/tutor_event.dart';
-import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../generated/l10n/app_localizations.dart';
+
+const String _kVoiceSentinel = '__voice__';
 
 class ChatScreen extends ConsumerStatefulWidget {
   final int sessionId;
@@ -52,6 +56,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _coachSessionInitialized = false;
   bool _coachSessionInitializing = false;
 
+  // Audio recording
+  final AudioRecorder _recorder = AudioRecorder();
+  bool _isRecording = false;
+  DateTime? _recordingStartTime;
+  static const String _voiceSentinel = _kVoiceSentinel;
+
+  // In-memory message list — no DB persistence
+  final List<ChatMessage> _messages = [];
+  bool _openerFired = false;
+
   @override
   void initState() {
     super.initState();
@@ -59,7 +73,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       service: widget.gemmaServiceFactory?.call(),
     );
     unawaited(_warmModel());
-    unawaited(_resetChat());
   }
 
   @override
@@ -68,6 +81,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _controller.dispose();
     _scrollController.dispose();
     unawaited(_gemmaHost.dispose());
+    unawaited(_recorder.dispose());
     super.dispose();
   }
 
@@ -121,10 +135,114 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  Future<void> _resetChat() async {
-    await ChatDAO().deleteBySession(widget.sessionId);
-    ref.invalidate(chatMessagesProvider(widget.sessionId));
-    ref.invalidate(sessionBundleProvider(widget.sessionId));
+  Future<void> _resetChat(
+    SessionBundle bundle,
+    List<StudyMaterial> chatMaterials,
+  ) async {
+    await _streamSub?.cancel();
+    _streamSub = null;
+    if (mounted) {
+      setState(() {
+        _messages.clear();
+        _coachSessionInitialized = false;
+        _coachSessionInitializing = false;
+        _sessionService = null;
+        _sending = false;
+        _streamingContent = null;
+        _thinkingContent = null;
+        _openerFired = false;
+      });
+    }
+    unawaited(_fireOpener(bundle, chatMaterials));
+  }
+
+  Future<void> _fireOpener(
+    SessionBundle bundle,
+    List<StudyMaterial> chatMaterials,
+  ) async {
+    if (_openerFired) return;
+    _openerFired = true;
+
+    try {
+      await _ensureModel();
+    } catch (_) {
+      return;
+    }
+    try {
+      await _ensureCoachSession(bundle.session, chatMaterials);
+    } catch (_) {
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _sending = true;
+      _streamingContent = '';
+      _thinkingContent = null;
+      _thinkingExpanded = false;
+    });
+
+    final accumulatedReply = StringBuffer();
+    final accumulatedThinking = StringBuffer();
+
+    try {
+      final stream = _sessionService!.sendCoachMessage(
+        'These are the materials. For now reply with 1 short sentence, wait for other messages.',
+      );
+      await _streamSub?.cancel();
+      final completer = Completer<void>();
+
+      _streamSub = stream.listen(
+        (event) {
+          if (!mounted) return;
+          if (event is TutorThinking) {
+            accumulatedThinking.write(event.token);
+            setState(() => _thinkingContent = accumulatedThinking.toString());
+          } else if (event is TutorReply) {
+            accumulatedReply.write(event.token);
+            setState(() => _streamingContent = accumulatedReply.toString());
+            _scrollToBottom();
+          }
+        },
+        onDone: () => completer.complete(),
+        onError: (e) => completer.completeError(e),
+        cancelOnError: true,
+      );
+
+      await completer.future;
+
+      final reply = accumulatedReply.toString();
+      final thinking = accumulatedThinking.toString();
+
+      if (mounted) {
+        setState(() {
+          if (reply.isNotEmpty) {
+            _messages.add(ChatMessage(
+              sessionId: widget.sessionId,
+              role: ChatRole.assistant,
+              content: reply,
+              createdAt: DateTime.now(),
+            ));
+          }
+          _streamingContent = null;
+          _sending = false;
+          _thinkingContent = thinking.isEmpty ? null : thinking;
+          _thinkingExpanded = false;
+        });
+      }
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint('Opener error: $e');
+      if (mounted) {
+        setState(() {
+          _coachSessionInitialized = false;
+          _sessionService = null;
+          _streamingContent = null;
+          _thinkingContent = null;
+          _sending = false;
+        });
+      }
+    }
   }
 
   Future<void> _stopGeneration() async {
@@ -149,6 +267,177 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       }
     });
+  }
+
+  Future<void> _startRecording() async {
+    if (_sending || _isRecording) return;
+    final hasPermission = await _recorder.hasPermission();
+    if (!hasPermission) {
+      if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.chatMicPermissionDenied),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      return;
+    }
+    final dir = await getTemporaryDirectory();
+    final path = '${dir.path}/quex_voice_${DateTime.now().millisecondsSinceEpoch}.wav';
+    await _recorder.start(
+      const RecordConfig(
+        encoder: AudioEncoder.wav,
+        sampleRate: 16000,
+        numChannels: 1,
+      ),
+      path: path,
+    );
+    _recordingStartTime = DateTime.now();
+    if (mounted) setState(() => _isRecording = true);
+  }
+
+  Future<void> _stopAndSendAudio(
+    SessionBundle bundle,
+    List<StudyMaterial> chatMaterials,
+  ) async {
+    final path = await _recorder.stop();
+    if (mounted) setState(() => _isRecording = false);
+
+    final elapsed = _recordingStartTime != null
+        ? DateTime.now().difference(_recordingStartTime!)
+        : Duration.zero;
+    _recordingStartTime = null;
+    if (elapsed.inMilliseconds < 2000) return;
+
+    if (path == null) return;
+
+    final bytes = await File(path).readAsBytes();
+    unawaited(File(path).delete());
+
+    if (bytes.isEmpty) return;
+    await _sendAudioMessage(bytes, bundle, chatMaterials);
+  }
+
+  Future<void> _sendAudioMessage(
+    Uint8List audioBytes,
+    SessionBundle bundle,
+    List<StudyMaterial> chatMaterials,
+  ) async {
+    try {
+      await _ensureModel();
+    } catch (error) {
+      if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.chatCouldNotLoadModel(error.toString())),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      await _ensureCoachSession(bundle.session, chatMaterials);
+    } catch (e) {
+      if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.chatFailedToStartSession),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() {
+      _sending = true;
+      _streamingContent = '';
+      _thinkingContent = null;
+      _thinkingExpanded = false;
+    });
+
+    setState(() {
+      _messages.add(ChatMessage(
+        sessionId: widget.sessionId,
+        role: ChatRole.user,
+        content: _voiceSentinel,
+        createdAt: DateTime.now(),
+      ));
+    });
+    _scrollToBottom();
+
+    final accumulatedReply = StringBuffer();
+    final accumulatedThinking = StringBuffer();
+
+    try {
+      final stream = _sessionService!.sendCoachAudioMessage(audioBytes);
+      await _streamSub?.cancel();
+      final completer = Completer<void>();
+
+      _streamSub = stream.listen(
+        (event) {
+          if (!mounted) return;
+          if (event is TutorThinking) {
+            accumulatedThinking.write(event.token);
+            setState(() => _thinkingContent = accumulatedThinking.toString());
+          } else if (event is TutorReply) {
+            accumulatedReply.write(event.token);
+            setState(() => _streamingContent = accumulatedReply.toString());
+            _scrollToBottom();
+          }
+        },
+        onDone: () => completer.complete(),
+        onError: (e) => completer.completeError(e),
+        cancelOnError: true,
+      );
+
+      await completer.future;
+
+      final reply = accumulatedReply.toString();
+      final thinking = accumulatedThinking.toString();
+
+      if (mounted) {
+        setState(() {
+          if (reply.isNotEmpty) {
+            _messages.add(ChatMessage(
+              sessionId: widget.sessionId,
+              role: ChatRole.assistant,
+              content: reply,
+              createdAt: DateTime.now(),
+            ));
+          }
+          _streamingContent = null;
+          _sending = false;
+          _thinkingContent = thinking.isEmpty ? null : thinking;
+          _thinkingExpanded = false;
+        });
+      }
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint('Coach audio stream error: $e');
+      if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
+        setState(() {
+          _coachSessionInitialized = false;
+          _sessionService = null;
+          _streamingContent = null;
+          _thinkingContent = null;
+          _sending = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.chatSessionInterrupted),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _sendMessage(
@@ -194,17 +483,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _streamingContent = '';
       _thinkingContent = null;
       _thinkingExpanded = false;
+      _messages.add(ChatMessage(
+        sessionId: widget.sessionId,
+        role: ChatRole.user,
+        content: text,
+        createdAt: DateTime.now(),
+      ));
     });
     _controller.clear();
-
-    await ChatDAO().insert(ChatMessage(
-      sessionId: widget.sessionId,
-      role: ChatRole.user,
-      content: text,
-      createdAt: DateTime.now(),
-    ));
-    ref.invalidate(chatMessagesProvider(widget.sessionId));
-    ref.invalidate(sessionBundleProvider(widget.sessionId));
     _scrollToBottom();
 
     final accumulatedReply = StringBuffer();
@@ -238,20 +524,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final reply = accumulatedReply.toString();
       final thinking = accumulatedThinking.toString();
 
-      // Save first, then wait for provider to reload before clearing the
-      // streaming bubble — prevents scroll landing on the user bubble.
-      await ChatDAO().insert(ChatMessage(
-        sessionId: widget.sessionId,
-        role: ChatRole.assistant,
-        content: reply,
-        createdAt: DateTime.now(),
-      ));
-      ref.invalidate(chatMessagesProvider(widget.sessionId));
-      ref.invalidate(sessionBundleProvider(widget.sessionId));
-      await ref.read(sessionBundleProvider(widget.sessionId).future);
-
       if (mounted) {
         setState(() {
+          if (reply.isNotEmpty) {
+            _messages.add(ChatMessage(
+              sessionId: widget.sessionId,
+              role: ChatRole.assistant,
+              content: reply,
+              createdAt: DateTime.now(),
+            ));
+          }
           _streamingContent = null;
           _sending = false;
           _thinkingContent = thinking.isEmpty ? null : thinking;
@@ -302,7 +584,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           );
         }
 
-        final messages = bundle.messages;
+        final messages = _messages;
         final hasThinking = _thinkingContent != null;
         final hasStreaming = _streamingContent != null;
         final isEmpty = messages.isEmpty && !hasThinking && !hasStreaming;
@@ -314,6 +596,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 .toList();
 
         final suggestions = QuexAi.highlights(chatMaterials);
+
+        // Fire opener once when bundle and materials are ready
+        if (!_openerFired) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _fireOpener(bundle, chatMaterials);
+          });
+        }
 
         final chatColumn = Column(
           children: [
@@ -354,6 +643,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               modelLoading: _modelLoading,
               onSend: () => _sendMessage(bundle, chatMaterials),
               onStop: _stopGeneration,
+              isRecording: _isRecording,
+              onMicStart: _startRecording,
+              onMicStop: () => _stopAndSendAudio(bundle, chatMaterials),
               scheme: scheme,
               theme: theme,
             ),
@@ -400,7 +692,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 );
                               },
                             );
-                            if (confirm == true) _resetChat();
+                            if (confirm == true) unawaited(_resetChat(bundle, chatMaterials));
                           },
                     child: Text(l10n.chatReset),
                   ),
@@ -664,12 +956,14 @@ class _MessageList extends StatelessWidget {
                 ),
               ),
               child: isUser
-                  ? Text(
-                      msg.content,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: scheme.onPrimaryContainer,
-                      ),
-                    )
+                  ? (msg.content == _kVoiceSentinel
+                      ? _VoiceMessageBubble(scheme: scheme, theme: theme)
+                      : Text(
+                          msg.content,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onPrimaryContainer,
+                          ),
+                        ))
                   : MathMarkdownBody(
                       data: msg.content,
                       styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
@@ -1001,6 +1295,9 @@ class _InputBar extends StatelessWidget {
   final bool modelLoading;
   final VoidCallback onSend;
   final VoidCallback onStop;
+  final bool isRecording;
+  final VoidCallback onMicStart;
+  final VoidCallback onMicStop;
   final ColorScheme scheme;
   final ThemeData theme;
 
@@ -1010,6 +1307,9 @@ class _InputBar extends StatelessWidget {
     required this.modelLoading,
     required this.onSend,
     required this.onStop,
+    required this.isRecording,
+    required this.onMicStart,
+    required this.onMicStop,
     required this.scheme,
     required this.theme,
   });
@@ -1033,7 +1333,9 @@ class _InputBar extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: TextField(
+              child: isRecording
+                  ? _ListeningField(scheme: scheme, theme: theme)
+                  : TextField(
                 controller: controller,
                 enabled: !sending && !modelLoading,
                 textInputAction: TextInputAction.newline,
@@ -1060,8 +1362,9 @@ class _InputBar extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            AnimatedSwitcher(
+
+            if (!isRecording) const SizedBox(width: 8),
+            if (!isRecording) AnimatedSwitcher(
               duration: const Duration(milliseconds: 200),
               child: modelLoading
                   ? SizedBox(
@@ -1100,9 +1403,147 @@ class _InputBar extends StatelessWidget {
                           ),
                         ),
             ),
+            if (!sending && !modelLoading) ...[
+              const SizedBox(width: 8),
+              _MicButton(
+                isRecording: isRecording,
+                onMicStart: onMicStart,
+                onMicStop: onMicStop,
+                scheme: scheme,
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Mic button ───────────────────────────────────────────────────────────────
+
+class _MicButton extends StatelessWidget {
+  final bool isRecording;
+  final VoidCallback onMicStart;
+  final VoidCallback onMicStop;
+  final ColorScheme scheme;
+
+  const _MicButton({
+    required this.isRecording,
+    required this.onMicStart,
+    required this.onMicStop,
+    required this.scheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onLongPressStart: (_) => onMicStart(),
+      onLongPressEnd: (_) => onMicStop(),
+      onLongPressCancel: onMicStop,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: isRecording ? scheme.errorContainer : scheme.primaryContainer,
+        ),
+        child: Icon(
+          isRecording ? Icons.mic : Icons.mic_none_rounded,
+          color: isRecording ? scheme.onErrorContainer : scheme.primary,
+          size: 22,
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Listening field (recording state) ───────────────────────────────────────
+
+class _ListeningField extends StatefulWidget {
+  final ColorScheme scheme;
+  final ThemeData theme;
+  const _ListeningField({required this.scheme, required this.theme});
+
+  @override
+  State<_ListeningField> createState() => _ListeningFieldState();
+}
+
+class _ListeningFieldState extends State<_ListeningField>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _opacity = Tween<double>(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 44),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+      ),
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: [
+          Icon(Icons.mic, size: 16, color: widget.scheme.primary),
+          const SizedBox(width: 8),
+          FadeTransition(
+            opacity: _opacity,
+            child: Text(
+              l10n.chatMicHold,
+              style: widget.theme.textTheme.bodyMedium?.copyWith(
+                color: widget.scheme.primary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Voice message bubble ─────────────────────────────────────────────────────
+
+class _VoiceMessageBubble extends StatelessWidget {
+  final ColorScheme scheme;
+  final ThemeData theme;
+
+  const _VoiceMessageBubble({required this.scheme, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.mic, size: 16, color: scheme.onPrimaryContainer),
+        const SizedBox(width: 6),
+        Text(
+          l10n.chatVoiceMessage,
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: scheme.onPrimaryContainer,
+          ),
+        ),
+      ],
     );
   }
 }

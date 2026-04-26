@@ -590,6 +590,22 @@ class AppLocalizationsId extends AppLocalizations {
   String get chatAskQuexHint => 'Tanya Quex…';
 
   @override
+  String get chatVoiceMessage => 'Pesan suara';
+
+  @override
+  String get chatMicHold => 'Tahan untuk berbicara';
+
+  @override
+  String get chatMicPermissionDenied =>
+      'Izin mikrofon ditolak. Aktifkan di Pengaturan.';
+
+  @override
+  String get chatMicError => 'Rekaman gagal. Silakan coba lagi.';
+
+  @override
+  String get chatListening => 'Mendengarkan...';
+
+  @override
   String get quizDetailTitle => 'Pertanyaan Kuis';
 
   @override

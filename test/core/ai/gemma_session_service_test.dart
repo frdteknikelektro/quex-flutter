@@ -16,7 +16,7 @@ class _RepeatedTextInferenceService extends GemmaInferenceService {
   bool get hasActiveSession => true;
 
   @override
-  Future<void> addTextQuery(String message, {bool noTool = false}) async {
+  Future<void> addTextQuery(String message, {bool noTool = false, bool prefix = false}) async {
     addTextQueryCalls++;
   }
 
@@ -38,7 +38,7 @@ class _ToolCallTextInferenceService extends GemmaInferenceService {
   bool get hasActiveSession => true;
 
   @override
-  Future<void> addTextQuery(String message, {bool noTool = false}) async {
+  Future<void> addTextQuery(String message, {bool noTool = false, bool prefix = false}) async {
     addTextQueryCalls++;
   }
 
@@ -76,6 +76,7 @@ class _PreloadRecordingInferenceService extends GemmaInferenceService {
     gemma.ModelType modelType = gemma.ModelType.gemmaIt,
     gemma.PromptDialect promptDialect = gemma.PromptDialect.gemma4,
     bool supportImage = false,
+    bool supportAudio = false,
     bool isThinking = false,
     List<gemma.Tool> tools = const [],
     bool supportsFunctionCalls = false,

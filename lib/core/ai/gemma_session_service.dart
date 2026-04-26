@@ -237,6 +237,7 @@ class GemmaSessionService {
       temperature: 0.7,
       topK: 40,
       supportImage: hasImages,
+      supportAudio: true,
       promptDialect: gemma.PromptDialect.gemma4,
       toolChoice: gemma.ToolChoice.auto,
     );
@@ -345,6 +346,50 @@ class GemmaSessionService {
     } finally {
       _debugGemmaAudit(
         label: 'Coach',
+        thinking: thinkingBuffer.toString(),
+        reply: replyBuffer.toString(),
+        toolCalls: toolCalls,
+      );
+    }
+  }
+
+  /// Send an audio-only coach message. Audio bytes must be WAV 16kHz mono 16-bit.
+  Stream<TutorEvent> sendCoachAudioMessage(Uint8List audioBytes) async* {
+    if (!_inference.hasActiveSession) {
+      throw StateError('No active session. Call initCoachSession() first.');
+    }
+
+    final guard = ResponseLoopGuard();
+    final replyBuffer = StringBuffer();
+    final thinkingBuffer = StringBuffer();
+    final toolCalls = <String>[];
+
+    await _inference.addAudioQuery(audioBytes);
+
+    try {
+      await for (final response in _inference.generateResponses()) {
+        if (response is gemma.ThinkingResponse) {
+          thinkingBuffer.write(response.content);
+          yield TutorThinking(response.content);
+        } else if (response is gemma.TextResponse) {
+          replyBuffer.write(response.token);
+          final error = guard.recordTextToken(response.token);
+          if (error != null) {
+            throw StateError(error);
+          }
+          yield TutorReply(response.token);
+        } else if (response is gemma.FunctionCallResponse || response is gemma.ParallelFunctionCallResponse) {
+          final calls = response is gemma.FunctionCallResponse
+              ? [response]
+              : (response as gemma.ParallelFunctionCallResponse).calls;
+          for (final call in calls) {
+            toolCalls.add('${call.name}(${call.args})');
+          }
+        }
+      }
+    } finally {
+      _debugGemmaAudit(
+        label: 'CoachAudio',
         thinking: thinkingBuffer.toString(),
         reply: replyBuffer.toString(),
         toolCalls: toolCalls,
