@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:quex/generated/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
@@ -81,6 +82,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   Widget build(BuildContext context) {
     final downloadState = ref.watch(modelDownloadProvider);
     final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
 
     ref.listen(modelDownloadProvider, (previous, next) {
       if (next.isCompleted && previous?.isCompleted != true) {
@@ -129,7 +131,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                       child: Column(
                         children: [
                           Text(
-                            'Quex',
+                            l10n.appTitle,
                             style: Theme.of(context).textTheme.displayMedium?.copyWith(
                                   fontWeight: FontWeight.w800,
                                   color: scheme.primary,
@@ -138,7 +140,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            'Quick Exam',
+                            l10n.appSubtitle,
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                   color: scheme.onSurfaceVariant,
@@ -146,7 +148,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                                 ),
                           ),
                           Text(
-                            'Practice makes Perfect',
+                            l10n.appTagline,
                             textAlign: TextAlign.center,
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                   color: scheme.onSurfaceVariant,
@@ -191,6 +193,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     ModelDownloadState downloadState,
     ColorScheme scheme,
   ) {
+    final l10n = AppLocalizations.of(context)!;
+
     if (downloadState.isCompleted) {
       return Center(
         key: const ValueKey('ready'),
@@ -198,7 +202,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Ready! 🎉',
+              l10n.ready,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                     color: scheme.primary,
                     fontWeight: FontWeight.w700,
@@ -216,7 +220,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Oops, something went wrong',
+              l10n.oopsSomethingWentWrong,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -227,7 +231,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               onPressed: () =>
                   ref.read(modelDownloadProvider.notifier).retry(),
               icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('Try again'),
+              label: Text(l10n.tryAgain),
               style: TextButton.styleFrom(
                 foregroundColor: scheme.primary,
               ),
@@ -266,7 +270,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           ),
           const SizedBox(height: 12),
           Text(
-            'Downloading brain… $percent% 🧠',
+            l10n.downloadingBrain(percent),
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: scheme.onSurfaceVariant,
                   fontWeight: FontWeight.w600,

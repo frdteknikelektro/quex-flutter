@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:quex/generated/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
@@ -64,6 +65,7 @@ class _CreateFirstProfileScreenState
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: SafeArea(
@@ -77,7 +79,7 @@ class _CreateFirstProfileScreenState
                 children: [
                   const SizedBox(height: Sp.xl),
                   Text(
-                    'Create your profile',
+                    l10n.createFirstProfile,
                     style: theme.textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.w900,
                     ),
@@ -85,7 +87,7 @@ class _CreateFirstProfileScreenState
                   ),
                   const SizedBox(height: Sp.xs),
                   Text(
-                    'Set up your first learner profile to begin.',
+                    l10n.letsGetStarted,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -126,8 +128,8 @@ class _CreateFirstProfileScreenState
                   const SizedBox(height: Sp.lg),
                   TextField(
                     controller: _nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Name',
+                    decoration: InputDecoration(
+                      labelText: l10n.name,
                       hintText: 'e.g. Alice',
                     ),
                     textCapitalization: TextCapitalization.words,
@@ -135,20 +137,19 @@ class _CreateFirstProfileScreenState
                   const SizedBox(height: Sp.md),
                   DropdownButtonFormField<int>(
                     initialValue: _grade,
-                    decoration: const InputDecoration(labelText: 'Grade'),
+                    decoration: InputDecoration(labelText: l10n.grade),
                     items: List.generate(
                       12,
                       (index) => DropdownMenuItem(
                         value: index + 1,
-                        child: Text('Grade ${index + 1}'),
+                        child: Text('${l10n.grade} ${index + 1}'),
                       ),
                     ),
-                    onChanged: (value) =>
-                        setState(() => _grade = value ?? _grade),
+                    onChanged: (value) => setState(() => _grade = value ?? _grade),
                   ),
                   const SizedBox(height: Sp.md),
                   Text(
-                    'Default questions per quiz',
+                    l10n.defaultQuestionsPerQuiz,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -174,7 +175,7 @@ class _CreateFirstProfileScreenState
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.arrow_forward),
-                    label: const Text('Create & Start Studying'),
+                    label: Text(l10n.createAndStartStudying),
                   ),
                   const SizedBox(height: Sp.xl),
                 ],

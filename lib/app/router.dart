@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:quex/generated/l10n/app_localizations.dart';
 
 import '../app/breakpoints.dart';
 import '../core/ai/download_state.dart';
@@ -208,13 +209,14 @@ class _AppShellState extends ConsumerState<_AppShell> {
               loading: () => true,
               error: (_, __) => true,
             );
+    final l10n = AppLocalizations.of(context)!;
 
     String getTitle() {
       switch (_currentIndex) {
         case 0:
           return '🦆 Quex';
         case 1:
-          return 'Profile';
+          return l10n.profile;
         default:
           return 'Quex';
       }
@@ -236,7 +238,7 @@ class _AppShellState extends ConsumerState<_AppShell> {
         return FloatingActionButton.extended(
           onPressed: () => context.push(Routes.newSession),
           icon: const Icon(Icons.add),
-          label: const Text('New session'),
+          label: Text(l10n.newSession),
         );
       }
       return null;
@@ -272,16 +274,16 @@ class _AppShellState extends ConsumerState<_AppShell> {
           ? NavigationBar(
               selectedIndex: _currentIndex,
               onDestinationSelected: (i) => setState(() => _currentIndex = i),
-              destinations: const [
+              destinations: [
                 NavigationDestination(
-                  icon: Icon(Icons.home_outlined),
-                  selectedIcon: Icon(Icons.home),
-                  label: 'Home',
+                  icon: const Icon(Icons.home_outlined),
+                  selectedIcon: const Icon(Icons.home),
+                  label: l10n.home,
                 ),
                 NavigationDestination(
-                  icon: Icon(Icons.person_outline),
-                  selectedIcon: Icon(Icons.person),
-                  label: 'Profile',
+                  icon: const Icon(Icons.person_outline),
+                  selectedIcon: const Icon(Icons.person),
+                  label: l10n.profile,
                 ),
               ],
             )
@@ -298,16 +300,16 @@ class _AppShellState extends ConsumerState<_AppShell> {
                 onDestinationSelected: (i) => setState(() => _currentIndex = i),
                 labelType: NavigationRailLabelType.all,
                 minWidth: 88,
-                destinations: const [
+                destinations: [
                   NavigationRailDestination(
-                    icon: Icon(Icons.home_outlined),
-                    selectedIcon: Icon(Icons.home),
-                    label: Text('Home'),
+                    icon: const Icon(Icons.home_outlined),
+                    selectedIcon: const Icon(Icons.home),
+                    label: Text(l10n.home),
                   ),
                   NavigationRailDestination(
-                    icon: Icon(Icons.person_outline),
-                    selectedIcon: Icon(Icons.person),
-                    label: Text('Profile'),
+                    icon: const Icon(Icons.person_outline),
+                    selectedIcon: const Icon(Icons.person),
+                    label: Text(l10n.profile),
                   ),
                 ],
               ),
@@ -357,6 +359,7 @@ class _DownloadBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context)!;
     final isCancelling = status == DownloadStatus.cancelling;
     final percent = (progress * 100).round();
 
@@ -380,8 +383,8 @@ class _DownloadBanner extends StatelessWidget {
                 children: [
                   Text(
                     isCancelling
-                        ? 'Cancelling…'
-                        : 'Downloading model  $percent%',
+                        ? l10n.cancelling
+                        : l10n.downloadingModel(percent.toString()),
                     style: Theme.of(context).textTheme.labelMedium?.copyWith(
                           color: scheme.onSecondaryContainer,
                           fontWeight: FontWeight.w600,
@@ -410,7 +413,7 @@ class _DownloadBanner extends StatelessWidget {
                   size: 18,
                   color: scheme.onSecondaryContainer,
                 ),
-                tooltip: 'Cancel download',
+                tooltip: l10n.cancelDownload,
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),

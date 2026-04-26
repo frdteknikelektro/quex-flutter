@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:quex/generated/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
@@ -138,6 +139,7 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final profilesAsync = ref.watch(profilesProvider);
+    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: profilesAsync.when(
@@ -164,7 +166,7 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
                     child: Column(
                       children: [
                         Text(
-                          'Who\'s studying?',
+                          l10n.whoStudying,
                           style: theme.textTheme.displaySmall?.copyWith(
                             fontWeight: FontWeight.w800,
                             color: scheme.primary,
@@ -173,7 +175,7 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Pick your profile to start learning! 🚀',
+                          l10n.pickProfile,
                           style: theme.textTheme.bodyLarge?.copyWith(
                             color: scheme.onSurfaceVariant,
                             fontWeight: FontWeight.w500,
@@ -424,6 +426,7 @@ class _AddProfileCardState extends State<_AddProfileCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context)!;
 
     return GestureDetector(
       onTapDown: _onTapDown,
@@ -461,7 +464,7 @@ class _AddProfileCardState extends State<_AddProfileCard> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Add New Profile',
+                    l10n.addNewProfile,
                     style: theme.textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w700,
                       color: scheme.onSurfaceVariant,
@@ -659,6 +662,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context)!;
 
     // Dynamic background color based on emoji
     final quexColors = theme.extension<QuexColors>();
@@ -705,7 +709,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: Sp.md),
                         child: Text(
-                          widget.profile == null ? 'Add New Profile' : 'Edit Profile',
+                          widget.profile == null ? l10n.addNewProfile : l10n.editProfile,
                           style: theme.textTheme.headlineSmall?.copyWith(
                             fontWeight: FontWeight.w800,
                           ),
@@ -762,9 +766,9 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                         padding: const EdgeInsets.symmetric(horizontal: Sp.md),
                         child: TextField(
                           controller: widget.nameController,
-                          decoration: const InputDecoration(
-                            labelText: 'Name',
-                            hintText: 'What should we call you?',
+                          decoration: InputDecoration(
+                            labelText: l10n.name,
+                            hintText: l10n.whatCallYou,
                           ),
                           textCapitalization: TextCapitalization.words,
                         ),
@@ -788,7 +792,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Pick a character',
+                              l10n.pickCharacter,
                               style: theme.textTheme.labelMedium?.copyWith(
                                 color: scheme.onSurfaceVariant,
                               ),
@@ -830,12 +834,12 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                         padding: const EdgeInsets.symmetric(horizontal: Sp.md),
                         child: DropdownButtonFormField<int>(
                           value: _grade,
-                          decoration: const InputDecoration(labelText: 'Grade Level'),
+                          decoration: InputDecoration(labelText: l10n.gradeLevel),
                           items: List.generate(
                             12,
                             (index) => DropdownMenuItem(
                               value: index + 1,
-                              child: Text('Grade ${index + 1}'),
+                              child: Text('${l10n.grade} ${index + 1}'),
                             ),
                           ),
                           onChanged: (value) =>
@@ -865,7 +869,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                                   widget.nameController.dispose();
                                   Navigator.of(context).pop();
                                 },
-                                child: const Text('Cancel'),
+                                child: Text(l10n.cancel),
                               ),
                             ),
                             const SizedBox(width: Sp.md),
@@ -881,7 +885,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                                           color: Colors.white,
                                         ),
                                       )
-                                    : const Text('Save'),
+                                    : Text(l10n.save),
                               ),
                             ),
                           ],

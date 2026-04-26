@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:quex/generated/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
@@ -7,6 +8,7 @@ import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../core/state/language_state.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -195,6 +197,7 @@ class _ProfileHeroCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final quexColors = theme.extension<QuexColors>();
+    final l10n = AppLocalizations.of(context)!;
 
     // Dynamic background color based on emoji (matches profile_selection_screen.dart)
     final bgColors = [
@@ -272,7 +275,7 @@ class _ProfileHeroCard extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: onEdit,
                     icon: const Icon(Icons.edit_outlined, size: 18),
-                    label: const Text('Edit'),
+                    label: Text(l10n.edit),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -280,7 +283,7 @@ class _ProfileHeroCard extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: onSwitchProfile,
                     icon: const Icon(Icons.switch_account_outlined, size: 18),
-                    label: const Text('Switch'),
+                    label: Text(l10n.switchButton),
                   ),
                 ),
               ],
@@ -304,26 +307,32 @@ class _SettingsListCard extends ConsumerStatefulWidget {
 class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
   bool _clearingSessions = false;
   bool _deleting = false;
+  String? _selectedLanguage;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedLanguage = ref.read(languageNotifierProvider);
+  }
 
   Future<void> _clearAllSessions() async {
+    final l10n = AppLocalizations.of(context)!;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear all sessions?'),
-        content: const Text(
-          'This will permanently delete all study sessions, materials, quizzes, and chat history for this profile.',
-        ),
+        title: Text(l10n.clearAllSessionsQuestion),
+        content: Text(l10n.clearAllSessionsConfirm),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
-            child: const Text('Clear'),
+            child: Text(l10n.clear),
           ),
         ],
       ),
@@ -337,7 +346,7 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
       if (mounted) {
         ref.invalidate(recentSessionsProvider(widget.profile.id!));
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All sessions cleared')),
+          SnackBar(content: Text(l10n.allSessionsCleared)),
         );
       }
     } finally {
@@ -346,66 +355,65 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
   }
 
   Future<void> _deleteProfile() async {
+    final l10n = AppLocalizations.of(context)!;
     final profileName = widget.profile.name;
     final controller = TextEditingController();
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Row(
-            children: [
-              Icon(Icons.warning_rounded, color: Theme.of(context).colorScheme.error),
-              const SizedBox(width: 8),
-              const Text('Delete profile?'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'This will permanently delete "$profileName" and ALL associated data.',
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Type the profile name to confirm:',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: controller,
-                decoration: InputDecoration(
-                  hintText: profileName,
-                  filled: true,
-                  fillColor: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.3),
-                ),
-                autofocus: true,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_rounded, color: Theme.of(context).colorScheme.error),
+            const SizedBox(width: 8),
+            Text(l10n.deleteProfileQuestion),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              l10n.deleteProfileConfirm(profileName),
             ),
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: controller,
-              builder: (context, value, child) {
-                final canDelete = value.text.trim() == profileName;
-                return FilledButton(
-                  onPressed: canDelete ? () => Navigator.pop(context, true) : null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Theme.of(context).colorScheme.error,
-                    foregroundColor: Theme.of(context).colorScheme.onError,
-                  ),
-                  child: const Text('Delete'),
-                );
-              },
+            const SizedBox(height: 16),
+            Text(
+              l10n.typeProfileName,
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: profileName,
+                filled: true,
+                fillColor: Theme.of(context).colorScheme.errorContainer.withValues(alpha: 0.3),
+              ),
+              autofocus: true,
             ),
           ],
-        );
-      },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(l10n.cancel),
+          ),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, child) {
+              final canDelete = value.text.trim() == profileName;
+              return FilledButton(
+                onPressed: canDelete ? () => Navigator.pop(context, true) : null,
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(context).colorScheme.error,
+                  foregroundColor: Theme.of(context).colorScheme.onError,
+                ),
+                child: Text(l10n.delete),
+              );
+            },
+          ),
+        ],
+      ),
     );
 
     if (confirmed != true) return;
@@ -428,6 +436,7 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context)!;
 
     return Column(
       children: [
@@ -441,7 +450,7 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
               final count = snapshot.data ?? 0;
               return ListTile(
                 leading: Icon(Icons.auto_stories_outlined, color: scheme.primary),
-                title: const Text('Total sessions'),
+                title: Text(l10n.totalSessions),
                 trailing: Text(
                   '$count',
                   style: theme.textTheme.titleMedium?.copyWith(
@@ -454,6 +463,64 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
           ),
         ),
         const SizedBox(height: 16),
+        // Language card
+        Card(
+          elevation: 0,
+          color: scheme.surfaceContainerLow,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.language_outlined, color: scheme.onSurfaceVariant),
+                    const SizedBox(width: 12),
+                    Text(
+                      l10n.language,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SegmentedButton<String>(
+                  segments: [
+                    ButtonSegment(
+                      value: '',
+                      label: Text(l10n.languageAuto),
+                    ),
+                    ButtonSegment(
+                      value: 'en',
+                      label: Text(l10n.languageEnglish),
+                    ),
+                    ButtonSegment(
+                      value: 'id',
+                      label: Text(l10n.languageIndonesian),
+                    ),
+                  ],
+                  selected: {_selectedLanguage ?? ''},
+                  onSelectionChanged: (Set<String> selected) {
+                    final selectedValue = selected.firstOrNull;
+                    setState(() => _selectedLanguage = selectedValue);
+                    ref.read(languageNotifierProvider.notifier).setLanguage(selectedValue);
+                  },
+                  style: SegmentedButton.styleFrom(
+                    backgroundColor: scheme.surfaceContainerHighest,
+                    foregroundColor: scheme.onSurface,
+                    selectedBackgroundColor: scheme.primaryContainer,
+                    selectedForegroundColor: scheme.onPrimaryContainer,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
         // Actions card
         Card(
           elevation: 0,
@@ -463,8 +530,8 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
               // Clear sessions (neutral)
               ListTile(
                 leading: Icon(Icons.folder_delete_outlined, color: scheme.onSurfaceVariant),
-                title: const Text('Clear all sessions'),
-                subtitle: const Text('Remove all study data'),
+                title: Text(l10n.clearAllSessions),
+                subtitle: Text(l10n.removeStudyData),
                 trailing: _clearingSessions
                     ? const SizedBox(
                         width: 20,
@@ -479,11 +546,11 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
               ListTile(
                 leading: Icon(Icons.delete_forever, color: scheme.error),
                 title: Text(
-                  'Delete profile',
+                  l10n.deleteProfile,
                   style: TextStyle(color: scheme.error),
                 ),
                 subtitle: Text(
-                  'Remove "${widget.profile.name}" and all data',
+                  l10n.removeProfileData(widget.profile.name),
                   style: TextStyle(color: scheme.onSurfaceVariant),
                 ),
                 trailing: _deleting
@@ -601,6 +668,7 @@ class _EditProfileBottomSheetState extends State<_EditProfileBottomSheet>
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final quexColors = theme.extension<QuexColors>();
+    final l10n = AppLocalizations.of(context)!;
 
     // Dynamic background color based on emoji
     final bgColors = [
@@ -637,7 +705,7 @@ class _EditProfileBottomSheetState extends State<_EditProfileBottomSheet>
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Text(
-                  'Edit Profile',
+                  l10n.editProfile,
                   style: theme.textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -669,9 +737,9 @@ class _EditProfileBottomSheetState extends State<_EditProfileBottomSheet>
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: TextField(
                   controller: widget.nameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Name',
-                    hintText: 'What should we call you?',
+                  decoration: InputDecoration(
+                    labelText: l10n.name,
+                    hintText: l10n.whatCallYou,
                   ),
                   textCapitalization: TextCapitalization.words,
                 ),
@@ -684,7 +752,7 @@ class _EditProfileBottomSheetState extends State<_EditProfileBottomSheet>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Pick a character',
+                      l10n.pickCharacter,
                       style: theme.textTheme.labelMedium?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
@@ -718,12 +786,12 @@ class _EditProfileBottomSheetState extends State<_EditProfileBottomSheet>
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: DropdownButtonFormField<int>(
                   initialValue: _grade,
-                  decoration: const InputDecoration(labelText: 'Grade Level'),
+                  decoration: InputDecoration(labelText: l10n.gradeLevel),
                   items: List.generate(
                     12,
                     (index) => DropdownMenuItem(
                       value: index + 1,
-                      child: Text('Grade ${index + 1}'),
+                      child: Text('${l10n.grade} ${index + 1}'),
                     ),
                   ),
                   onChanged: (value) => setState(() => _grade = value ?? _grade),
@@ -738,10 +806,10 @@ class _EditProfileBottomSheetState extends State<_EditProfileBottomSheet>
                     Expanded(
                       child: OutlinedButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Cancel'),
+                        child: Text(l10n.cancel),
                       ),
                     ),
-                    const SizedBox(width: 16),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: FilledButton(
                         onPressed: _saving ? null : _handleSave,
@@ -749,12 +817,9 @@ class _EditProfileBottomSheetState extends State<_EditProfileBottomSheet>
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
+                                child: CircularProgressIndicator(strokeWidth: 2),
                               )
-                            : const Text('Save'),
+                            : Text(l10n.save),
                       ),
                     ),
                   ],

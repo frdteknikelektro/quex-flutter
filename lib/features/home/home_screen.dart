@@ -177,15 +177,17 @@ class _SessionTile extends StatelessWidget {
 
   const _SessionTile({required this.session});
 
-  String _formatDate(DateTime dt) {
+  String _formatDate(DateTime dt, BuildContext context) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final date = DateTime(dt.year, dt.month, dt.day);
     final diff = today.difference(date).inDays;
+    final locale = Localizations.localeOf(context).toString();
+    
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yesterday';
-    if (dt.year == now.year) return DateFormat('MMM d').format(dt);
-    return DateFormat('MMM d, y').format(dt);
+    if (dt.year == now.year) return DateFormat('MMM d', locale).format(dt);
+    return DateFormat('MMM d, y', locale).format(dt);
   }
 
   @override
@@ -230,7 +232,7 @@ class _SessionTile extends StatelessWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _formatDate(session.createdAt),
+                      _formatDate(session.createdAt, context),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),

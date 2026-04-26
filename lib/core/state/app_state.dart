@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../db/daos.dart';
 import '../models/models.dart';
+import 'language_state.dart';
 
 const activeProfileIdKey = 'active_profile_id';
 

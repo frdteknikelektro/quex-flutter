@@ -1,0 +1,276 @@
+{
+  "@@locale": "en",
+  "appTitle": "Quex",
+  "@appTitle": {
+    "description": "App name displayed on splash screen"
+  },
+  "appSubtitle": "Quick Exam",
+  "@appSubtitle": {
+    "description": "App subtitle on splash screen"
+  },
+  "appTagline": "Practice makes Perfect",
+  "@appTagline": {
+    "description": "Slogan on splash screen"
+  },
+  "ready": "Ready! 🎉",
+  "@ready": {
+    "description": "Success message when model download is complete"
+  },
+  "downloadingBrain": "Downloading brain… {percent}% 🧠",
+  "@downloadingBrain": {
+    "description": "Download progress message with percentage",
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "oopsSomethingWentWrong": "Oops, something went wrong",
+  "@oopsSomethingWentWrong": {
+    "description": "Error message on splash screen"
+  },
+  "tryAgain": "Try again",
+  "@tryAgain": {
+    "description": "Button to retry after error"
+  },
+  "cancelling": "Cancelling…",
+  "@cancelling": {
+    "description": "Cancelling action text"
+  },
+  "downloadingModel": "Downloading model  {percent}%",
+  "@downloadingModel": {
+    "description": "Model download progress",
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "cancelDownload": "Cancel download",
+  "@cancelDownload": {
+    "description": "Button to cancel download"
+  },
+  "home": "Home",
+  "@home": {
+    "description": "Navigation label for home screen"
+  },
+  "profile": "Profile",
+  "@profile": {
+    "description": "Navigation label for profile screen"
+  },
+  "settings": "Settings",
+  "@settings": {
+    "description": "Navigation label for settings screen"
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Button to cancel action"
+  },
+  "clear": "Clear",
+  "@clear": {
+    "description": "Button to clear/delete items"
+  },
+  "save": "Save",
+  "@save": {
+    "description": "Button to save changes"
+  },
+  "delete": "Delete",
+  "@delete": {
+    "description": "Button to delete an item"
+  },
+  "edit": "Edit",
+  "@edit": {
+    "description": "Button to edit an item"
+  },
+  "switchButton": "Switch",
+  "@switchButton": {
+    "description": "Button to switch to something"
+  },
+  "continueButton": "Continue",
+  "@continueButton": {
+    "description": "Button to continue to next step"
+  },
+  "loading": "Loading...",
+  "@loading": {
+    "description": "Loading indicator text"
+  },
+  "error": "Error",
+  "@error": {
+    "description": "Error title"
+  },
+  "retry": "Retry",
+  "@retry": {
+    "description": "Button to retry a failed action"
+  },
+  "grade": "Grade",
+  "@grade": {
+    "description": "Grade level label"
+  },
+  "session": "Session",
+  "@session": {
+    "description": "Study session label"
+  },
+  "material": "Material",
+  "@material": {
+    "description": "Study material label"
+  },
+  "quiz": "Quiz",
+  "@quiz": {
+    "description": "Quiz label"
+  },
+  "language": "Language",
+  "@language": {
+    "description": "Language setting label"
+  },
+  "languageAuto": "Auto",
+  "@languageAuto": {
+    "description": "Auto-detect language option"
+  },
+  "languageEnglish": "English",
+  "@languageEnglish": {
+    "description": "English language option"
+  },
+  "languageIndonesian": "Indonesian",
+  "@languageIndonesian": {
+    "description": "Indonesian language option"
+  },
+  "pageNotFound": "Page not found",
+  "@pageNotFound": {
+    "description": "Error message when route is not found"
+  },
+  "goHome": "Go home",
+  "@goHome": {
+    "description": "Button to navigate to home screen"
+  },
+  "newSession": "New session",
+  "@newSession": {
+    "description": "Button to create new session"
+  },
+  "downloadingModel": "Downloading model {percent}%",
+  "@downloadingModel": {
+    "description": "Model download progress in app shell",
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "cancelling": "Cancelling…",
+  "@cancelling": {
+    "description": "Cancelling action text in app shell"
+  },
+  "cancelDownload": "Cancel download",
+  "@cancelDownload": {
+    "description": "Button to cancel download in app shell"
+  },
+  "whoStudying": "Who's studying?",
+  "@whoStudying": {
+    "description": "Title for profile selection screen"
+  },
+  "pickProfile": "Pick your profile to start learning! 🚀",
+  "@pickProfile": {
+    "description": "Subtitle for profile selection screen"
+  },
+  "addNewProfile": "Add New Profile",
+  "@addNewProfile": {
+    "description": "Button to add new profile"
+  },
+  "editProfile": "Edit Profile",
+  "@editProfile": {
+    "description": "Title for editing profile"
+  },
+  "name": "Name",
+  "@name": {
+    "description": "Name field label"
+  },
+  "whatCallYou": "What should we call you?",
+  "@whatCallYou": {
+    "description": "Placeholder for name field"
+  },
+  "pickCharacter": "Pick a character",
+  "@pickCharacter": {
+    "description": "Label for character/emoji selection"
+  },
+  "gradeLevel": "Grade Level",
+  "@gradeLevel": {
+    "description": "Label for grade level selection"
+  },
+  "totalSessions": "Total sessions",
+  "@totalSessions": {
+    "description": "Label showing total session count"
+  },
+  "clearAllSessions": "Clear all sessions",
+  "@clearAllSessions": {
+    "description": "Button to clear all sessions"
+  },
+  "removeStudyData": "Remove all study data",
+  "@removeStudyData": {
+    "description": "Subtitle for clear sessions action"
+  },
+  "clearAllSessionsQuestion": "Clear all sessions?",
+  "@clearAllSessionsQuestion": {
+    "description": "Confirmation dialog title for clearing sessions"
+  },
+  "clearAllSessionsConfirm": "This will permanently delete all study sessions, materials, quizzes, and chat history for this profile.",
+  "@clearAllSessionsConfirm": {
+    "description": "Confirmation message for clearing sessions"
+  },
+  "allSessionsCleared": "All sessions cleared",
+  "@allSessionsCleared": {
+    "description": "Success message after clearing sessions"
+  },
+  "deleteProfile": "Delete profile",
+  "@deleteProfile": {
+    "description": "Button to delete profile"
+  },
+  "removeProfileData": "Remove \"{name}\" and all data",
+  "@removeProfileData": {
+    "description": "Subtitle for delete profile action",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteProfileQuestion": "Delete profile?",
+  "@deleteProfileQuestion": {
+    "description": "Confirmation dialog title for deleting profile"
+  },
+  "deleteProfileConfirm": "This will permanently delete \"{name}\" and ALL associated data.",
+  "@deleteProfileConfirm": {
+    "description": "Confirmation message for deleting profile",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "typeProfileName": "Type the profile name to confirm:",
+  "@typeProfileName": {
+    "description": "Instruction for profile deletion confirmation"
+  },
+  "switchProfile": "Switch Profile",
+  "@switchProfile": {
+    "description": "Button to switch to another profile"
+  },
+  "noProfileFound": "No profile found",
+  "@noProfileFound": {
+    "description": "Error message when no profile exists"
+  },
+  "createFirstProfile": "Create your first profile",
+  "@createFirstProfile": {
+    "description": "Title for creating first profile"
+  },
+  "letsGetStarted": "Let's get started! 🚀",
+  "@letsGetStarted": {
+    "description": "Subtitle for first profile creation"
+  },
+  "defaultQuestionsPerQuiz": "Default questions per quiz",
+  "@defaultQuestionsPerQuiz": {
+    "description": "Label for default question count setting"
+  },
+  "createAndStartStudying": "Create & Start Studying",
+  "@createAndStartStudying": {
+    "description": "Button to create profile and start"
+  }
+}
