@@ -24,6 +24,10 @@ class GemmaInferenceService {
   /// True if there are pending images queued for the next message.
   bool get hasPendingImages => _pendingImages.isNotEmpty;
 
+  /// Get the current token count from the active chat session.
+  /// Returns 0 if no session is active.
+  int get currentTokens => _chat?.currentTokens ?? 0;
+
   static const int _maxOutputTokens = 8192;
 
   /// Initialize the inference service by creating the model.

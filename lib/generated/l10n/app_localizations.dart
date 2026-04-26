@@ -1160,6 +1160,54 @@ abstract class AppLocalizations {
   /// **'Waiting for response...'**
   String get chatWaitingForResponse;
 
+  /// Label for thinking mode toggle
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking mode'**
+  String get chatThinkingMode;
+
+  /// Description for thinking mode toggle
+  ///
+  /// In en, this message translates to:
+  /// **'Show AI\'s thought process'**
+  String get chatThinkingModeDescription;
+
+  /// Confirmation dialog title for enabling thinking mode
+  ///
+  /// In en, this message translates to:
+  /// **'Enable thinking mode?'**
+  String get chatThinkingModeConfirm;
+
+  /// Confirmation message for enabling thinking mode
+  ///
+  /// In en, this message translates to:
+  /// **'This will clear the current conversation and restart the chat with thinking enabled. Continue?'**
+  String get chatThinkingModeConfirmMessage;
+
+  /// Confirmation dialog title for disabling thinking mode
+  ///
+  /// In en, this message translates to:
+  /// **'Disable thinking mode?'**
+  String get chatThinkingModeDisableConfirm;
+
+  /// Confirmation message for disabling thinking mode
+  ///
+  /// In en, this message translates to:
+  /// **'This will clear the current conversation and restart the chat with thinking disabled. Continue?'**
+  String get chatThinkingModeDisableMessage;
+
+  /// Label for token count
+  ///
+  /// In en, this message translates to:
+  /// **'tokens'**
+  String get chatTokens;
+
+  /// Label for thinking mode toggle
+  ///
+  /// In en, this message translates to:
+  /// **'Thinking'**
+  String get chatThinkingLabel;
+
   /// Title for quiz detail screen
   ///
   /// In en, this message translates to:

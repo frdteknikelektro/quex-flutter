@@ -609,6 +609,32 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatWaitingForResponse => 'Waiting for response...';
 
   @override
+  String get chatThinkingMode => 'Thinking mode';
+
+  @override
+  String get chatThinkingModeDescription => 'Show AI\'s thought process';
+
+  @override
+  String get chatThinkingModeConfirm => 'Enable thinking mode?';
+
+  @override
+  String get chatThinkingModeConfirmMessage =>
+      'This will clear the current conversation and restart the chat with thinking enabled. Continue?';
+
+  @override
+  String get chatThinkingModeDisableConfirm => 'Disable thinking mode?';
+
+  @override
+  String get chatThinkingModeDisableMessage =>
+      'This will clear the current conversation and restart the chat with thinking disabled. Continue?';
+
+  @override
+  String get chatTokens => 'tokens';
+
+  @override
+  String get chatThinkingLabel => 'Thinking';
+
+  @override
   String get quizDetailTitle => 'Quiz Questions';
 
   @override

@@ -19,6 +19,9 @@ class GemmaSessionService {
 
   final GemmaInferenceService _inference;
 
+  /// Public accessor to the underlying inference service.
+  GemmaInferenceService get inference => _inference;
+
   static const _evaluateTool = gemma.Tool(
     name: 'evaluate_understanding',
     description: 'Rate student understanding of the question (0.0-1.0). '
@@ -208,6 +211,7 @@ class GemmaSessionService {
     required Session session,
     required List<StudyMaterial> materials,
     String locale = 'en',
+    bool isThinking = false,
   }) async {
     if (!_inference.isInitialized) {
       throw StateError('Service not initialized');
@@ -234,12 +238,13 @@ class GemmaSessionService {
 
     await _inference.createSession(
       systemInstruction: systemInstruction.toString(),
-      temperature: 0.7,
+      temperature: 1.1,
       topK: 40,
       supportImage: hasImages,
       supportAudio: true,
       promptDialect: gemma.PromptDialect.gemma4,
       toolChoice: gemma.ToolChoice.auto,
+      isThinking: isThinking,
     );
 
     // Queue all images to be included with first user message

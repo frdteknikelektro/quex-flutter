@@ -873,6 +873,38 @@
   "@chatWaitingForResponse": {
     "description": "Loading overlay text while waiting for first response"
   },
+  "chatThinkingMode": "Thinking mode",
+  "@chatThinkingMode": {
+    "description": "Label for thinking mode toggle"
+  },
+  "chatThinkingModeDescription": "Show AI's thought process",
+  "@chatThinkingModeDescription": {
+    "description": "Description for thinking mode toggle"
+  },
+  "chatThinkingModeConfirm": "Enable thinking mode?",
+  "@chatThinkingModeConfirm": {
+    "description": "Confirmation dialog title for enabling thinking mode"
+  },
+  "chatThinkingModeConfirmMessage": "This will clear the current conversation and restart the chat with thinking enabled. Continue?",
+  "@chatThinkingModeConfirmMessage": {
+    "description": "Confirmation message for enabling thinking mode"
+  },
+  "chatThinkingModeDisableConfirm": "Disable thinking mode?",
+  "@chatThinkingModeDisableConfirm": {
+    "description": "Confirmation dialog title for disabling thinking mode"
+  },
+  "chatThinkingModeDisableMessage": "This will clear the current conversation and restart the chat with thinking disabled. Continue?",
+  "@chatThinkingModeDisableMessage": {
+    "description": "Confirmation message for disabling thinking mode"
+  },
+  "chatTokens": "tokens",
+  "@chatTokens": {
+    "description": "Label for token count"
+  },
+  "chatThinkingLabel": "Thinking",
+  "@chatThinkingLabel": {
+    "description": "Label for thinking mode toggle"
+  },
   "quizDetailTitle": "Quiz Questions",
   "@quizDetailTitle": {
     "description": "Title for quiz detail screen"

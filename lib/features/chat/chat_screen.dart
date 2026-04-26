@@ -3,9 +3,11 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
@@ -81,6 +83,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _coachSessionInitialized = false;
   bool _coachSessionInitializing = false;
   Completer<void>? _coachSessionCompleter;
+  bool _isThinkingMode = false;
 
   // ===========================================================================
   // Audio Recording State
@@ -90,9 +93,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   DateTime? _recordingStartTime;
 
   // ===========================================================================
+  // Image Attachment State
+  // ===========================================================================
+  final List<File> _attachedImages = [];
+  static const int _maxAttachedImages = 4;
+  final Map<int, List<File>> _messageImages = {};
+
+  // ===========================================================================
   // UI / Scroll State
   // ===========================================================================
   int _tokenCount = 0;
+  int _totalTokens = 0;
   static const int _scrollThrottleTokens = 10;
   bool _isScrolling = false;
 
@@ -172,6 +183,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         session: session,
         materials: materials,
         locale: locale,
+        isThinking: _isThinkingMode,
       );
       if (mounted) {
         setState(() => _coachSessionInitialized = true);
@@ -194,6 +206,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   ) async {
     await _streamSub?.cancel();
     _streamSub = null;
+    _clearImages();
+    _messageImages.clear();
     if (mounted) {
       setState(() {
         _messages.clear();
@@ -207,6 +221,51 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       });
     }
     unawaited(_fireOpener(bundle, chatMaterials));
+  }
+
+  Future<void> _toggleThinkingMode(
+    SessionBundle bundle,
+    List<StudyMaterial> chatMaterials,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    if (l10n == null) return;
+
+    final newValue = !_isThinkingMode;
+    final title = newValue
+        ? l10n.chatThinkingModeConfirm
+        : l10n.chatThinkingModeDisableConfirm;
+    final message = newValue
+        ? l10n.chatThinkingModeConfirmMessage
+        : l10n.chatThinkingModeDisableMessage;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final dialogL10n = AppLocalizations.of(ctx);
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(dialogL10n?.cancel ?? 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(dialogL10n?.continueButton ?? 'Continue'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true && mounted) {
+      setState(() {
+        _isThinkingMode = newValue;
+        _sending = true; // Show waiting modal immediately
+      });
+      await _resetChat(bundle, chatMaterials);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -325,6 +384,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       },
       onDone: () {
         _scrollToBottom();
+        // Update total tokens from session after stream completes
+        if (mounted) {
+          setState(() => _totalTokens = _gemmaHost.service?.currentTokens ?? 0);
+        }
         completer.complete();
       },
       onError: (e) {
@@ -357,6 +420,83 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _isScrolling = false;
       }
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Image Attachment
+  // ---------------------------------------------------------------------------
+
+  Future<File> _compressImage(File image) async {
+    try {
+      final bytes = await image.readAsBytes();
+      final imageInfo = await FlutterImageCompress.compressWithList(
+        bytes,
+        quality: 85,
+        minWidth: 768,
+        minHeight: 768,
+      );
+
+      final dir = await getTemporaryDirectory();
+      final compressedPath = '${dir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final compressedFile = File(compressedPath);
+      await compressedFile.writeAsBytes(imageInfo!);
+
+      return compressedFile;
+    } catch (e) {
+      debugPrint('Failed to compress image: $e');
+      return image;
+    }
+  }
+
+  Future<void> _addImage() async {
+    if (_attachedImages.length >= _maxAttachedImages) return;
+
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+
+    if (pickedFile == null) return;
+
+    if (mounted) {
+      setState(() => _sending = true);
+    }
+
+    try {
+      final originalFile = File(pickedFile.path);
+      final compressedFile = await _compressImage(originalFile);
+
+      if (mounted) {
+        setState(() {
+          _attachedImages.add(compressedFile);
+          _sending = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to add image: $e');
+      if (mounted) {
+        setState(() => _sending = false);
+      }
+    }
+  }
+
+  void _removeImage(int index) {
+    if (index >= 0 && index < _attachedImages.length) {
+      final file = _attachedImages[index];
+      file.delete().catchError((e) {
+        debugPrint('Failed to delete image file: $e');
+      });
+      setState(() {
+        _attachedImages.removeAt(index);
+      });
+    }
+  }
+
+  void _clearImages() {
+    for (final file in _attachedImages) {
+      file.delete().catchError((e) {
+        debugPrint('Failed to delete image file: $e');
+      });
+    }
+    _attachedImages.clear();
   }
 
   // ---------------------------------------------------------------------------
@@ -528,7 +668,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     List<StudyMaterial> chatMaterials,
   ) async {
     final text = _textController.text.trim();
-    if (text.isEmpty || _sending) return;
+    if ((text.isEmpty && _attachedImages.isEmpty) || _sending) return;
 
     try {
       await _ensureModel();
@@ -561,19 +701,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       return;
     }
 
+    // Convert attached images to bytes for Gemma
+    final imageBytes = <Uint8List>[];
+    for (final image in _attachedImages) {
+      try {
+        final bytes = await image.readAsBytes();
+        imageBytes.add(bytes);
+      } catch (e) {
+        debugPrint('Failed to read image bytes: $e');
+      }
+    }
+
+    // Add images to Gemma inference queue
+    if (imageBytes.isNotEmpty && _sessionService != null) {
+      await _sessionService!.inference.addImagesToQueue(imageBytes);
+    }
+
     setState(() {
       _sending = true;
       _streamingContent = '';
       _thinkingContent = null;
       _thinkingExpanded = false;
-      _messages.add(ChatMessage(
+      final message = ChatMessage(
         sessionId: widget.sessionId,
         role: ChatRole.user,
         content: text,
         createdAt: DateTime.now(),
-      ));
+      );
+      _messages.add(message);
+      // Store images with the message index
+      if (_attachedImages.isNotEmpty) {
+        _messageImages[_messages.length - 1] = List.from(_attachedImages);
+      }
     });
     _textController.clear();
+    _clearImages();
     _scrollToBottom();
 
     try {
@@ -692,7 +854,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       scrollController: _scrollController,
                       scheme: scheme,
                       theme: theme,
+                      messageImages: _messageImages,
                     ),
+            ),
+            ImageAttachmentRow(
+              images: _attachedImages,
+              isRecording: _isRecording,
+              onAddImage: _addImage,
+              onRemoveImage: _removeImage,
+              scheme: scheme,
+              theme: theme,
             ),
             ChatInputBar(
               controller: _textController,
@@ -703,6 +874,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               isRecording: _isRecording,
               onMicStart: _startRecording,
               onMicStop: () => _stopAndSendAudio(bundle, chatMaterials),
+              scheme: scheme,
+              theme: theme,
+            ),
+            ThinkingModeToggle(
+              isThinkingMode: _isThinkingMode,
+              totalTokens: _totalTokens,
+              onToggle: () => _toggleThinkingMode(bundle, chatMaterials),
               scheme: scheme,
               theme: theme,
             ),
@@ -930,6 +1108,7 @@ class MessageList extends StatelessWidget {
   final ScrollController scrollController;
   final ColorScheme scheme;
   final ThemeData theme;
+  final Map<int, List<File>> messageImages;
 
   const MessageList({
     super.key,
@@ -942,6 +1121,7 @@ class MessageList extends StatelessWidget {
     required this.scrollController,
     required this.scheme,
     required this.theme,
+    required this.messageImages,
   });
 
   @override
@@ -1012,39 +1192,71 @@ class MessageList extends StatelessWidget {
 
         final msg = messages[index];
         final isUser = msg.role == ChatRole.user;
+        final images = messageImages[index];
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: Align(
-            alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(
-              constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isUser
-                    ? scheme.primaryContainer
-                    : scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(isUser ? 18 : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : 18),
+          child: Column(
+            crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              // Show image thumbnails for user messages
+              if (isUser && images != null && images.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: images.map((image) {
+                      return SizedBox(
+                        width: 80,
+                        height: 80,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            image,
+                            width: 80,
+                            height: 80,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              // Message bubble
+              Align(
+                alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isUser
+                        ? scheme.primaryContainer
+                        : scheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(18),
+                      topRight: const Radius.circular(18),
+                      bottomLeft: Radius.circular(isUser ? 18 : 4),
+                      bottomRight: Radius.circular(isUser ? 4 : 18),
+                    ),
+                  ),
+                  child: isUser
+                      ? (msg.content == _kVoiceSentinel
+                          ? VoiceMessageBubble(scheme: scheme, theme: theme)
+                          : Text(
+                              msg.content,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: scheme.onPrimaryContainer,
+                              ),
+                            ))
+                      : MathMarkdownBody(
+                          data: msg.content,
+                          styleSheet: markdownStyle,
+                          textStyle: textStyle,
+                        ),
                 ),
               ),
-              child: isUser
-                  ? (msg.content == _kVoiceSentinel
-                      ? VoiceMessageBubble(scheme: scheme, theme: theme)
-                      : Text(
-                          msg.content,
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: scheme.onPrimaryContainer,
-                          ),
-                        ))
-                  : MathMarkdownBody(
-                      data: msg.content,
-                      styleSheet: markdownStyle,
-                      textStyle: textStyle,
-                    ),
-            ),
+            ],
           ),
         );
       },
@@ -1138,9 +1350,16 @@ class ThinkingBubble extends StatelessWidget {
             if (expanded && content.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                child: Text(
-                  content,
-                  style: theme.textTheme.bodySmall?.copyWith(
+                child: MathMarkdownBody(
+                  data: content,
+                  styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                    p: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontStyle: FontStyle.italic,
+                      height: 1.5,
+                    ),
+                  ),
+                  textStyle: theme.textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                     fontStyle: FontStyle.italic,
                     height: 1.5,
@@ -1385,102 +1604,93 @@ class ChatInputBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
     return Container(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        10,
-        16,
-        10 + MediaQuery.viewInsetsOf(context).bottom,
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
       decoration: BoxDecoration(
         color: scheme.surface,
-        border: Border(top: BorderSide(color: scheme.outlineVariant)),
       ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: [
-            Expanded(
-              child: isRecording
-                  ? ListeningIndicator(scheme: scheme, theme: theme)
-                  : TextField(
-                controller: controller,
-                enabled: !sending && !modelLoading,
-                textInputAction: TextInputAction.newline,
-                maxLines: 4,
-                minLines: 1,
-                decoration: InputDecoration(
-                  hintText: l10n.chatAskQuexHint,
-                  hintStyle: TextStyle(color: scheme.onSurfaceVariant),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(color: scheme.outlineVariant),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(color: scheme.outlineVariant),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(color: scheme.primary, width: 1.5),
-                  ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  isDense: true,
+      child: Row(
+        children: [
+          Expanded(
+            child: isRecording
+                ? ListeningIndicator(scheme: scheme, theme: theme)
+                : TextField(
+              controller: controller,
+              enabled: !sending && !modelLoading,
+              textInputAction: TextInputAction.newline,
+              maxLines: 4,
+              minLines: 1,
+              decoration: InputDecoration(
+                hintText: l10n.chatAskQuexHint,
+                hintStyle: TextStyle(color: scheme.onSurfaceVariant),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide(color: scheme.outlineVariant),
                 ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide(color: scheme.outlineVariant),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  borderSide: BorderSide(color: scheme.primary, width: 1.5),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                isDense: true,
               ),
             ),
+          ),
 
-            if (!isRecording) const SizedBox(width: 8),
-            if (!isRecording) AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: modelLoading
-                  ? SizedBox(
-                      key: const ValueKey('loading'),
-                      width: 44,
-                      height: 44,
-                      child: Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: scheme.primary,
-                          ),
+          if (!isRecording) const SizedBox(width: 8),
+          if (!isRecording) AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: modelLoading
+                ? SizedBox(
+                    key: const ValueKey('loading'),
+                    width: 44,
+                    height: 44,
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: scheme.primary,
                         ),
                       ),
-                    )
-                  : sending
-                      ? IconButton(
-                          key: const ValueKey('stop'),
-                          onPressed: onStop,
-                          icon: Icon(Icons.stop_rounded,
-                              color: scheme.onErrorContainer),
-                          style: IconButton.styleFrom(
-                            backgroundColor: scheme.errorContainer,
-                            minimumSize: const Size(44, 44),
-                          ),
-                        )
-                      : IconButton(
-                          key: const ValueKey('send'),
-                          onPressed: onSend,
-                          icon: Icon(Icons.send_rounded, color: scheme.primary),
-                          style: IconButton.styleFrom(
-                            backgroundColor: scheme.primaryContainer,
-                            minimumSize: const Size(44, 44),
-                          ),
+                    ),
+                  )
+                : sending
+                    ? IconButton(
+                        key: const ValueKey('stop'),
+                        onPressed: onStop,
+                        icon: Icon(Icons.stop_rounded,
+                            color: scheme.onErrorContainer),
+                        style: IconButton.styleFrom(
+                          backgroundColor: scheme.errorContainer,
+                          minimumSize: const Size(44, 44),
                         ),
+                      )
+                    : IconButton(
+                        key: const ValueKey('send'),
+                        onPressed: onSend,
+                        icon: Icon(Icons.send_rounded, color: scheme.primary),
+                        style: IconButton.styleFrom(
+                          backgroundColor: scheme.primaryContainer,
+                          minimumSize: const Size(44, 44),
+                        ),
+                      ),
+          ),
+          if (!sending && !modelLoading) ...[
+            const SizedBox(width: 8),
+            MicButton(
+              isRecording: isRecording,
+              onMicStart: onMicStart,
+              onMicStop: onMicStop,
+              scheme: scheme,
             ),
-            if (!sending && !modelLoading) ...[
-              const SizedBox(width: 8),
-              MicButton(
-                isRecording: isRecording,
-                onMicStart: onMicStart,
-                onMicStop: onMicStop,
-                scheme: scheme,
-              ),
-            ],
           ],
-        ),
+        ],
       ),
     );
   }
@@ -1519,6 +1729,150 @@ class MicButton extends StatelessWidget {
           isRecording ? Icons.mic : Icons.mic_none_rounded,
           color: isRecording ? scheme.onErrorContainer : scheme.primary,
           size: 22,
+        ),
+      ),
+    );
+  }
+}
+
+/// Row showing attached image thumbnails with remove buttons.
+class ImageAttachmentRow extends StatelessWidget {
+  final List<File> images;
+  final bool isRecording;
+  final VoidCallback onAddImage;
+  final Function(int) onRemoveImage;
+  final ColorScheme scheme;
+  final ThemeData theme;
+
+  const ImageAttachmentRow({
+    super.key,
+    required this.images,
+    required this.isRecording,
+    required this.onAddImage,
+    required this.onRemoveImage,
+    required this.scheme,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isRecording) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+      ),
+      child: SizedBox(
+        height: 48,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: images.length + (images.length < 4 ? 1 : 0),
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, index) {
+            if (index < images.length) {
+              return _ImageThumbnail(
+                image: images[index],
+                onRemove: () => onRemoveImage(index),
+                scheme: scheme,
+              );
+            } else {
+              return _AddImageButton(
+                onTap: onAddImage,
+                scheme: scheme,
+              );
+            }
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageThumbnail extends StatelessWidget {
+  final File image;
+  final VoidCallback onRemove;
+  final ColorScheme scheme;
+
+  const _ImageThumbnail({
+    required this.image,
+    required this.onRemove,
+    required this.scheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(
+              image,
+              width: 48,
+              height: 48,
+              fit: BoxFit.cover,
+            ),
+          ),
+          Positioned(
+            top: 2,
+            right: 2,
+            child: GestureDetector(
+              onTap: onRemove,
+              child: Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: scheme.error,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.close,
+                  size: 14,
+                  color: scheme.onError,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AddImageButton extends StatelessWidget {
+  final VoidCallback onTap;
+  final ColorScheme scheme;
+
+  const _AddImageButton({
+    required this.onTap,
+    required this.scheme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: scheme.outlineVariant,
+              width: 1,
+              style: BorderStyle.solid,
+            ),
+          ),
+          child: Icon(
+            Icons.add_photo_alternate_outlined,
+            size: 28,
+            color: scheme.onSurfaceVariant,
+          ),
         ),
       ),
     );
@@ -1703,6 +2057,68 @@ class _PulsingBrainState extends State<PulsingBrain>
     return ScaleTransition(
       scale: _scale,
       child: Text(widget.emoji, style: const TextStyle(fontSize: 64)),
+    );
+  }
+}
+
+// =============================================================================
+// UI WIDGETS - Thinking Mode Toggle
+// =============================================================================
+
+/// Toggle switch for enabling/disabling AI thinking mode.
+class ThinkingModeToggle extends StatelessWidget {
+  final bool isThinkingMode;
+  final int totalTokens;
+  final VoidCallback onToggle;
+  final ColorScheme scheme;
+  final ThemeData theme;
+
+  const ThinkingModeToggle({
+    super.key,
+    required this.isThinkingMode,
+    required this.totalTokens,
+    required this.onToggle,
+    required this.scheme,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        16,
+        4,
+        16,
+        8 + MediaQuery.paddingOf(context).bottom,
+      ),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+      ),
+      child: Row(
+        children: [
+          Switch(
+            value: isThinkingMode,
+            onChanged: (_) => onToggle(),
+            activeColor: scheme.primary,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            l10n.chatThinkingLabel,
+            style: theme.textTheme.labelMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: scheme.onSurface,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            '$totalTokens ${l10n.chatTokens}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
