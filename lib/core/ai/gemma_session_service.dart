@@ -78,14 +78,6 @@ class GemmaSessionService {
     final prepared = await MaterialPreprocessor.prepare(materials);
     final hasImages = prepared.any((p) => p.images.isNotEmpty);
 
-    final optionsText = question.type == QuestionType.multipleChoice
-        ? question.options
-            .asMap()
-            .entries
-            .map((e) => '${String.fromCharCode(65 + e.key)}) ${e.value}')
-            .join('\n')
-        : '';
-
     final materialsContext = prepared
         .where((p) => p.textChunk.isNotEmpty)
         .map((p) => p.textChunk)
@@ -94,8 +86,9 @@ class GemmaSessionService {
     final systemInstruction = StringBuffer(
       'You are a friendly tutor helping an elementary student answer a quiz question. '
       'Keep responses short and simple. Give hints and encouragement. '
-      'When the student answers correctly, first call evaluate_understanding '
-      'to score it, then say "Correct!". Do not explain further.',
+      'When the student answers correctly, first call evaluate_understanding to score it. '
+      'After calling the tool, always wait for the tool response before sending your text reply. '
+      'After receiving the tool response, congratulate the student (e.g., "Great job!", "Correct!", "Well done!").',
     );
     if (materialsContext.isNotEmpty) {
       systemInstruction
@@ -137,6 +130,9 @@ class GemmaSessionService {
 
   /// Send user message incrementally. No history param — InferenceChat maintains state.
   /// Yields: TutorThinking, TutorReply, or TutorEvaluation (when model calls tool).
+  /// 
+  /// Tool response flow: When model calls evaluate_understanding, we send a tool response
+  /// back. The model will automatically continue generation after receiving the response.
   Stream<TutorEvent> sendQuestionTutorMessage(String userMessage) async* {
     if (!_inference.hasActiveSession) {
       throw StateError(
@@ -181,6 +177,16 @@ class GemmaSessionService {
               final score = (call.args['score'] as num?)?.toDouble();
               if (score != null) {
                 yield TutorEvaluation(score: score);
+                // Send tool response so model can continue with congratulatory message
+                // Response format: {'status': 'score_recorded', 'score: <value>}
+                try {
+                  await _inference.addToolResponse(
+                    toolName: 'evaluate_understanding',
+                    response: {'status': 'score_recorded', 'score': score},
+                  );
+                } catch (e) {
+                  debugPrint('[Tutor] Failed to send tool response: $e');
+                }
               }
             }
           }
