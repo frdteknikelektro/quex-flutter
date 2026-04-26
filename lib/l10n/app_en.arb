@@ -869,6 +869,10 @@
   "@chatListening": {
     "description": "Placeholder text shown in input field while recording"
   },
+  "chatWaitingForResponse": "Waiting for response...",
+  "@chatWaitingForResponse": {
+    "description": "Loading overlay text while waiting for first response"
+  },
   "quizDetailTitle": "Quiz Questions",
   "@quizDetailTitle": {
     "description": "Title for quiz detail screen"

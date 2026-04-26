@@ -179,6 +179,7 @@
   "chatMicPermissionDenied": "Izin mikrofon ditolak. Aktifkan di Pengaturan.",
   "chatMicError": "Rekaman gagal. Silakan coba lagi.",
   "chatListening": "Mendengarkan...",
+  "chatWaitingForResponse": "Menunggu respons...",
   "quizDetailTitle": "Pertanyaan Kuis",
   "quizDetailError": "Error: {error}",
   "quizDetailNotFound": "Kuis tidak ditemukan",

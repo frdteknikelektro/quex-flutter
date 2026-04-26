@@ -606,6 +606,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get chatListening => 'Mendengarkan...';
 
   @override
+  String get chatWaitingForResponse => 'Menunggu respons...';
+
+  @override
   String get quizDetailTitle => 'Pertanyaan Kuis';
 
   @override

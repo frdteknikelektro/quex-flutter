@@ -1154,6 +1154,12 @@ abstract class AppLocalizations {
   /// **'Listening...'**
   String get chatListening;
 
+  /// Loading overlay text while waiting for first response
+  ///
+  /// In en, this message translates to:
+  /// **'Waiting for response...'**
+  String get chatWaitingForResponse;
+
   /// Title for quiz detail screen
   ///
   /// In en, this message translates to:

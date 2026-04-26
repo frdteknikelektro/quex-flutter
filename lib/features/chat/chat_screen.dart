@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:record/record.dart';
-import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
-import '../../widgets/math_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../../app/breakpoints.dart';
 import '../../app/theme.dart';
@@ -22,9 +21,15 @@ import '../../core/ai/tutor_event.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../generated/l10n/app_localizations.dart';
+import '../../widgets/math_markdown.dart';
 
+/// Sentinel value for voice messages in chat.
 const String _kVoiceSentinel = '__voice__';
 
+/// Chat screen for interacting with the AI tutor.
+///
+/// Displays a conversation interface with support for text and voice input,
+/// streaming responses, and thinking process visualization.
 class ChatScreen extends ConsumerStatefulWidget {
   final int sessionId;
   final List<int>? preselectedMaterialIds;
@@ -42,30 +47,54 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
-  final _controller = TextEditingController();
+  // ===========================================================================
+  // Controllers
+  // ===========================================================================
+  final _textController = TextEditingController();
   final _scrollController = ScrollController();
+
+  // ===========================================================================
+  // Services
+  // ===========================================================================
   late final GemmaServiceHost _gemmaHost;
-  bool _sending = false;
+  StreamSubscription<TutorEvent>? _streamSub;
+  GemmaSessionService? _sessionService;
+
+  // ===========================================================================
+  // Chat State
+  // ===========================================================================
+  final List<ChatMessage> _messages = [];
+  bool _openerFired = false;
+
+  // ===========================================================================
+  // AI / Streaming State
+  // ===========================================================================
+  bool _sending = true;
   bool _modelLoading = false;
   String? _streamingContent;
   String? _thinkingContent;
   bool _thinkingExpanded = false;
-  StreamSubscription<TutorEvent>? _streamSub;
-  GemmaSessionService? _sessionService;
 
-  // Persistent session state
+  // ===========================================================================
+  // Session State
+  // ===========================================================================
   bool _coachSessionInitialized = false;
   bool _coachSessionInitializing = false;
+  Completer<void>? _coachSessionCompleter;
 
-  // Audio recording
+  // ===========================================================================
+  // Audio Recording State
+  // ===========================================================================
   final AudioRecorder _recorder = AudioRecorder();
   bool _isRecording = false;
   DateTime? _recordingStartTime;
-  static const String _voiceSentinel = _kVoiceSentinel;
 
-  // In-memory message list — no DB persistence
-  final List<ChatMessage> _messages = [];
-  bool _openerFired = false;
+  // ===========================================================================
+  // UI / Scroll State
+  // ===========================================================================
+  int _tokenCount = 0;
+  static const int _scrollThrottleTokens = 10;
+  bool _isScrolling = false;
 
   @override
   void initState() {
@@ -79,12 +108,26 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void dispose() {
     _streamSub?.cancel();
-    _controller.dispose();
+    _textController.dispose();
     _scrollController.dispose();
-    unawaited(_gemmaHost.dispose());
-    unawaited(_recorder.dispose());
+    _gemmaHost.dispose().catchError((e) {
+      debugPrint('Error disposing gemma host: $e');
+    });
+    _recorder.dispose().catchError((e) {
+      debugPrint('Error disposing recorder: $e');
+    });
+    // Stop recording if active
+    if (_isRecording) {
+      _recorder.stop().catchError((e) {
+        debugPrint('Error stopping recording on dispose: $e');
+      });
+    }
     super.dispose();
   }
+
+  // ---------------------------------------------------------------------------
+  // AI / Model
+  // ---------------------------------------------------------------------------
 
   Future<GemmaInferenceService> _ensureModel() {
     return _gemmaHost.ensureInitialized();
@@ -101,6 +144,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Session Management
+  // ---------------------------------------------------------------------------
+
   /// Initialize coach session ONCE per screen visit.
   Future<void> _ensureCoachSession(
     Session session,
@@ -110,16 +157,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     if (_coachSessionInitialized && _sessionService != null) return;
     if (_coachSessionInitializing) {
-      while (_coachSessionInitializing) {
-        await Future.delayed(const Duration(milliseconds: 50));
-      }
+      await _coachSessionCompleter?.future;
       if (_coachSessionInitialized && _sessionService != null) return;
     }
 
+    // Set flag immediately to prevent race condition
     _coachSessionInitializing = true;
+    _coachSessionCompleter = Completer<void>();
     try {
       _sessionService = GemmaSessionService(service);
-      final locale = AppLocalizations.of(context)!.localeName;
+      final l10n = AppLocalizations.of(context);
+      final locale = l10n?.localeName ?? 'en';
       await _sessionService!.initCoachSession(
         session: session,
         materials: materials,
@@ -135,6 +183,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (mounted) {
         setState(() => _coachSessionInitializing = false);
       }
+      _coachSessionCompleter?.complete();
+      _coachSessionCompleter = null;
     }
   }
 
@@ -159,6 +209,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     unawaited(_fireOpener(bundle, chatMaterials));
   }
 
+  // ---------------------------------------------------------------------------
+  // Message Handling
+  // ---------------------------------------------------------------------------
+
   Future<void> _fireOpener(
     SessionBundle bundle,
     List<StudyMaterial> chatMaterials,
@@ -182,60 +236,40 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _sending = true;
       _streamingContent = '';
       _thinkingContent = null;
-      _thinkingExpanded = false;
     });
 
-    final accumulatedReply = StringBuffer();
-    final accumulatedThinking = StringBuffer();
-
     try {
-      final locale = AppLocalizations.of(context)!.localeName;
+      final l10n = AppLocalizations.of(context);
+      final locale = l10n?.localeName ?? 'en';
       final openerMessage = ChatPrompts.getCoachOpenerMessage(locale);
+      if (_sessionService == null) {
+        debugPrint('Session service is null in _fireOpener');
+        setState(() => _sending = false);
+        return;
+      }
       final stream = _sessionService!.sendCoachMessage(openerMessage);
-      await _streamSub?.cancel();
-      final completer = Completer<void>();
-
-      _streamSub = stream.listen(
-        (event) {
-          if (!mounted) return;
-          if (event is TutorThinking) {
-            accumulatedThinking.write(event.token);
-            setState(() => _thinkingContent = accumulatedThinking.toString());
-          } else if (event is TutorReply) {
-            accumulatedReply.write(event.token);
-            setState(() => _streamingContent = accumulatedReply.toString());
-            _scrollToBottom();
-          }
-        },
-        onDone: () => completer.complete(),
-        onError: (e) => completer.completeError(e),
-        cancelOnError: true,
-      );
-
-      await completer.future;
-
-      final reply = accumulatedReply.toString();
-      final thinking = accumulatedThinking.toString();
+      final result = await _handleStream(stream);
 
       if (mounted) {
         setState(() {
-          if (reply.isNotEmpty) {
+          if (result.reply.isNotEmpty) {
             _messages.add(ChatMessage(
               sessionId: widget.sessionId,
               role: ChatRole.assistant,
-              content: reply,
+              content: result.reply,
               createdAt: DateTime.now(),
             ));
           }
           _streamingContent = null;
           _sending = false;
-          _thinkingContent = thinking.isEmpty ? null : thinking;
+          _thinkingContent = result.thinking.isEmpty ? null : result.thinking;
           _thinkingExpanded = false;
         });
       }
       _scrollToBottom();
     } catch (e) {
       debugPrint('Opener error: $e');
+      _tokenCount = 0;
       if (mounted) {
         setState(() {
           _coachSessionInitialized = false;
@@ -248,9 +282,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Streaming & UI Helpers
+  // ---------------------------------------------------------------------------
+
   Future<void> _stopGeneration() async {
     await _streamSub?.cancel();
     _streamSub = null;
+    _tokenCount = 0;
     if (mounted) {
       setState(() {
         _sending = false;
@@ -260,45 +299,105 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  Future<({String reply, String thinking})> _handleStream(
+    Stream<TutorEvent> stream,
+  ) async {
+    final accumulatedReply = StringBuffer();
+    final accumulatedThinking = StringBuffer();
+    final completer = Completer<void>();
+    _tokenCount = 0;
+
+    await _streamSub?.cancel();
+    _streamSub = stream.listen(
+      (event) {
+        if (!mounted) return;
+        if (event is TutorThinking) {
+          accumulatedThinking.write(event.token);
+          if (mounted) setState(() => _thinkingContent = accumulatedThinking.toString());
+        } else if (event is TutorReply) {
+          accumulatedReply.write(event.token);
+          if (mounted) setState(() => _streamingContent = accumulatedReply.toString());
+          _tokenCount++;
+          if (_tokenCount % _scrollThrottleTokens == 0) {
+            _scrollToBottom();
+          }
+        }
+      },
+      onDone: () {
+        _scrollToBottom();
+        completer.complete();
+      },
+      onError: (e) {
+        _streamSub = null;
+        completer.completeError(e);
+      },
+      cancelOnError: true,
+    );
+
+    await completer.future;
+    return (
+      reply: accumulatedReply.toString(),
+      thinking: accumulatedThinking.toString(),
+    );
+  }
+
   void _scrollToBottom() {
+    if (!mounted || _isScrolling) return;
+    _isScrolling = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (mounted && _scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
-        );
+        ).then((_) {
+          _isScrolling = false;
+        });
+      } else {
+        _isScrolling = false;
       }
     });
   }
+
+  // ---------------------------------------------------------------------------
+  // Audio Recording
+  // ---------------------------------------------------------------------------
 
   Future<void> _startRecording() async {
     if (_sending || _isRecording) return;
     final hasPermission = await _recorder.hasPermission();
     if (!hasPermission) {
       if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n.chatMicPermissionDenied),
+            content: Text(l10n?.chatMicPermissionDenied ?? 'Microphone permission denied'),
             duration: const Duration(seconds: 4),
           ),
         );
       }
       return;
     }
+    if (!mounted) return;
     final dir = await getTemporaryDirectory();
     final path = '${dir.path}/quex_voice_${DateTime.now().millisecondsSinceEpoch}.wav';
-    await _recorder.start(
-      const RecordConfig(
-        encoder: AudioEncoder.wav,
-        sampleRate: 16000,
-        numChannels: 1,
-      ),
-      path: path,
-    );
-    _recordingStartTime = DateTime.now();
-    if (mounted) setState(() => _isRecording = true);
+    try {
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+        path: path,
+      );
+      _recordingStartTime = DateTime.now();
+      if (mounted) setState(() => _isRecording = true);
+    } catch (e) {
+      debugPrint('Failed to start recording: $e');
+      if (mounted) {
+        setState(() => _isRecording = false);
+      }
+    }
   }
 
   Future<void> _stopAndSendAudio(
@@ -317,7 +416,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (path == null) return;
 
     final bytes = await File(path).readAsBytes();
-    unawaited(File(path).delete());
+    try {
+      await File(path).delete();
+    } catch (e) {
+      debugPrint('Failed to delete temp audio file: $e');
+    }
 
     if (bytes.isEmpty) return;
     await _sendAudioMessage(bytes, bundle, chatMaterials);
@@ -332,10 +435,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await _ensureModel();
     } catch (error) {
       if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n.chatCouldNotLoadModel(error.toString())),
+            content: Text(l10n?.chatCouldNotLoadModel(error.toString()) ?? 'Could not load model'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -347,10 +450,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await _ensureCoachSession(bundle.session, chatMaterials);
     } catch (e) {
       if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n.chatFailedToStartSession),
+            content: Text(l10n?.chatFailedToStartSession ?? 'Failed to start session'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -363,69 +466,46 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _streamingContent = '';
       _thinkingContent = null;
       _thinkingExpanded = false;
-    });
-
-    setState(() {
       _messages.add(ChatMessage(
         sessionId: widget.sessionId,
         role: ChatRole.user,
-        content: _voiceSentinel,
+        content: _kVoiceSentinel,
         createdAt: DateTime.now(),
       ));
     });
     _scrollToBottom();
 
-    final accumulatedReply = StringBuffer();
-    final accumulatedThinking = StringBuffer();
-
     try {
+      if (_sessionService == null) {
+        debugPrint('Session service is null in _sendAudioMessage');
+        setState(() => _sending = false);
+        return;
+      }
       final stream = _sessionService!.sendCoachAudioMessage(audioBytes);
-      await _streamSub?.cancel();
-      final completer = Completer<void>();
-
-      _streamSub = stream.listen(
-        (event) {
-          if (!mounted) return;
-          if (event is TutorThinking) {
-            accumulatedThinking.write(event.token);
-            setState(() => _thinkingContent = accumulatedThinking.toString());
-          } else if (event is TutorReply) {
-            accumulatedReply.write(event.token);
-            setState(() => _streamingContent = accumulatedReply.toString());
-            _scrollToBottom();
-          }
-        },
-        onDone: () => completer.complete(),
-        onError: (e) => completer.completeError(e),
-        cancelOnError: true,
-      );
-
-      await completer.future;
-
-      final reply = accumulatedReply.toString();
-      final thinking = accumulatedThinking.toString();
+      final result = await _handleStream(stream);
 
       if (mounted) {
         setState(() {
-          if (reply.isNotEmpty) {
+          if (result.reply.isNotEmpty) {
             _messages.add(ChatMessage(
               sessionId: widget.sessionId,
               role: ChatRole.assistant,
-              content: reply,
+              content: result.reply,
               createdAt: DateTime.now(),
             ));
           }
           _streamingContent = null;
           _sending = false;
-          _thinkingContent = thinking.isEmpty ? null : thinking;
+          _thinkingContent = result.thinking.isEmpty ? null : result.thinking;
           _thinkingExpanded = false;
         });
       }
       _scrollToBottom();
     } catch (e) {
       debugPrint('Coach audio stream error: $e');
+      _tokenCount = 0;
       if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
+        final l10n = AppLocalizations.of(context);
         setState(() {
           _coachSessionInitialized = false;
           _sessionService = null;
@@ -435,7 +515,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n.chatSessionInterrupted),
+            content: Text(l10n?.chatSessionInterrupted ?? 'Session interrupted'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -447,17 +527,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     SessionBundle bundle,
     List<StudyMaterial> chatMaterials,
   ) async {
-    final text = _controller.text.trim();
+    final text = _textController.text.trim();
     if (text.isEmpty || _sending) return;
 
     try {
       await _ensureModel();
     } catch (error) {
       if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n.chatCouldNotLoadModel(error.toString())),
+            content: Text(l10n?.chatCouldNotLoadModel(error.toString()) ?? 'Could not load model'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -470,10 +550,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await _ensureCoachSession(bundle.session, chatMaterials);
     } catch (e) {
       if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n.chatFailedToStartSession),
+            content: Text(l10n?.chatFailedToStartSession ?? 'Failed to start session'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -493,62 +573,41 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         createdAt: DateTime.now(),
       ));
     });
-    _controller.clear();
+    _textController.clear();
     _scrollToBottom();
 
-    final accumulatedReply = StringBuffer();
-    final accumulatedThinking = StringBuffer();
-
     try {
+      if (_sessionService == null) {
+        debugPrint('Session service is null in _sendMessage');
+        setState(() => _sending = false);
+        return;
+      }
       final stream = _sessionService!.sendCoachMessage(text);
-
-      await _streamSub?.cancel();
-      final completer = Completer<void>();
-
-      _streamSub = stream.listen(
-        (event) {
-          if (!mounted) return;
-          if (event is TutorThinking) {
-            accumulatedThinking.write(event.token);
-            setState(() => _thinkingContent = accumulatedThinking.toString());
-          } else if (event is TutorReply) {
-            accumulatedReply.write(event.token);
-            setState(() => _streamingContent = accumulatedReply.toString());
-            _scrollToBottom();
-          }
-        },
-        onDone: () => completer.complete(),
-        onError: (e) => completer.completeError(e),
-        cancelOnError: true,
-      );
-
-      await completer.future;
-
-      final reply = accumulatedReply.toString();
-      final thinking = accumulatedThinking.toString();
+      final result = await _handleStream(stream);
 
       if (mounted) {
         setState(() {
-          if (reply.isNotEmpty) {
+          if (result.reply.isNotEmpty) {
             _messages.add(ChatMessage(
               sessionId: widget.sessionId,
               role: ChatRole.assistant,
-              content: reply,
+              content: result.reply,
               createdAt: DateTime.now(),
             ));
           }
           _streamingContent = null;
           _sending = false;
-          _thinkingContent = thinking.isEmpty ? null : thinking;
+          _thinkingContent = result.thinking.isEmpty ? null : result.thinking;
           _thinkingExpanded = false;
         });
       }
       _scrollToBottom();
     } catch (e) {
       debugPrint('Coach stream error: $e');
+      _tokenCount = 0;
 
       if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
+        final l10n = AppLocalizations.of(context);
         setState(() {
           _coachSessionInitialized = false;
           _sessionService = null;
@@ -558,7 +617,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n.chatSessionInterrupted),
+            content: Text(l10n?.chatSessionInterrupted ?? 'Session interrupted'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -568,7 +627,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final compact = MediaQuery.sizeOf(context).width < QuexBreakpoints.tablet;
@@ -578,12 +637,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return bundleAsync.when(
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(body: Center(child: Text(l10n.chatError(e.toString())))),
+      error: (e, _) => Scaffold(body: Center(child: Text(l10n?.chatError(e.toString()) ?? 'Error: $e'))),
       data: (bundle) {
         if (bundle == null) {
           return Scaffold(
             appBar: AppBar(leading: const BackButton()),
-            body: Center(child: Text(l10n.chatSessionNotFound)),
+            body: Center(child: Text(l10n?.chatSessionNotFound ?? 'Session not found')),
           );
         }
 
@@ -610,7 +669,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final chatColumn = Column(
           children: [
             if (chatMaterials.isNotEmpty)
-              _MaterialsStrip(
+              MaterialsStrip(
                 materials: chatMaterials,
                 sessionId: widget.sessionId,
                 scheme: scheme,
@@ -618,16 +677,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               ),
             Expanded(
               child: isEmpty
-                  ? _EmptyChat(
+                  ? EmptyChatPlaceholder(
                       scheme: scheme,
                       theme: theme,
-                      suggestions: suggestions,
-                      onSuggestionTap: (s) {
-                        _controller.text = s;
-                        _sendMessage(bundle, chatMaterials);
-                      },
                     )
-                  : _MessageList(
+                  : MessageList(
                       messages: messages,
                       streamingContent: _streamingContent,
                       thinkingContent: _thinkingContent,
@@ -640,8 +694,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       theme: theme,
                     ),
             ),
-            _InputBar(
-              controller: _controller,
+            ChatInputBar(
+              controller: _textController,
               sending: _sending,
               modelLoading: _modelLoading,
               onSend: () => _sendMessage(bundle, chatMaterials),
@@ -678,18 +732,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             final confirm = await showDialog<bool>(
                               context: context,
                               builder: (ctx) {
-                                final l10n = AppLocalizations.of(ctx)!;
+                                final dialogL10n = AppLocalizations.of(ctx);
                                 return AlertDialog(
-                                  title: Text(l10n.chatResetQuestion),
-                                  content: Text(l10n.chatResetConfirm),
+                                  title: Text(dialogL10n?.chatResetQuestion ?? 'Reset chat?'),
+                                  content: Text(dialogL10n?.chatResetConfirm ?? 'This will clear all messages'),
                                   actions: [
                                     TextButton(
                                       onPressed: () => Navigator.pop(ctx, false),
-                                      child: Text(l10n.cancel),
+                                      child: Text(dialogL10n?.cancel ?? 'Cancel'),
                                     ),
                                     FilledButton(
                                       onPressed: () => Navigator.pop(ctx, true),
-                                      child: Text(l10n.chatReset),
+                                      child: Text(dialogL10n?.chatReset ?? 'Reset'),
                                     ),
                                   ],
                                 );
@@ -697,7 +751,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                             );
                             if (confirm == true) unawaited(_resetChat(bundle, chatMaterials));
                           },
-                    child: Text(l10n.chatReset),
+                    child: Text(l10n?.chatReset ?? 'Reset'),
                   ),
                 ),
             ],
@@ -713,7 +767,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         Container(width: 1, color: scheme.outlineVariant),
                         SizedBox(
                           width: 280,
-                          child: _TipsPanel(
+                          child: TipsPanel(
                             session: bundle.session,
                             suggestions: suggestions,
                             scheme: scheme,
@@ -722,8 +776,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         ),
                       ],
                     ),
-              if (_modelLoading)
-                _ModelLoadingOverlay(scheme: scheme, theme: theme),
+              if (_modelLoading || (_sending && _messages.isEmpty && (_streamingContent == null || _streamingContent!.isEmpty)))
+                ModelLoadingOverlay(
+                  scheme: scheme,
+                  theme: theme,
+                  isWaitingForResponse: !_modelLoading && _sending,
+                ),
             ],
           ),
         );
@@ -732,15 +790,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 }
 
-// ─── Materials strip ──────────────────────────────────────────────────────────
+// =============================================================================
+// UI WIDGETS - Materials
+// =============================================================================
 
-class _MaterialsStrip extends StatelessWidget {
+/// A horizontal scrollable strip displaying study materials as thumbnails.
+class MaterialsStrip extends StatelessWidget {
   final List<StudyMaterial> materials;
   final int sessionId;
   final ColorScheme scheme;
   final ThemeData theme;
 
-  const _MaterialsStrip({
+  const MaterialsStrip({
+    super.key,
     required this.materials,
     required this.sessionId,
     required this.scheme,
@@ -816,10 +878,10 @@ class _MaterialsStrip extends StatelessWidget {
                 if (m.kind == MaterialKind.document) {
                   final result = await OpenFilex.open(m.content);
                   if (result.type != ResultType.done && context.mounted) {
-                    final l10n = AppLocalizations.of(context)!;
+                    final l10n = AppLocalizations.of(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                          content: Text(l10n.materialCouldNotOpen(result.message))),
+                          content: Text(l10n?.materialCouldNotOpen(result.message) ?? 'Could not open file')),
                     );
                   }
                 } else {
@@ -853,9 +915,12 @@ class _MaterialsStrip extends StatelessWidget {
   }
 }
 
-// ─── Message list ─────────────────────────────────────────────────────────────
+// =============================================================================
+// UI WIDGETS - Messages
+// =============================================================================
 
-class _MessageList extends StatelessWidget {
+/// Displays a scrollable list of chat messages with streaming and thinking states.
+class MessageList extends StatelessWidget {
   final List<ChatMessage> messages;
   final String? streamingContent;
   final String? thinkingContent;
@@ -866,7 +931,8 @@ class _MessageList extends StatelessWidget {
   final ColorScheme scheme;
   final ThemeData theme;
 
-  const _MessageList({
+  const MessageList({
+    super.key,
     required this.messages,
     required this.streamingContent,
     required this.thinkingContent,
@@ -885,6 +951,14 @@ class _MessageList extends StatelessWidget {
     final extraItems = (hasThinking ? 1 : 0) + (hasStreaming ? 1 : 0);
     final totalItems = messages.length + extraItems;
 
+    // Cache expensive calculations
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final maxBubbleWidth = screenWidth * 0.78;
+    final markdownStyle = MarkdownStyleSheet.fromTheme(theme).copyWith(
+      p: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface),
+    );
+    final textStyle = theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface);
+
     return ListView.builder(
       controller: scrollController,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
@@ -893,7 +967,7 @@ class _MessageList extends StatelessWidget {
         if (hasThinking && index == messages.length) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: _ThinkingBubble(
+            child: ThinkingBubble(
               content: thinkingContent!,
               expanded: thinkingExpanded,
               isStreaming:
@@ -912,9 +986,7 @@ class _MessageList extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Container(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.sizeOf(context).width * 0.78,
-                ),
+                constraints: BoxConstraints(maxWidth: maxBubbleWidth),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
@@ -927,15 +999,11 @@ class _MessageList extends StatelessWidget {
                   ),
                 ),
                 child: streamingContent!.isEmpty
-                    ? _TypingIndicator(scheme: scheme)
+                    ? TypingIndicator(scheme: scheme)
                     : MathMarkdownBody(
                         data: streamingContent!,
-                        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                          p: theme.textTheme.bodyMedium
-                              ?.copyWith(color: scheme.onSurface),
-                        ),
-                        textStyle: theme.textTheme.bodyMedium
-                            ?.copyWith(color: scheme.onSurface),
+                        styleSheet: markdownStyle,
+                        textStyle: textStyle,
                       ),
               ),
             ),
@@ -949,9 +1017,7 @@ class _MessageList extends StatelessWidget {
           child: Align(
             alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
             child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.sizeOf(context).width * 0.78,
-              ),
+              constraints: BoxConstraints(maxWidth: maxBubbleWidth),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: isUser
@@ -966,7 +1032,7 @@ class _MessageList extends StatelessWidget {
               ),
               child: isUser
                   ? (msg.content == _kVoiceSentinel
-                      ? _VoiceMessageBubble(scheme: scheme, theme: theme)
+                      ? VoiceMessageBubble(scheme: scheme, theme: theme)
                       : Text(
                           msg.content,
                           style: theme.textTheme.bodyMedium?.copyWith(
@@ -975,12 +1041,8 @@ class _MessageList extends StatelessWidget {
                         ))
                   : MathMarkdownBody(
                       data: msg.content,
-                      styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                        p: theme.textTheme.bodyMedium
-                            ?.copyWith(color: scheme.onSurface),
-                      ),
-                      textStyle: theme.textTheme.bodyMedium
-                          ?.copyWith(color: scheme.onSurface),
+                      styleSheet: markdownStyle,
+                      textStyle: textStyle,
                     ),
             ),
           ),
@@ -990,9 +1052,8 @@ class _MessageList extends StatelessWidget {
   }
 }
 
-// ─── Thinking bubble ──────────────────────────────────────────────────────────
-
-class _ThinkingBubble extends StatelessWidget {
+/// An expandable bubble showing the AI's thinking process.
+class ThinkingBubble extends StatelessWidget {
   final String content;
   final bool expanded;
   final bool isStreaming;
@@ -1000,7 +1061,8 @@ class _ThinkingBubble extends StatelessWidget {
   final ColorScheme scheme;
   final ThemeData theme;
 
-  const _ThinkingBubble({
+  const ThinkingBubble({
+    super.key,
     required this.content,
     required this.expanded,
     required this.isStreaming,
@@ -1045,7 +1107,7 @@ class _ThinkingBubble extends StatelessWidget {
                     if (isStreaming)
                       Padding(
                         padding: const EdgeInsets.only(right: 6),
-                        child: _TypingIndicator(scheme: scheme),
+                        child: TypingIndicator(scheme: scheme),
                       )
                     else
                       Padding(
@@ -1092,18 +1154,17 @@ class _ThinkingBubble extends StatelessWidget {
   }
 }
 
-// ─── Typing indicator ─────────────────────────────────────────────────────────
-
-class _TypingIndicator extends StatefulWidget {
+/// Animated typing indicator with three pulsing dots.
+class TypingIndicator extends StatefulWidget {
   final ColorScheme scheme;
 
-  const _TypingIndicator({required this.scheme});
+  const TypingIndicator({super.key, required this.scheme});
 
   @override
-  State<_TypingIndicator> createState() => _TypingIndicatorState();
+  State<TypingIndicator> createState() => _TypingIndicatorState();
 }
 
-class _TypingIndicatorState extends State<_TypingIndicator>
+class _TypingIndicatorState extends State<TypingIndicator>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
@@ -1124,13 +1185,13 @@ class _TypingIndicatorState extends State<_TypingIndicator>
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(3, (i) {
-        final offset = i / 3;
-        return AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
+    return AnimatedBuilder(
+      animation: _controller,
+      builder: (context, _) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(3, (i) {
+            final offset = i / 3;
             final t = ((_controller.value + offset) % 1.0);
             final opacity = (t < 0.5 ? t * 2 : (1 - t) * 2).clamp(0.3, 1.0);
             return Padding(
@@ -1147,36 +1208,27 @@ class _TypingIndicatorState extends State<_TypingIndicator>
                 ),
               ),
             );
-          },
+          }),
         );
-      }),
+      },
     );
   }
 }
 
-// ─── Empty chat ───────────────────────────────────────────────────────────────
-
-class _EmptyChat extends StatelessWidget {
+/// Placeholder shown when the chat has no messages.
+class EmptyChatPlaceholder extends StatelessWidget {
   final ColorScheme scheme;
   final ThemeData theme;
-  final List<String> suggestions;
-  final void Function(String) onSuggestionTap;
 
-  const _EmptyChat({
+  const EmptyChatPlaceholder({
+    super.key,
     required this.scheme,
     required this.theme,
-    required this.suggestions,
-    required this.onSuggestionTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final quickPrompts = [
-      (l10n.chatQuickSummarize, 'Summarize this session for me'),
-      (l10n.chatQuickQuizHints, 'Give me quiz hints for this session'),
-      (l10n.chatQuickExplainSimply, 'Explain this session simply'),
-    ];
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -1200,32 +1252,6 @@ class _EmptyChat extends StatelessWidget {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
-              children: quickPrompts
-                  .map((p) => ActionChip(
-                        label: Text(p.$1),
-                        onPressed: () => onSuggestionTap(p.$2),
-                      ))
-                  .toList(),
-            ),
-            if (suggestions.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.center,
-                children: suggestions
-                    .take(4)
-                    .map((s) => ActionChip(
-                          label: Text(l10n.chatAskAbout(s)),
-                          onPressed: () => onSuggestionTap('Tell me about $s'),
-                        ))
-                    .toList(),
-              ),
-            ],
           ],
         ),
       ),
@@ -1233,15 +1259,19 @@ class _EmptyChat extends StatelessWidget {
   }
 }
 
-// ─── Tips panel (tablet sidebar) ─────────────────────────────────────────────
+// =============================================================================
+// UI WIDGETS - Sidebar
+// =============================================================================
 
-class _TipsPanel extends StatelessWidget {
+/// Sidebar panel showing session info and topic suggestions (tablet layout).
+class TipsPanel extends StatelessWidget {
   final Session session;
   final List<String> suggestions;
   final ColorScheme scheme;
   final ThemeData theme;
 
-  const _TipsPanel({
+  const TipsPanel({
+    super.key,
     required this.session,
     required this.suggestions,
     required this.scheme,
@@ -1275,19 +1305,10 @@ class _TipsPanel extends StatelessWidget {
                   ?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: suggestions
-                  .map((s) => Chip(
-                        label: Text(s,
-                            style: theme.textTheme.labelSmall
-                                ?.copyWith(color: scheme.onSurfaceVariant)),
-                        backgroundColor: scheme.surfaceContainerLow,
-                        side: BorderSide(color: scheme.outlineVariant),
-                        padding: EdgeInsets.zero,
-                      ))
-                  .toList(),
+            SuggestionChipsList(
+              suggestions: suggestions,
+              scheme: scheme,
+              theme: theme,
             ),
           ],
         ],
@@ -1296,9 +1317,45 @@ class _TipsPanel extends StatelessWidget {
   }
 }
 
-// ─── Input bar ────────────────────────────────────────────────────────────────
+/// Wrap of suggestion chips for the sidebar panel.
+class SuggestionChipsList extends StatelessWidget {
+  final List<String> suggestions;
+  final ColorScheme scheme;
+  final ThemeData theme;
 
-class _InputBar extends StatelessWidget {
+  const SuggestionChipsList({
+    super.key,
+    required this.suggestions,
+    required this.scheme,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final s in suggestions)
+          Chip(
+            label: Text(s,
+                style: theme.textTheme.labelSmall
+                    ?.copyWith(color: scheme.onSurfaceVariant)),
+            backgroundColor: scheme.surfaceContainerLow,
+            side: BorderSide(color: scheme.outlineVariant),
+            padding: EdgeInsets.zero,
+          ),
+      ],
+    );
+  }
+}
+
+// =============================================================================
+// UI WIDGETS - Input
+// =============================================================================
+
+/// Main chat input bar with text field, send/stop button, and mic button.
+class ChatInputBar extends StatelessWidget {
   final TextEditingController controller;
   final bool sending;
   final bool modelLoading;
@@ -1310,7 +1367,8 @@ class _InputBar extends StatelessWidget {
   final ColorScheme scheme;
   final ThemeData theme;
 
-  const _InputBar({
+  const ChatInputBar({
+    super.key,
     required this.controller,
     required this.sending,
     required this.modelLoading,
@@ -1343,7 +1401,7 @@ class _InputBar extends StatelessWidget {
           children: [
             Expanded(
               child: isRecording
-                  ? _ListeningField(scheme: scheme, theme: theme)
+                  ? ListeningIndicator(scheme: scheme, theme: theme)
                   : TextField(
                 controller: controller,
                 enabled: !sending && !modelLoading,
@@ -1414,7 +1472,7 @@ class _InputBar extends StatelessWidget {
             ),
             if (!sending && !modelLoading) ...[
               const SizedBox(width: 8),
-              _MicButton(
+              MicButton(
                 isRecording: isRecording,
                 onMicStart: onMicStart,
                 onMicStop: onMicStop,
@@ -1428,15 +1486,15 @@ class _InputBar extends StatelessWidget {
   }
 }
 
-// ─── Mic button ───────────────────────────────────────────────────────────────
-
-class _MicButton extends StatelessWidget {
+/// Long-press microphone button for voice recording.
+class MicButton extends StatelessWidget {
   final bool isRecording;
   final VoidCallback onMicStart;
   final VoidCallback onMicStop;
   final ColorScheme scheme;
 
-  const _MicButton({
+  const MicButton({
+    super.key,
     required this.isRecording,
     required this.onMicStart,
     required this.onMicStop,
@@ -1467,18 +1525,17 @@ class _MicButton extends StatelessWidget {
   }
 }
 
-// ─── Listening field (recording state) ───────────────────────────────────────
-
-class _ListeningField extends StatefulWidget {
+/// Animated indicator shown while recording voice input.
+class ListeningIndicator extends StatefulWidget {
   final ColorScheme scheme;
   final ThemeData theme;
-  const _ListeningField({required this.scheme, required this.theme});
+  const ListeningIndicator({super.key, required this.scheme, required this.theme});
 
   @override
-  State<_ListeningField> createState() => _ListeningFieldState();
+  State<ListeningIndicator> createState() => _ListeningIndicatorState();
 }
 
-class _ListeningFieldState extends State<_ListeningField>
+class _ListeningIndicatorState extends State<ListeningIndicator>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _opacity;
@@ -1530,13 +1587,16 @@ class _ListeningFieldState extends State<_ListeningField>
   }
 }
 
-// ─── Voice message bubble ─────────────────────────────────────────────────────
+// =============================================================================
+// UI WIDGETS - Voice
+// =============================================================================
 
-class _VoiceMessageBubble extends StatelessWidget {
+/// Compact indicator showing a voice message was sent.
+class VoiceMessageBubble extends StatelessWidget {
   final ColorScheme scheme;
   final ThemeData theme;
 
-  const _VoiceMessageBubble({required this.scheme, required this.theme});
+  const VoiceMessageBubble({super.key, required this.scheme, required this.theme});
 
   @override
   Widget build(BuildContext context) {
@@ -1557,27 +1617,41 @@ class _VoiceMessageBubble extends StatelessWidget {
   }
 }
 
-// ─── Model loading overlay ─────────────────────────────────────────────────────
+// =============================================================================
+// UI WIDGETS - Overlays
+// =============================================================================
 
-class _ModelLoadingOverlay extends StatelessWidget {
+/// Full-screen overlay shown while the AI model is loading or waiting for response.
+class ModelLoadingOverlay extends StatelessWidget {
   final ColorScheme scheme;
   final ThemeData theme;
+  final bool isWaitingForResponse;
 
-  const _ModelLoadingOverlay({required this.scheme, required this.theme});
+  const ModelLoadingOverlay({
+    super.key,
+    required this.scheme,
+    required this.theme,
+    this.isWaitingForResponse = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
+    final emoji = isWaitingForResponse ? '⏳' : '🧠';
+    final text = isWaitingForResponse
+        ? l10n.chatWaitingForResponse
+        : l10n.quizGenLoadingBrain;
+
     return Container(
-      color: scheme.surface.withOpacity(0.9),
+      color: scheme.surface,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const _PulsingBrain(),
+            PulsingBrain(emoji: emoji),
             const SizedBox(height: 16),
             Text(
-              l10n.quizGenLoadingBrain,
+              text,
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: scheme.onSurface,
@@ -1591,14 +1665,17 @@ class _ModelLoadingOverlay extends StatelessWidget {
   }
 }
 
-class _PulsingBrain extends StatefulWidget {
-  const _PulsingBrain();
+/// Animated pulsing emoji for the loading overlay.
+class PulsingBrain extends StatefulWidget {
+  final String emoji;
+
+  const PulsingBrain({super.key, this.emoji = '🧠'});
 
   @override
-  State<_PulsingBrain> createState() => _PulsingBrainState();
+  State<PulsingBrain> createState() => _PulsingBrainState();
 }
 
-class _PulsingBrainState extends State<_PulsingBrain>
+class _PulsingBrainState extends State<PulsingBrain>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _scale;
@@ -1625,7 +1702,7 @@ class _PulsingBrainState extends State<_PulsingBrain>
   Widget build(BuildContext context) {
     return ScaleTransition(
       scale: _scale,
-      child: const Text('🧠', style: TextStyle(fontSize: 64)),
+      child: Text(widget.emoji, style: const TextStyle(fontSize: 64)),
     );
   }
 }

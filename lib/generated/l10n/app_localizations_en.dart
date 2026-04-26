@@ -606,6 +606,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatListening => 'Listening...';
 
   @override
+  String get chatWaitingForResponse => 'Waiting for response...';
+
+  @override
   String get quizDetailTitle => 'Quiz Questions';
 
   @override
