@@ -13,6 +13,7 @@ import 'package:open_filex/open_filex.dart';
 
 import '../../app/breakpoints.dart';
 import '../../app/theme.dart';
+import '../../core/ai/chat_prompts.dart';
 import '../../core/ai/gemma_inference_service.dart';
 import '../../core/ai/gemma_service_host.dart';
 import '../../core/ai/gemma_session_service.dart';
@@ -118,9 +119,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _coachSessionInitializing = true;
     try {
       _sessionService = GemmaSessionService(service);
+      final locale = AppLocalizations.of(context)!.localeName;
       await _sessionService!.initCoachSession(
         session: session,
         materials: materials,
+        locale: locale,
       );
       if (mounted) {
         setState(() => _coachSessionInitialized = true);
@@ -186,9 +189,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final accumulatedThinking = StringBuffer();
 
     try {
-      final stream = _sessionService!.sendCoachMessage(
-        'These are the materials. For now reply with 1 short sentence, wait for other messages.',
-      );
+      final locale = AppLocalizations.of(context)!.localeName;
+      final openerMessage = ChatPrompts.getCoachOpenerMessage(locale);
+      final stream = _sessionService!.sendCoachMessage(openerMessage);
       await _streamSub?.cancel();
       final completer = Completer<void>();
 
@@ -699,24 +702,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
             ],
           ),
-          body: compact
-              ? chatColumn
-              : Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(child: chatColumn),
-                    Container(width: 1, color: scheme.outlineVariant),
-                    SizedBox(
-                      width: 280,
-                      child: _TipsPanel(
-                        session: bundle.session,
-                        suggestions: suggestions,
-                        scheme: scheme,
-                        theme: theme,
-                      ),
+          body: Stack(
+            children: [
+              compact
+                  ? chatColumn
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Expanded(child: chatColumn),
+                        Container(width: 1, color: scheme.outlineVariant),
+                        SizedBox(
+                          width: 280,
+                          child: _TipsPanel(
+                            session: bundle.session,
+                            suggestions: suggestions,
+                            scheme: scheme,
+                            theme: theme,
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+              if (_modelLoading)
+                _ModelLoadingOverlay(scheme: scheme, theme: theme),
+            ],
+          ),
         );
       },
     );
@@ -1544,6 +1553,79 @@ class _VoiceMessageBubble extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Model loading overlay ─────────────────────────────────────────────────────
+
+class _ModelLoadingOverlay extends StatelessWidget {
+  final ColorScheme scheme;
+  final ThemeData theme;
+
+  const _ModelLoadingOverlay({required this.scheme, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context)!;
+    return Container(
+      color: scheme.surface.withOpacity(0.9),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const _PulsingBrain(),
+            const SizedBox(height: 16),
+            Text(
+              l10n.quizGenLoadingBrain,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: scheme.onSurface,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PulsingBrain extends StatefulWidget {
+  const _PulsingBrain();
+
+  @override
+  State<_PulsingBrain> createState() => _PulsingBrainState();
+}
+
+class _PulsingBrainState extends State<_PulsingBrain>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    )..repeat(reverse: true);
+    _scale = Tween<double>(begin: 1.0, end: 1.15).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _scale,
+      child: const Text('🧠', style: TextStyle(fontSize: 64)),
     );
   }
 }

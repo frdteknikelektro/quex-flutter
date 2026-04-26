@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
 import '../models/models.dart';
+import 'chat_prompts.dart';
 import 'gemma_inference_service.dart';
 import 'response_loop_guard.dart';
 import 'material_preprocessor.dart';
@@ -206,6 +207,7 @@ class GemmaSessionService {
   Future<void> initCoachSession({
     required Session session,
     required List<StudyMaterial> materials,
+    String locale = 'en',
   }) async {
     if (!_inference.isInitialized) {
       throw StateError('Service not initialized');
@@ -222,9 +224,7 @@ class GemmaSessionService {
         .join('\n\n');
 
     final systemInstruction = StringBuffer(
-      'You are Quex, a friendly study coach for "${session.title}". '
-      'Answer questions about the study material, offer study tips, and suggest topics to explore. '
-      'Keep responses short, encouraging, and kid-friendly.',
+      ChatPrompts.getCoachSystemInstruction(session.title, locale),
     );
     if (textContext.isNotEmpty) {
       systemInstruction
