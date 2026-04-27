@@ -106,7 +106,6 @@ class GemmaSessionService {
       temperature: 0.8,
       topK: 40,
       supportImage: hasImages,
-      promptDialect: gemma.PromptDialect.gemma4,
       toolChoice: gemma.ToolChoice.auto,
       tools: [_evaluateTool],
       supportsFunctionCalls: true,
@@ -242,7 +241,6 @@ class GemmaSessionService {
       topK: 40,
       supportImage: hasImages,
       supportAudio: true,
-      promptDialect: gemma.PromptDialect.gemma4,
       toolChoice: gemma.ToolChoice.auto,
       isThinking: isThinking,
     );

@@ -60,8 +60,7 @@ class GemmaInferenceService {
     double temperature = 0.8,
     int randomSeed = 1,
     int topK = 1,
-    gemma.ModelType modelType = gemma.ModelType.gemmaIt,
-    gemma.PromptDialect promptDialect = gemma.PromptDialect.gemma4,
+    gemma.ModelType modelType = gemma.ModelType.gemma4It,
     bool supportImage = false,
     bool supportAudio = false,
     bool isThinking = false,
@@ -89,7 +88,6 @@ class GemmaInferenceService {
       tools: tools,
       supportsFunctionCalls: supportsFunctionCalls,
       modelType: modelType,
-      promptDialect: promptDialect,
       toolChoice: toolChoice,
     );
   }

@@ -10,7 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///
 /// Gemma 4 E4B specs (litert-community):
 /// - Size: ~3.65GB
-/// - ModelType: ModelType.gemmaIt
+/// - ModelType: ModelType.gemma4It
 /// - Capabilities: Text, Image, Audio, Function Calling, Thinking Mode
 /// - Format: .litertlm for LiteRT-LM framework
 class ModelManager {
@@ -148,7 +148,7 @@ class ModelManager {
     controller = StreamController<double>(onCancel: onCancel);
 
     FlutterGemma.installModel(
-      modelType: ModelType.gemmaIt,
+      modelType: ModelType.gemma4It,
     ).fromNetwork(
       gemmaModelUrl,
     ).withProgress((progress) {
@@ -186,7 +186,7 @@ class ModelManager {
   /// install() is idempotent — skips download if file exists, just sets active.
   static Future<void> activateModel() async {
     if (FlutterGemma.hasActiveModel()) return;
-    await FlutterGemma.installModel(modelType: ModelType.gemmaIt)
+    await FlutterGemma.installModel(modelType: ModelType.gemma4It)
         .fromNetwork(gemmaModelUrl)
         .install();
   }

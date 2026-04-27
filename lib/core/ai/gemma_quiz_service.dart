@@ -140,7 +140,6 @@ RULES:
     await _inference.createSession(
       systemInstruction: _extractionSystemPrompt,
       isThinking: false,
-      promptDialect: gemma.PromptDialect.gemma4,
       tools: const [],
       supportsFunctionCalls: false,
       supportImage: hasImages,
@@ -197,7 +196,6 @@ RULES:
     await _inference.createSession(
       systemInstruction: _quizSystemPrompt,
       isThinking: false,
-      promptDialect: gemma.PromptDialect.gemma4,
       tools: const [],
       supportsFunctionCalls: false,
       supportImage: hasImages,

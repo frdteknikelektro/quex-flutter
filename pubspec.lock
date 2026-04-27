@@ -380,7 +380,7 @@ packages:
       path: "../flutter_gemma"
       relative: true
     source: path
-    version: "0.13.5"
+    version: "0.13.6"
   flutter_image_compress:
     dependency: "direct main"
     description:
