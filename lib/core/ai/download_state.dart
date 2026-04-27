@@ -1,4 +1,4 @@
-enum DownloadStatus { idle, downloading, cancelling, completed, failed }
+enum DownloadStatus { idle, downloading, cancelling, completed, failed, warming }
 
 class ModelDownloadState {
   final DownloadStatus status;
@@ -14,9 +14,12 @@ class ModelDownloadState {
   static const ModelDownloadState idle = ModelDownloadState(status: DownloadStatus.idle);
 
   bool get isActive =>
-      status == DownloadStatus.downloading || status == DownloadStatus.cancelling;
+      status == DownloadStatus.downloading ||
+      status == DownloadStatus.cancelling ||
+      status == DownloadStatus.warming;
   bool get isCompleted => status == DownloadStatus.completed;
   bool get hasFailed => status == DownloadStatus.failed;
+  bool get isWarming => status == DownloadStatus.warming;
 
   ModelDownloadState copyWith({
     DownloadStatus? status,

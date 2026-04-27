@@ -62,4 +62,24 @@ class ChatPrompts {
         return '$dateTimeContext\n\n---\n\nYou are Quex, a friendly study coach for "$sessionTitle". Answer questions about the study material, offer study tips, and suggest topics to explore. Keep responses short, encouraging, and kid-friendly.';
     }
   }
+
+  /// Returns the system instruction for warm-up session.
+  static String getWarmUpSystemInstruction(String locale) {
+    switch (locale) {
+      case 'id':
+        return 'Anda adalah asisten. Berikan respons sangat singkat, maksimal 1-2 kata.';
+      default:
+        return 'You are an assistant. Respond very briefly, maximum 1-2 words.';
+    }
+  }
+
+  /// Returns the greeting message for warm-up.
+  static String getWarmUpGreeting(String locale) {
+    switch (locale) {
+      case 'id':
+        return 'Ucapkan salam';
+      default:
+        return 'Do greeting';
+    }
+  }
 }

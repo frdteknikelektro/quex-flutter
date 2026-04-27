@@ -1,9 +1,10 @@
 {
   "@@locale": "id",
   "appTitle": "Quex",
-  "appSubtitle": "Ujian Cepat",
-  "appTagline": "Latihan membuat Sempurna",
+  "appSubtitle": "Quick Exam",
+  "appTagline": "Latihan hingga Sempurna",
   "ready": "Siap! 🎉",
+  "warmingUp": "Memanaskan...",
   "downloadingBrain": "Mengunduh otak… {percent}% 🧠",
   "oopsSomethingWentWrong": "Ups, terjadi kesalahan",
   "tryAgain": "Coba lagi",

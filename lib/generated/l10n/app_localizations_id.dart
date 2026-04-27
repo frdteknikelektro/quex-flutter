@@ -12,13 +12,16 @@ class AppLocalizationsId extends AppLocalizations {
   String get appTitle => 'Quex';
 
   @override
-  String get appSubtitle => 'Ujian Cepat';
+  String get appSubtitle => 'Quick Exam';
 
   @override
-  String get appTagline => 'Latihan membuat Sempurna';
+  String get appTagline => 'Latihan hingga Sempurna';
 
   @override
   String get ready => 'Siap! 🎉';
+
+  @override
+  String get warmingUp => 'Memanaskan...';
 
   @override
   String downloadingBrain(int percent) {

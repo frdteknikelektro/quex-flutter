@@ -122,6 +122,12 @@ abstract class AppLocalizations {
   /// **'Ready! 🎉'**
   String get ready;
 
+  /// Message shown while model is being warmed up after download
+  ///
+  /// In en, this message translates to:
+  /// **'Warming up...'**
+  String get warmingUp;
+
   /// Download progress message with percentage
   ///
   /// In en, this message translates to:

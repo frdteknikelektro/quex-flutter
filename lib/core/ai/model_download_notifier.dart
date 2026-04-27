@@ -64,10 +64,9 @@ class ModelDownloadNotifier extends Notifier<ModelDownloadState> {
         .onConnectivityChanged
         .listen((results) async {
       if (state.isActive) {
-        // Network changed during download
+        // Network changed during download - will attempt to resume
         await NotificationService.instance.showDownloadFailed(
-          'Network changed. HuggingFace CDN does not support resume. '
-          'Download will restart from 0%. Tap Retry to continue.',
+          'Network interrupted. Attempting to resume download...',
         );
       }
     });

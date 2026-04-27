@@ -21,6 +21,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ready => 'Ready! 🎉';
 
   @override
+  String get warmingUp => 'Warming up...';
+
+  @override
   String downloadingBrain(int percent) {
     return 'Downloading brain… $percent% 🧠';
   }

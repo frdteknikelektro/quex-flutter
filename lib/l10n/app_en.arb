@@ -16,6 +16,10 @@
   "@ready": {
     "description": "Success message when model download is complete"
   },
+  "warmingUp": "Warming up...",
+  "@warmingUp": {
+    "description": "Message shown while model is being warmed up after download"
+  },
   "downloadingBrain": "Downloading brain… {percent}% 🧠",
   "@downloadingBrain": {
     "description": "Download progress message with percentage",
