@@ -60,7 +60,7 @@ class GemmaInferenceService {
     double temperature = 0.8,
     int randomSeed = 1,
     int topK = 1,
-    gemma.ModelType modelType = gemma.ModelType.gemma4It,
+    gemma.ModelType modelType = gemma.ModelType.gemmaIt,
     bool supportImage = false,
     bool supportAudio = false,
     bool isThinking = false,

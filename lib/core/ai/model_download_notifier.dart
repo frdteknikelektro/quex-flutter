@@ -22,18 +22,28 @@ class ModelDownloadNotifier extends Notifier<ModelDownloadState> {
   }
 
   Future<void> _checkInitialState() async {
+    // Select model variant based on RAM before checking state
+    final variant = await ModelManager.getSelectedVariant();
+
     final ready = await ModelManager.isReady();
     final savedProgress = await ModelManager.progress();
     if (ready) {
-      await ModelManager.activateModel();
-      state = const ModelDownloadState(
+      state = ModelDownloadState(
         status: DownloadStatus.completed,
         progress: 1.0,
+        modelVariant: variant,
       );
     } else if (savedProgress > 0) {
       state = ModelDownloadState(
         status: DownloadStatus.idle,
         progress: savedProgress,
+        modelVariant: variant,
+      );
+    } else {
+      state = ModelDownloadState(
+        status: DownloadStatus.idle,
+        progress: 0.0,
+        modelVariant: variant,
       );
     }
   }
@@ -44,9 +54,11 @@ class ModelDownloadNotifier extends Notifier<ModelDownloadState> {
     // Skip if model is already downloaded (race condition with _checkInitialState)
     final ready = await ModelManager.isReady();
     if (ready) {
-      state = const ModelDownloadState(
+      final variant = await ModelManager.getSelectedVariant();
+      state = ModelDownloadState(
         status: DownloadStatus.completed,
         progress: 1.0,
+        modelVariant: variant,
       );
       return;
     }

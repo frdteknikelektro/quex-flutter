@@ -18,6 +18,7 @@ import '../../core/ai/chat_prompts.dart';
 import '../../core/ai/gemma_inference_service.dart';
 import '../../core/ai/gemma_service_host.dart';
 import '../../core/ai/gemma_session_service.dart';
+import '../../core/ai/model_manager.dart';
 import '../../core/ai/quex_ai.dart';
 import '../../core/ai/tutor_event.dart';
 import '../../core/models/models.dart';
@@ -59,6 +60,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // Services
   // ===========================================================================
   late final GemmaServiceHost _gemmaHost;
+  late final Future<void> _modelActivation;
   StreamSubscription<TutorEvent>? _streamSub;
   GemmaSessionService? _sessionService;
 
@@ -113,6 +115,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _gemmaHost = GemmaServiceHost(
       service: widget.gemmaServiceFactory?.call(),
     );
+    _modelActivation = ModelManager.activateModel();
     unawaited(_warmModel());
   }
 
@@ -141,7 +144,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ---------------------------------------------------------------------------
 
   Future<GemmaInferenceService> _ensureModel() {
-    return _gemmaHost.ensureInitialized();
+    return _modelActivation.then((_) => _gemmaHost.ensureInitialized());
   }
 
   Future<void> _warmModel() async {

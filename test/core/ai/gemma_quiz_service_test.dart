@@ -25,7 +25,6 @@ class _StuckGemmaInferenceService extends GemmaInferenceService {
     int randomSeed = 1,
     int topK = 1,
     gemma.ModelType modelType = gemma.ModelType.gemmaIt,
-    gemma.PromptDialect promptDialect = gemma.PromptDialect.gemma4,
     bool supportImage = false,
     bool supportAudio = false,
     bool isThinking = false,
@@ -36,7 +35,6 @@ class _StuckGemmaInferenceService extends GemmaInferenceService {
     createSessionCalls++;
     lastToolChoice = toolChoice;
     lastSystemInstruction = systemInstruction;
-    expect(promptDialect, gemma.PromptDialect.gemma4);
   }
 
   @override
@@ -69,7 +67,6 @@ class _QueuedGemmaInferenceService extends GemmaInferenceService {
     int randomSeed = 1,
     int topK = 1,
     gemma.ModelType modelType = gemma.ModelType.gemmaIt,
-    gemma.PromptDialect promptDialect = gemma.PromptDialect.gemma4,
     bool supportImage = false,
     bool supportAudio = false,
     bool isThinking = false,

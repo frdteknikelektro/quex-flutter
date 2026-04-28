@@ -74,7 +74,6 @@ class _PreloadRecordingInferenceService extends GemmaInferenceService {
     int randomSeed = 1,
     int topK = 1,
     gemma.ModelType modelType = gemma.ModelType.gemmaIt,
-    gemma.PromptDialect promptDialect = gemma.PromptDialect.gemma4,
     bool supportImage = false,
     bool supportAudio = false,
     bool isThinking = false,

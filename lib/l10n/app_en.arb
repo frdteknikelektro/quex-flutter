@@ -29,6 +29,18 @@
       }
     }
   },
+  "downloadingModelVariant": "Gemma 4 {variant} ({size})",
+  "@downloadingModelVariant": {
+    "description": "Model variant info shown below download progress",
+    "placeholders": {
+      "variant": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
   "oopsSomethingWentWrong": "Oops, something went wrong",
   "@oopsSomethingWentWrong": {
     "description": "Error message on splash screen"

@@ -80,7 +80,6 @@ class GemmaSessionService {
     await _inference.closeSession();
 
     final prepared = await MaterialPreprocessor.prepare(materials);
-    final hasImages = prepared.any((p) => p.images.isNotEmpty);
 
     final materialsContext = prepared
         .where((p) => p.textChunk.isNotEmpty)
@@ -105,7 +104,7 @@ class GemmaSessionService {
       systemInstruction: systemInstruction.toString(),
       temperature: 0.8,
       topK: 40,
-      supportImage: hasImages,
+      supportImage: true,
       toolChoice: gemma.ToolChoice.auto,
       tools: [_evaluateTool],
       supportsFunctionCalls: true,
@@ -219,7 +218,6 @@ class GemmaSessionService {
     await _inference.closeSession();
 
     final prepared = await MaterialPreprocessor.prepare(materials);
-    final hasImages = prepared.any((p) => p.images.isNotEmpty);
 
     final textContext = prepared
         .where((p) => p.textChunk.isNotEmpty)
@@ -239,7 +237,7 @@ class GemmaSessionService {
       systemInstruction: systemInstruction.toString(),
       temperature: 1.1,
       topK: 40,
-      supportImage: hasImages,
+      supportImage: true,
       supportAudio: true,
       toolChoice: gemma.ToolChoice.auto,
       isThinking: isThinking,

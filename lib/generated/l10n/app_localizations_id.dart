@@ -29,6 +29,11 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
+  String downloadingModelVariant(String variant, String size) {
+    return 'Gemma 4 $variant ($size)';
+  }
+
+  @override
   String get oopsSomethingWentWrong => 'Ups, terjadi kesalahan';
 
   @override

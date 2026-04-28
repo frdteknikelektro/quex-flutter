@@ -6,6 +6,7 @@
   "ready": "Siap! 🎉",
   "warmingUp": "Memanaskan...",
   "downloadingBrain": "Mengunduh otak… {percent}% 🧠",
+  "downloadingModelVariant": "Gemma 4 {variant} ({size})",
   "oopsSomethingWentWrong": "Ups, terjadi kesalahan",
   "tryAgain": "Coba lagi",
   "cancelling": "Membatalkan…",

@@ -53,6 +53,7 @@
 		3B3967151E833CAA004F5970 /* AppFrameworkInfo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = AppFrameworkInfo.plist; path = Flutter/AppFrameworkInfo.plist; sourceTree = "<group>"; };
 		74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Runner-Bridging-Header.h"; sourceTree = "<group>"; };
 		74858FAE1ED2DC5600515810 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		77DFB5202FA14EF600A24CC6 /* Runner.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Runner.entitlements; sourceTree = "<group>"; };
 		7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		7AFA3C8E1D35360C0083082E /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Release.xcconfig; path = Flutter/Release.xcconfig; sourceTree = "<group>"; };
 		91632D3E60DAF939EF7743CA /* Pods-RunnerTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.debug.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.debug.xcconfig"; sourceTree = "<group>"; };
@@ -141,6 +142,7 @@
 		97C146F01CF9000F007C117D /* Runner */ = {
 			isa = PBXGroup;
 			children = (
+				77DFB5202FA14EF600A24CC6 /* Runner.entitlements */,
 				97C146FA1CF9000F007C117D /* Main.storyboard */,
 				97C146FD1CF9000F007C117D /* Assets.xcassets */,
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
@@ -178,6 +180,7 @@
 				331C807D294A63A400263BE5 /* Sources */,
 				331C807F294A63A400263BE5 /* Resources */,
 				CA3096AD96ABC7167EB214E8 /* Frameworks */,
+				6F85853C0A5C906C32A99E2B /* [flutter_gemma] Setup LiteRT-LM iOS */,
 			);
 			buildRules = (
 			);
@@ -201,6 +204,7 @@
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				688526F2E1097F0B2164209A /* [CP] Copy Pods Resources */,
+				32B2C2F9DED80F3273BA1EAF /* [flutter_gemma] Setup LiteRT-LM iOS */,
 			);
 			buildRules = (
 			);
@@ -272,6 +276,24 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		32B2C2F9DED80F3273BA1EAF /* [flutter_gemma] Setup LiteRT-LM iOS */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "[flutter_gemma] Setup LiteRT-LM iOS";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nFRAMEWORKS=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Frameworks\"\nif [ ! -d \"${FRAMEWORKS}\" ]; then\n  echo \"[flutter_gemma] no Frameworks/ in ${PRODUCT_NAME}.app — skipping\"\n  exit 0\nfi\nfor base in LiteRtMetalAccelerator GemmaModelConstraintProvider; do\n  src=\"${base}.framework/${base}\"\n  if [ ! -e \"${FRAMEWORKS}/${src}\" ]; then\n    echo \"[flutter_gemma] ${FRAMEWORKS}/${src} missing — Native Assets did not bundle it\"\n    continue\n  fi\n  dst=\"${FRAMEWORKS}/lib${base}.dylib\"\n  if [ ! -e \"${dst}\" ]; then\n    ln -sf \"${src}\" \"${dst}\"\n    echo \"[flutter_gemma] symlinked lib${base}.dylib -> ${src}\"\n  fi\ndone\n";
+		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -304,6 +326,24 @@
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources.sh\"\n";
 			showEnvVarsInLog = 0;
+		};
+		6F85853C0A5C906C32A99E2B /* [flutter_gemma] Setup LiteRT-LM iOS */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "[flutter_gemma] Setup LiteRT-LM iOS";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nFRAMEWORKS=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Frameworks\"\nif [ ! -d \"${FRAMEWORKS}\" ]; then\n  echo \"[flutter_gemma] no Frameworks/ in ${PRODUCT_NAME}.app — skipping\"\n  exit 0\nfi\nfor base in LiteRtMetalAccelerator GemmaModelConstraintProvider; do\n  src=\"${base}.framework/${base}\"\n  if [ ! -e \"${FRAMEWORKS}/${src}\" ]; then\n    echo \"[flutter_gemma] ${FRAMEWORKS}/${src} missing — Native Assets did not bundle it\"\n    continue\n  fi\n  dst=\"${FRAMEWORKS}/lib${base}.dylib\"\n  if [ ! -e \"${dst}\" ]; then\n    ln -sf \"${src}\" \"${dst}\"\n    echo \"[flutter_gemma] symlinked lib${base}.dylib -> ${src}\"\n  fi\ndone\n";
 		};
 		9740EEB61CF901F6004384FC /* Run Script */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -473,15 +513,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-				DEVELOPMENT_TEAM = YP38N2B8Y3;
+				DEVELOPMENT_TEAM = SQ5BS6JSY8;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.quex;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.jala.quex;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
@@ -656,15 +698,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-				DEVELOPMENT_TEAM = YP38N2B8Y3;
+				DEVELOPMENT_TEAM = SQ5BS6JSY8;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.quex;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.jala.quex;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -679,15 +723,17 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_ENTITLEMENTS = Runner/Runner.entitlements;
 				CURRENT_PROJECT_VERSION = "$(FLUTTER_BUILD_NUMBER)";
-				DEVELOPMENT_TEAM = YP38N2B8Y3;
+				DEVELOPMENT_TEAM = SQ5BS6JSY8;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = Runner/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.quex;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.jala.quex;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_OBJC_BRIDGING_HEADER = "Runner/Runner-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;

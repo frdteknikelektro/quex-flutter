@@ -134,6 +134,12 @@ abstract class AppLocalizations {
   /// **'Downloading brain… {percent}% 🧠'**
   String downloadingBrain(int percent);
 
+  /// Model variant info shown below download progress
+  ///
+  /// In en, this message translates to:
+  /// **'Gemma 4 {variant} ({size})'**
+  String downloadingModelVariant(String variant, String size);
+
   /// Error message on splash screen
   ///
   /// In en, this message translates to:
