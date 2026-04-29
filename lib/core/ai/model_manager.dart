@@ -25,7 +25,7 @@ class ModelManager {
 
   static const String variantE4B = 'e4b';
   static const String variantE2B = 'e2b';
-  static const int ramThresholdGB = 7;
+  static const int ramThresholdGB = 9;
 
   // Gemma 4 E4B from litert-community (.litertlm format)
   static const String gemmaE4BModelUrl =

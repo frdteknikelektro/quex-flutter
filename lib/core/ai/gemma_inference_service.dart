@@ -34,7 +34,7 @@ class GemmaInferenceService {
   /// Call this after the model has been downloaded via ModelManager.
   Future<void> initialize({
     int maxTokens = _maxOutputTokens,
-    gemma.PreferredBackend preferredBackend = gemma.PreferredBackend.gpu,
+    gemma.PreferredBackend preferredBackend = gemma.PreferredBackend.cpu,
   }) async {
     if (_isInitialized) return;
 
@@ -43,7 +43,7 @@ class GemmaInferenceService {
       preferredBackend: preferredBackend,
       supportImage: true,
       supportAudio: true,
-      maxNumImages: 64,
+      maxNumImages: 32,
     );
 
     _isInitialized = true;

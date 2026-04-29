@@ -9,13 +9,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as pathlib;
 import 'package:path_provider/path_provider.dart';
-import 'package:uuid/uuid.dart';
 
 import '../../app/router.dart';
 import '../../app/theme.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../core/utils/image_normalizer.dart';
 import '../../generated/l10n/app_localizations.dart';
 import '../../features/processing/quiz_generation_modal.dart';
 import 'material_actions.dart';
@@ -23,13 +23,15 @@ import 'pdf_page_picker.dart';
 
 // ─── File storage helper ──────────────────────────────────────────────────────
 
-Future<String> _copyToMaterialsDir(String srcPath, String originalName) async {
+Future<String?> _copyToMaterialsDir(String srcPath, String originalName) async {
   final appDir = await getApplicationDocumentsDirectory();
   final dir = Directory('${appDir.path}/materials');
-  if (!await dir.exists()) await dir.create(recursive: true);
-  final dest = '${dir.path}/${const Uuid().v4()}_$originalName';
-  await File(srcPath).copy(dest);
-  return dest;
+  final normalized = await ImageNormalizer.normalizeFile(
+    File(srcPath),
+    outputDirectory: dir,
+    fileStem: originalName,
+  );
+  return normalized?.file?.path;
 }
 
 // ─── Kind metadata helper ─────────────────────────────────────────────────────
@@ -168,11 +170,13 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
     return sessionAsync.when(
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, _) =>
-          Scaffold(body: Center(child: Text(l10n.materialFailedToLoadSession(e.toString())))),
+      error: (e, _) => Scaffold(
+          body: Center(
+              child: Text(l10n.materialFailedToLoadSession(e.toString())))),
       data: (session) {
         if (session == null) {
-          return Scaffold(body: Center(child: Text(l10n.materialSessionNotFound)));
+          return Scaffold(
+              body: Center(child: Text(l10n.materialSessionNotFound)));
         }
 
         return materialsAsync.when(
@@ -184,7 +188,8 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
           error: (e, _) => _buildScaffold(
             session: session,
             hasMaterials: false,
-            body: Center(child: Text(l10n.materialCouldNotLoadFiles(e.toString()))),
+            body: Center(
+                child: Text(l10n.materialCouldNotLoadFiles(e.toString()))),
           ),
           data: (materials) {
             if (_lastKnownCount != materials.length) {
@@ -370,7 +375,8 @@ class _MaterialFileTile extends StatelessWidget {
           final result = await OpenFilex.open(material.content);
           if (result.type != ResultType.done && context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(l10n.materialCouldNotOpen(result.message))),
+              SnackBar(
+                  content: Text(l10n.materialCouldNotOpen(result.message))),
             );
           }
         } else {
@@ -540,13 +546,12 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
   Future<void> _pickFromCamera() async {
     final picked = await ImagePicker().pickImage(
       source: ImageSource.camera,
-      imageQuality: 85,
     );
     if (picked != null) setState(() => _selectedPhotos.add(picked));
   }
 
   Future<void> _pickFromGallery() async {
-    final picked = await ImagePicker().pickMultiImage(imageQuality: 85);
+    final picked = await ImagePicker().pickMultiImage();
     if (picked.isNotEmpty) setState(() => _selectedPhotos.addAll(picked));
   }
 
@@ -582,10 +587,28 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
           return;
         }
         setState(() => _copying = true);
-        final paths = await Future.wait(
-          _selectedPhotos.map(
-              (x) => _copyToMaterialsDir(x.path, pathlib.basename(x.path))),
-        );
+        final paths = <String>[];
+        var failed = 0;
+        for (final photo in _selectedPhotos) {
+          final path = await _copyToMaterialsDir(
+            photo.path,
+            pathlib.basenameWithoutExtension(photo.path),
+          );
+          if (path == null) {
+            failed++;
+            continue;
+          }
+          paths.add(path);
+        }
+        if (paths.isEmpty) {
+          if (mounted) setState(() => _copying = false);
+          _showSnack('Could not process selected photos.');
+          return;
+        }
+        if (failed > 0) {
+          _showSnack(
+              'Some photos were skipped because they could not be processed.');
+        }
         content = paths.join('\n');
 
       case MaterialKind.document:
@@ -765,7 +788,9 @@ class _AddMaterialBottomSheetState extends State<_AddMaterialBottomSheet> {
         OutlinedButton.icon(
           onPressed: _pickFiles,
           icon: const Icon(Icons.upload_file, size: 18),
-          label: Text(_selectedFiles.isEmpty ? l10n.materialPickPdf : l10n.materialAddMore),
+          label: Text(_selectedFiles.isEmpty
+              ? l10n.materialPickPdf
+              : l10n.materialAddMore),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size(double.infinity, 48),
           ),

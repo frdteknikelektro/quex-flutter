@@ -1,8 +1,6 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:image/image.dart' as img;
-
 import '../models/models.dart';
 
 /// A material prepared for LLM consumption: text chunk + preloaded image bytes.
@@ -21,12 +19,11 @@ class PreparedMaterial {
 /// Prepares study materials for Gemma multimodal inference.
 ///
 /// - [MaterialKind.text] → text chunk only
-/// - [MaterialKind.photo] → images resized to ≤896px, JPEG @85%
+/// - [MaterialKind.photo] → stored image bytes passed through as-is
 /// - [MaterialKind.document] → skipped (legacy; not created after PDF-picker flow)
 ///
 /// Total image cap: [totalImageCap] images across all materials (first-N).
 class MaterialPreprocessor {
-  static const int _maxDimension = 896;
   static const int totalImageCap = 32;
 
   /// Prepare all materials. Never throws; bad files yield empty PreparedMaterial.
@@ -74,7 +71,7 @@ class MaterialPreprocessor {
     for (final path in paths) {
       if (images.length >= remaining) break;
       try {
-        final bytes = await _loadAndResize(path);
+        final bytes = await _loadBytes(path);
         if (bytes != null) images.add(bytes);
       } catch (_) {
         // Skip unreadable file — do not abort generation.
@@ -84,29 +81,11 @@ class MaterialPreprocessor {
     return PreparedMaterial(textChunk: m.title, images: images);
   }
 
-  /// Load image from [path], resize to max [_maxDimension]px on longest side,
-  /// re-encode as JPEG at 85% quality. Returns null if file missing or corrupt.
-  static Future<Uint8List?> _loadAndResize(String path) async {
+  /// Load stored image bytes from [path] without re-encoding.
+  static Future<Uint8List?> _loadBytes(String path) async {
     final file = File(path);
     if (!await file.exists()) return null;
 
-    final raw = await file.readAsBytes();
-    final decoded = img.decodeImage(raw);
-    if (decoded == null) return null;
-
-    final resized = _needsResize(decoded)
-        ? img.copyResize(
-            decoded,
-            width: decoded.width > decoded.height ? _maxDimension : -1,
-            height: decoded.height >= decoded.width ? _maxDimension : -1,
-            interpolation: img.Interpolation.linear,
-          )
-        : decoded;
-
-    return Uint8List.fromList(img.encodeJpg(resized, quality: 85));
-  }
-
-  static bool _needsResize(img.Image image) {
-    return image.width > _maxDimension || image.height > _maxDimension;
+    return file.readAsBytes();
   }
 }

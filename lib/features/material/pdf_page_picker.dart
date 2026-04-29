@@ -7,6 +7,7 @@ import 'package:pdfx/pdfx.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../app/theme.dart';
+import '../../core/utils/image_normalizer.dart';
 import '../../generated/l10n/app_localizations.dart';
 
 /// Full-screen modal that lets users pick pages from a PDF file.
@@ -35,7 +36,7 @@ class PdfPagePickerModal extends StatefulWidget {
 
 class _PdfPagePickerModalState extends State<PdfPagePickerModal> {
   static const int _thumbPx = 200;
-  static const int _fullResMaxPx = 896;
+  static const int _fullResMaxPx = ImageNormalizer.maxDimension;
 
   PdfDocument? _document;
   final List<Uint8List?> _thumbnails = [];
@@ -128,7 +129,7 @@ class _PdfPagePickerModalState extends State<PdfPagePickerModal> {
           width: renderW,
           height: renderH,
           format: PdfPageImageFormat.jpeg,
-          quality: 85,
+          quality: ImageNormalizer.jpegQuality,
           backgroundColor: '#FFFFFF',
         );
         await page.close();

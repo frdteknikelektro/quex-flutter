@@ -3,12 +3,12 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as pathlib;
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
@@ -23,6 +23,7 @@ import '../../core/ai/quex_ai.dart';
 import '../../core/ai/tutor_event.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../core/utils/image_normalizer.dart';
 import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/math_markdown.dart';
 
@@ -375,10 +376,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         if (!mounted) return;
         if (event is TutorThinking) {
           accumulatedThinking.write(event.token);
-          if (mounted) setState(() => _thinkingContent = accumulatedThinking.toString());
+          if (mounted)
+            setState(() => _thinkingContent = accumulatedThinking.toString());
         } else if (event is TutorReply) {
           accumulatedReply.write(event.token);
-          if (mounted) setState(() => _streamingContent = accumulatedReply.toString());
+          if (mounted)
+            setState(() => _streamingContent = accumulatedReply.toString());
           _tokenCount++;
           if (_tokenCount % _scrollThrottleTokens == 0) {
             _scrollToBottom();
@@ -412,11 +415,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _isScrolling = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && _scrollController.hasClients) {
-        _scrollController.animateTo(
+        _scrollController
+            .animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
-        ).then((_) {
+        )
+            .then((_) {
           _isScrolling = false;
         });
       } else {
@@ -429,25 +434,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // Image Attachment
   // ---------------------------------------------------------------------------
 
-  Future<File> _compressImage(File image) async {
+  Future<File?> _compressImage(File image) async {
     try {
-      final bytes = await image.readAsBytes();
-      final imageInfo = await FlutterImageCompress.compressWithList(
-        bytes,
-        quality: 85,
-        minWidth: 768,
-        minHeight: 768,
-      );
-
       final dir = await getTemporaryDirectory();
-      final compressedPath = '${dir.path}/compressed_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final compressedFile = File(compressedPath);
-      await compressedFile.writeAsBytes(imageInfo!);
-
-      return compressedFile;
+      final normalized = await ImageNormalizer.normalizeFile(
+        image,
+        outputDirectory: dir,
+        fileStem: pathlib.basenameWithoutExtension(image.path),
+      );
+      return normalized?.file;
     } catch (e) {
-      debugPrint('Failed to compress image: $e');
-      return image;
+      debugPrint('Failed to normalize image: $e');
+      return null;
     }
   }
 
@@ -466,6 +464,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final originalFile = File(pickedFile.path);
       final compressedFile = await _compressImage(originalFile);
+
+      if (compressedFile == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not process image. Please try another one.'),
+            ),
+          );
+          setState(() => _sending = false);
+        }
+        return;
+      }
 
       if (mounted) {
         setState(() {
@@ -514,7 +524,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n?.chatMicPermissionDenied ?? 'Microphone permission denied'),
+            content: Text(l10n?.chatMicPermissionDenied ??
+                'Microphone permission denied'),
             duration: const Duration(seconds: 4),
           ),
         );
@@ -523,7 +534,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
     if (!mounted) return;
     final dir = await getTemporaryDirectory();
-    final path = '${dir.path}/quex_voice_${DateTime.now().millisecondsSinceEpoch}.wav';
+    final path =
+        '${dir.path}/quex_voice_${DateTime.now().millisecondsSinceEpoch}.wav';
     try {
       await _recorder.start(
         const RecordConfig(
@@ -581,7 +593,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n?.chatCouldNotLoadModel(error.toString()) ?? 'Could not load model'),
+            content: Text(l10n?.chatCouldNotLoadModel(error.toString()) ??
+                'Could not load model'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -596,7 +609,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n?.chatFailedToStartSession ?? 'Failed to start session'),
+            content: Text(
+                l10n?.chatFailedToStartSession ?? 'Failed to start session'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -658,7 +672,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n?.chatSessionInterrupted ?? 'Session interrupted'),
+            content:
+                Text(l10n?.chatSessionInterrupted ?? 'Session interrupted'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -680,7 +695,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n?.chatCouldNotLoadModel(error.toString()) ?? 'Could not load model'),
+            content: Text(l10n?.chatCouldNotLoadModel(error.toString()) ??
+                'Could not load model'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -696,7 +712,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n?.chatFailedToStartSession ?? 'Failed to start session'),
+            content: Text(
+                l10n?.chatFailedToStartSession ?? 'Failed to start session'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -782,7 +799,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(l10n?.chatSessionInterrupted ?? 'Session interrupted'),
+            content:
+                Text(l10n?.chatSessionInterrupted ?? 'Session interrupted'),
             duration: const Duration(seconds: 3),
           ),
         );
@@ -802,12 +820,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return bundleAsync.when(
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(body: Center(child: Text(l10n?.chatError(e.toString()) ?? 'Error: $e'))),
+      error: (e, _) => Scaffold(
+          body: Center(
+              child: Text(l10n?.chatError(e.toString()) ?? 'Error: $e'))),
       data: (bundle) {
         if (bundle == null) {
           return Scaffold(
             appBar: AppBar(leading: const BackButton()),
-            body: Center(child: Text(l10n?.chatSessionNotFound ?? 'Session not found')),
+            body: Center(
+                child: Text(l10n?.chatSessionNotFound ?? 'Session not found')),
           );
         }
 
@@ -915,22 +936,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                               builder: (ctx) {
                                 final dialogL10n = AppLocalizations.of(ctx);
                                 return AlertDialog(
-                                  title: Text(dialogL10n?.chatResetQuestion ?? 'Reset chat?'),
-                                  content: Text(dialogL10n?.chatResetConfirm ?? 'This will clear all messages'),
+                                  title: Text(dialogL10n?.chatResetQuestion ??
+                                      'Reset chat?'),
+                                  content: Text(dialogL10n?.chatResetConfirm ??
+                                      'This will clear all messages'),
                                   actions: [
                                     TextButton(
-                                      onPressed: () => Navigator.pop(ctx, false),
-                                      child: Text(dialogL10n?.cancel ?? 'Cancel'),
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      child:
+                                          Text(dialogL10n?.cancel ?? 'Cancel'),
                                     ),
                                     FilledButton(
                                       onPressed: () => Navigator.pop(ctx, true),
-                                      child: Text(dialogL10n?.chatReset ?? 'Reset'),
+                                      child: Text(
+                                          dialogL10n?.chatReset ?? 'Reset'),
                                     ),
                                   ],
                                 );
                               },
                             );
-                            if (confirm == true) unawaited(_resetChat(bundle, chatMaterials));
+                            if (confirm == true)
+                              unawaited(_resetChat(bundle, chatMaterials));
                           },
                     child: Text(l10n?.chatReset ?? 'Reset'),
                   ),
@@ -957,7 +984,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         ),
                       ],
                     ),
-              if (_modelLoading || (_sending && _messages.isEmpty && (_streamingContent == null || _streamingContent!.isEmpty)))
+              if (_modelLoading ||
+                  (_sending &&
+                      _messages.isEmpty &&
+                      (_streamingContent == null ||
+                          _streamingContent!.isEmpty)))
                 ModelLoadingOverlay(
                   scheme: scheme,
                   theme: theme,
@@ -1062,7 +1093,9 @@ class MaterialsStrip extends StatelessWidget {
                     final l10n = AppLocalizations.of(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                          content: Text(l10n?.materialCouldNotOpen(result.message) ?? 'Could not open file')),
+                          content: Text(
+                              l10n?.materialCouldNotOpen(result.message) ??
+                                  'Could not open file')),
                     );
                   }
                 } else {
@@ -1140,7 +1173,8 @@ class MessageList extends StatelessWidget {
     final markdownStyle = MarkdownStyleSheet.fromTheme(theme).copyWith(
       p: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface),
     );
-    final textStyle = theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface);
+    final textStyle =
+        theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface);
 
     return ListView.builder(
       controller: scrollController,
@@ -1200,7 +1234,8 @@ class MessageList extends StatelessWidget {
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: Column(
-            crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            crossAxisAlignment:
+                isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
             children: [
               // Show image thumbnails for user messages
               if (isUser && images != null && images.isNotEmpty)
@@ -1228,10 +1263,12 @@ class MessageList extends StatelessWidget {
                 ),
               // Message bubble
               Align(
-                alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+                alignment:
+                    isUser ? Alignment.centerRight : Alignment.centerLeft,
                 child: Container(
                   constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   decoration: BoxDecoration(
                     color: isUser
                         ? scheme.primaryContainer
@@ -1617,73 +1654,74 @@ class ChatInputBar extends StatelessWidget {
             child: isRecording
                 ? ListeningIndicator(scheme: scheme, theme: theme)
                 : TextField(
-              controller: controller,
-              enabled: !sending && !modelLoading,
-              textInputAction: TextInputAction.newline,
-              maxLines: 4,
-              minLines: 1,
-              decoration: InputDecoration(
-                hintText: l10n.chatAskQuexHint,
-                hintStyle: TextStyle(color: scheme.onSurfaceVariant),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: scheme.outlineVariant),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: scheme.outlineVariant),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(color: scheme.primary, width: 1.5),
-                ),
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                isDense: true,
-              ),
-            ),
-          ),
-
-          if (!isRecording) const SizedBox(width: 8),
-          if (!isRecording) AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: modelLoading
-                ? SizedBox(
-                    key: const ValueKey('loading'),
-                    width: 44,
-                    height: 44,
-                    child: Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: scheme.primary,
-                        ),
+                    controller: controller,
+                    enabled: !sending && !modelLoading,
+                    textInputAction: TextInputAction.newline,
+                    maxLines: 4,
+                    minLines: 1,
+                    decoration: InputDecoration(
+                      hintText: l10n.chatAskQuexHint,
+                      hintStyle: TextStyle(color: scheme.onSurfaceVariant),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(color: scheme.outlineVariant),
                       ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide: BorderSide(color: scheme.outlineVariant),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24),
+                        borderSide:
+                            BorderSide(color: scheme.primary, width: 1.5),
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      isDense: true,
                     ),
-                  )
-                : sending
-                    ? IconButton(
-                        key: const ValueKey('stop'),
-                        onPressed: onStop,
-                        icon: Icon(Icons.stop_rounded,
-                            color: scheme.onErrorContainer),
-                        style: IconButton.styleFrom(
-                          backgroundColor: scheme.errorContainer,
-                          minimumSize: const Size(44, 44),
-                        ),
-                      )
-                    : IconButton(
-                        key: const ValueKey('send'),
-                        onPressed: onSend,
-                        icon: Icon(Icons.send_rounded, color: scheme.primary),
-                        style: IconButton.styleFrom(
-                          backgroundColor: scheme.primaryContainer,
-                          minimumSize: const Size(44, 44),
+                  ),
+          ),
+          if (!isRecording) const SizedBox(width: 8),
+          if (!isRecording)
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 200),
+              child: modelLoading
+                  ? SizedBox(
+                      key: const ValueKey('loading'),
+                      width: 44,
+                      height: 44,
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            color: scheme.primary,
+                          ),
                         ),
                       ),
-          ),
+                    )
+                  : sending
+                      ? IconButton(
+                          key: const ValueKey('stop'),
+                          onPressed: onStop,
+                          icon: Icon(Icons.stop_rounded,
+                              color: scheme.onErrorContainer),
+                          style: IconButton.styleFrom(
+                            backgroundColor: scheme.errorContainer,
+                            minimumSize: const Size(44, 44),
+                          ),
+                        )
+                      : IconButton(
+                          key: const ValueKey('send'),
+                          onPressed: onSend,
+                          icon: Icon(Icons.send_rounded, color: scheme.primary),
+                          style: IconButton.styleFrom(
+                            backgroundColor: scheme.primaryContainer,
+                            minimumSize: const Size(44, 44),
+                          ),
+                        ),
+            ),
           if (!sending && !modelLoading) ...[
             const SizedBox(width: 8),
             MicButton(
@@ -1886,7 +1924,8 @@ class _AddImageButton extends StatelessWidget {
 class ListeningIndicator extends StatefulWidget {
   final ColorScheme scheme;
   final ThemeData theme;
-  const ListeningIndicator({super.key, required this.scheme, required this.theme});
+  const ListeningIndicator(
+      {super.key, required this.scheme, required this.theme});
 
   @override
   State<ListeningIndicator> createState() => _ListeningIndicatorState();
@@ -1953,7 +1992,8 @@ class VoiceMessageBubble extends StatelessWidget {
   final ColorScheme scheme;
   final ThemeData theme;
 
-  const VoiceMessageBubble({super.key, required this.scheme, required this.theme});
+  const VoiceMessageBubble(
+      {super.key, required this.scheme, required this.theme});
 
   @override
   Widget build(BuildContext context) {
