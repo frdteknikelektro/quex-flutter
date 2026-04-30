@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
+import 'gemma_config_service.dart';
 import 'model_manager.dart';
 
 /// Tool execution callback for function calling.
@@ -36,18 +37,27 @@ class GemmaChatService {
 
   bool get hasActiveSession => _chat != null;
 
+  static const int _defaultMaxTokens = 16384;
+
   /// Initialize the service by creating the model.
   /// Only needed if no model was provided in the constructor.
-  Future<void> initialize() async {
+  /// [maxTokens] is capped by the calculated upper bound based on device RAM.
+  Future<void> initialize({int? maxTokens}) async {
     if (_model != null) return;
 
     await ModelManager.activateModel();
+
+    final effectiveMaxTokens = await GemmaConfigService.applyUpperBound(
+      maxTokens,
+      defaultValue: _defaultMaxTokens,
+    );
+
     _model = await gemma.FlutterGemma.getActiveModel(
-      maxTokens: 7168,
-      preferredBackend: gemma.PreferredBackend.gpu,
+      maxTokens: effectiveMaxTokens,
+      preferredBackend: gemma.PreferredBackend.cpu,
       supportImage: true,
       supportAudio: true,
-      maxNumImages: 16,
+      maxNumImages: 32,
     );
   }
 

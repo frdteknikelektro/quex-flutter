@@ -13,8 +13,8 @@ class FakeGemmaInferenceService extends GemmaInferenceService {
 
   @override
   Future<void> initialize({
-    int maxTokens = 8192,
-    gemma.PreferredBackend preferredBackend = gemma.PreferredBackend.gpu,
+    int? maxTokens,
+    gemma.PreferredBackend preferredBackend = gemma.PreferredBackend.cpu,
   }) async {
     initializeCalls++;
     _ready = true;

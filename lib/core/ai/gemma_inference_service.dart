@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
+import 'gemma_config_service.dart';
+
 /// Service for running inference using Gemma 4 E4B model.
 ///
 /// Handles model creation and chat sessions with streaming responses.
@@ -28,18 +30,24 @@ class GemmaInferenceService {
   /// Returns 0 if no session is active.
   int get currentTokens => _chat?.currentTokens ?? 0;
 
-  static const int _maxOutputTokens = 8192;
+  static const int _defaultMaxTokens = 8192;
 
   /// Initialize the inference service by creating the model.
   /// Call this after the model has been downloaded via ModelManager.
+  /// [maxTokens] is capped by the calculated upper bound based on device RAM.
   Future<void> initialize({
-    int maxTokens = _maxOutputTokens,
+    int? maxTokens,
     gemma.PreferredBackend preferredBackend = gemma.PreferredBackend.cpu,
   }) async {
     if (_isInitialized) return;
 
+    final effectiveMaxTokens = await GemmaConfigService.applyUpperBound(
+      maxTokens,
+      defaultValue: _defaultMaxTokens,
+    );
+
     _model = await gemma.FlutterGemma.getActiveModel(
-      maxTokens: maxTokens,
+      maxTokens: effectiveMaxTokens,
       preferredBackend: preferredBackend,
       supportImage: true,
       supportAudio: true,
