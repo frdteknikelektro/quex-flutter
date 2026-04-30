@@ -14,6 +14,7 @@ import 'package:record/record.dart';
 
 import '../../app/breakpoints.dart';
 import '../../app/theme.dart';
+import '../../core/ai/gemma_config_service.dart';
 import '../../core/ai/session_chat_service.dart';
 import '../../core/ai/quex_ai.dart';
 import '../../core/models/models.dart';
@@ -95,6 +96,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ===========================================================================
   int _tokenCount = 0;
   int _totalTokens = 0;
+  int _maxTokens = 8192;
   static const int _scrollThrottleTokens = 10;
   bool _isScrolling = false;
 
@@ -108,6 +110,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       if (mounted) setState(() => _modelLoading = true);
       await _sessionService.initialize();
+      final maxTokens = await GemmaConfigService.getMaxTokensUpperBound();
+      if (mounted) setState(() => _maxTokens = maxTokens);
     } catch (e) {
       debugPrint('Failed to initialize chat service: $e');
     } finally {
@@ -353,7 +357,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       onDone: () {
         _scrollToBottom();
         if (mounted) {
-          setState(() => _totalTokens = 0);
+          setState(() => _totalTokens = _tokenCount);
         }
         completer.complete();
       },
@@ -820,6 +824,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ThinkingModeToggle(
               isThinkingMode: _isThinkingMode,
               totalTokens: _totalTokens,
+              maxTokens: _maxTokens,
               onToggle: () => _toggleThinkingMode(bundle, chatMaterials),
               scheme: scheme,
               theme: theme,
@@ -2029,6 +2034,7 @@ class _PulsingBrainState extends State<PulsingBrain>
 class ThinkingModeToggle extends StatelessWidget {
   final bool isThinkingMode;
   final int totalTokens;
+  final int maxTokens;
   final VoidCallback onToggle;
   final ColorScheme scheme;
   final ThemeData theme;
@@ -2037,6 +2043,7 @@ class ThinkingModeToggle extends StatelessWidget {
     super.key,
     required this.isThinkingMode,
     required this.totalTokens,
+    required this.maxTokens,
     required this.onToggle,
     required this.scheme,
     required this.theme,
@@ -2072,7 +2079,7 @@ class ThinkingModeToggle extends StatelessWidget {
           ),
           const Spacer(),
           Text(
-            '$totalTokens ${l10n.chatTokens}',
+            '$totalTokens / $maxTokens ${l10n.chatTokens}',
             style: theme.textTheme.bodySmall?.copyWith(
               color: scheme.onSurfaceVariant,
             ),

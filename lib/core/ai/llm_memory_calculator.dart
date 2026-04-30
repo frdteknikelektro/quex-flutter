@@ -10,7 +10,7 @@ class LLMMemoryCalculator {
   static const int _e4bBytesPerToken = 86016; // 2×42×2×256×2
 
   static const int _maxPositionEmbeddings = 131072;
-  static const double _budgetPercent = 0.70;
+  static const double _budgetPercent = 0.60;
   static const int _roundTo = 64;
 
   static int calculateMaxTokens({
@@ -34,10 +34,9 @@ class LLMMemoryCalculator {
     final rawTokens = availableForKV_B ~/ bytesPerToken;
     final roundedTokens = (rawTokens ~/ _roundTo) * _roundTo;
 
-    var finalTokens =
-        roundedTokens > _maxPositionEmbeddings
-            ? _maxPositionEmbeddings
-            : roundedTokens;
+    var finalTokens = roundedTokens > _maxPositionEmbeddings
+        ? _maxPositionEmbeddings
+        : roundedTokens;
 
     if (hardCap != null && finalTokens > hardCap) {
       finalTokens = hardCap;

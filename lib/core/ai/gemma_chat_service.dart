@@ -167,7 +167,7 @@ class GemmaChatService {
 
   /// Send a message with images and get streaming response.
   ///
-  /// Images are added before text (required for accurate tokenization).
+  /// Images are sent together with text in a single message chunk.
   Stream<({String? text, String? thinking})> sendMessageWithImages(
     String message,
     List<Uint8List> images,
@@ -176,16 +176,14 @@ class GemmaChatService {
       throw StateError('No active session. Call createSession() first.');
     }
 
-    // Add images first (required by Gemma for accurate last token)
-    for (final image in images) {
-      await _chat!.addQueryChunk(
-        gemma.Message.imageOnly(imageBytes: image, isUser: true),
-      );
-    }
-
-    // Then add text
+    // Send text and all images in a SINGLE message chunk.
+    // This is required for the FFI path which only buffers one pending image.
     await _chat!.addQueryChunk(
-      gemma.Message.text(text: message, isUser: true),
+      gemma.Message.withImages(
+        text: message,
+        imageBytes: images,
+        isUser: true,
+      ),
     );
 
     await for (final response
