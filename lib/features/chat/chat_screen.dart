@@ -14,13 +14,8 @@ import 'package:record/record.dart';
 
 import '../../app/breakpoints.dart';
 import '../../app/theme.dart';
-import '../../core/ai/chat_prompts.dart';
-import '../../core/ai/gemma_inference_service.dart';
-import '../../core/ai/gemma_service_host.dart';
-import '../../core/ai/gemma_session_service.dart';
-import '../../core/ai/model_manager.dart';
+import '../../core/ai/session_chat_service.dart';
 import '../../core/ai/quex_ai.dart';
-import '../../core/ai/tutor_event.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../core/utils/image_normalizer.dart';
@@ -37,13 +32,11 @@ const String _kVoiceSentinel = '__voice__';
 class ChatScreen extends ConsumerStatefulWidget {
   final int sessionId;
   final List<int>? preselectedMaterialIds;
-  final GemmaInferenceService Function()? gemmaServiceFactory;
 
   const ChatScreen({
     super.key,
     required this.sessionId,
     this.preselectedMaterialIds,
-    this.gemmaServiceFactory,
   });
 
   @override
@@ -60,10 +53,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ===========================================================================
   // Services
   // ===========================================================================
-  late final GemmaServiceHost _gemmaHost;
-  late final Future<void> _modelActivation;
-  StreamSubscription<TutorEvent>? _streamSub;
-  GemmaSessionService? _sessionService;
+  final SessionChatService _sessionService = SessionChatService();
+  StreamSubscription<({String? text, String? thinking})>? _streamSub;
 
   // ===========================================================================
   // Chat State
@@ -83,9 +74,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ===========================================================================
   // Session State
   // ===========================================================================
-  bool _coachSessionInitialized = false;
-  bool _coachSessionInitializing = false;
-  Completer<void>? _coachSessionCompleter;
   bool _isThinkingMode = false;
 
   // ===========================================================================
@@ -113,11 +101,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _gemmaHost = GemmaServiceHost(
-      service: widget.gemmaServiceFactory?.call(),
-    );
-    _modelActivation = ModelManager.activateModel();
-    unawaited(_warmModel());
+    unawaited(_initialize());
+  }
+
+  Future<void> _initialize() async {
+    try {
+      if (mounted) setState(() => _modelLoading = true);
+      await _sessionService.initialize();
+    } catch (e) {
+      debugPrint('Failed to initialize chat service: $e');
+    } finally {
+      if (mounted) setState(() => _modelLoading = false);
+    }
   }
 
   @override
@@ -125,37 +120,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _streamSub?.cancel();
     _textController.dispose();
     _scrollController.dispose();
-    _gemmaHost.dispose().catchError((e) {
-      debugPrint('Error disposing gemma host: $e');
-    });
-    _recorder.dispose().catchError((e) {
-      debugPrint('Error disposing recorder: $e');
-    });
-    // Stop recording if active
-    if (_isRecording) {
-      _recorder.stop().catchError((e) {
-        debugPrint('Error stopping recording on dispose: $e');
-      });
-    }
+
+    // Cleanup async operations
+    _cleanupOnDispose();
+
     super.dispose();
   }
 
-  // ---------------------------------------------------------------------------
-  // AI / Model
-  // ---------------------------------------------------------------------------
-
-  Future<GemmaInferenceService> _ensureModel() {
-    return _modelActivation.then((_) => _gemmaHost.ensureInitialized());
-  }
-
-  Future<void> _warmModel() async {
+  void _cleanupOnDispose() async {
     try {
-      if (mounted) setState(() => _modelLoading = true);
-      await _ensureModel();
-    } catch (_) {
-      // Send path will surface model load failure if needed.
-    } finally {
-      if (mounted) setState(() => _modelLoading = false);
+      await _sessionService.dispose();
+    } catch (e) {
+      debugPrint('Error disposing chat service: $e');
+    }
+    try {
+      await _recorder.dispose();
+    } catch (e) {
+      debugPrint('Error disposing recorder: $e');
+    }
+    if (_isRecording) {
+      try {
+        await _recorder.stop();
+      } catch (e) {
+        debugPrint('Error stopping recording on dispose: $e');
+      }
     }
   }
 
@@ -163,45 +151,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // Session Management
   // ---------------------------------------------------------------------------
 
-  /// Initialize coach session ONCE per screen visit.
-  Future<void> _ensureCoachSession(
+  /// Create chat session with materials as context.
+  Future<void> _ensureSession(
     Session session,
     List<StudyMaterial> materials,
   ) async {
-    final service = await _ensureModel();
+    if (_sessionService.hasSession) return;
 
-    if (_coachSessionInitialized && _sessionService != null) return;
-    if (_coachSessionInitializing) {
-      await _coachSessionCompleter?.future;
-      if (_coachSessionInitialized && _sessionService != null) return;
-    }
-
-    // Set flag immediately to prevent race condition
-    _coachSessionInitializing = true;
-    _coachSessionCompleter = Completer<void>();
-    try {
-      _sessionService = GemmaSessionService(service);
-      final l10n = AppLocalizations.of(context);
-      final locale = l10n?.localeName ?? 'en';
-      await _sessionService!.initCoachSession(
-        session: session,
-        materials: materials,
-        locale: locale,
-        isThinking: _isThinkingMode,
-      );
-      if (mounted) {
-        setState(() => _coachSessionInitialized = true);
-      }
-    } catch (e) {
-      debugPrint('Failed to init coach session: $e');
-      rethrow;
-    } finally {
-      if (mounted) {
-        setState(() => _coachSessionInitializing = false);
-      }
-      _coachSessionCompleter?.complete();
-      _coachSessionCompleter = null;
-    }
+    final l10n = AppLocalizations.of(context);
+    await _sessionService.createSession(
+      session: session,
+      materials: materials,
+      locale: l10n?.localeName ?? 'en',
+      isThinking: _isThinkingMode,
+    );
   }
 
   Future<void> _resetChat(
@@ -212,12 +175,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _streamSub = null;
     _clearImages();
     _messageImages.clear();
+    await _sessionService.resetSession();
     if (mounted) {
       setState(() {
         _messages.clear();
-        _coachSessionInitialized = false;
-        _coachSessionInitializing = false;
-        _sessionService = null;
+        // Session reset via _sessionService.resetSession()
         _sending = false;
         _streamingContent = null;
         _thinkingContent = null;
@@ -281,18 +243,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     List<StudyMaterial> chatMaterials,
   ) async {
     if (_openerFired) return;
-    _openerFired = true;
 
     try {
-      await _ensureModel();
+      await _ensureSession(bundle.session, chatMaterials);
     } catch (_) {
+      // Reset state so we can retry on next build
+      if (mounted) {
+        setState(() {
+          _openerFired = false;
+          _sending = false;
+        });
+      }
       return;
     }
-    try {
-      await _ensureCoachSession(bundle.session, chatMaterials);
-    } catch (_) {
-      return;
-    }
+
+    // Mark as fired only after successful session creation
+    _openerFired = true;
 
     if (!mounted) return;
     setState(() {
@@ -304,13 +270,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final l10n = AppLocalizations.of(context);
       final locale = l10n?.localeName ?? 'en';
-      final openerMessage = ChatPrompts.getCoachOpenerMessage(locale);
-      if (_sessionService == null) {
-        debugPrint('Session service is null in _fireOpener');
-        setState(() => _sending = false);
-        return;
-      }
-      final stream = _sessionService!.sendCoachMessage(openerMessage);
+      final stream = _sessionService.sendOpener(locale);
       final result = await _handleStream(stream);
 
       if (mounted) {
@@ -335,8 +295,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _tokenCount = 0;
       if (mounted) {
         setState(() {
-          _coachSessionInitialized = false;
-          _sessionService = null;
+          // Session reset via _sessionService.resetSession()
           _streamingContent = null;
           _thinkingContent = null;
           _sending = false;
@@ -353,6 +312,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     await _streamSub?.cancel();
     _streamSub = null;
     _tokenCount = 0;
+    await _sessionService.stopGeneration();
     if (mounted) {
       setState(() {
         _sending = false;
@@ -363,7 +323,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<({String reply, String thinking})> _handleStream(
-    Stream<TutorEvent> stream,
+    Stream<({String? text, String? thinking})> stream,
   ) async {
     final accumulatedReply = StringBuffer();
     final accumulatedThinking = StringBuffer();
@@ -374,14 +334,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _streamSub = stream.listen(
       (event) {
         if (!mounted) return;
-        if (event is TutorThinking) {
-          accumulatedThinking.write(event.token);
-          if (mounted)
+        if (event.thinking != null) {
+          accumulatedThinking.write(event.thinking);
+          if (mounted) {
             setState(() => _thinkingContent = accumulatedThinking.toString());
-        } else if (event is TutorReply) {
-          accumulatedReply.write(event.token);
-          if (mounted)
+          }
+        } else if (event.text != null) {
+          accumulatedReply.write(event.text);
+          if (mounted) {
             setState(() => _streamingContent = accumulatedReply.toString());
+          }
           _tokenCount++;
           if (_tokenCount % _scrollThrottleTokens == 0) {
             _scrollToBottom();
@@ -390,9 +352,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       },
       onDone: () {
         _scrollToBottom();
-        // Update total tokens from session after stream completes
         if (mounted) {
-          setState(() => _totalTokens = _gemmaHost.service?.currentTokens ?? 0);
+          setState(() => _totalTokens = 0);
         }
         completer.complete();
       },
@@ -491,23 +452,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  void _removeImage(int index) {
+  void _removeImage(int index) async {
     if (index >= 0 && index < _attachedImages.length) {
       final file = _attachedImages[index];
-      file.delete().catchError((e) {
+      try {
+        await file.delete();
+      } catch (e) {
         debugPrint('Failed to delete image file: $e');
-      });
+      }
       setState(() {
         _attachedImages.removeAt(index);
       });
     }
   }
 
-  void _clearImages() {
+  void _clearImages() async {
     for (final file in _attachedImages) {
-      file.delete().catchError((e) {
+      try {
+        await file.delete();
+      } catch (e) {
         debugPrint('Failed to delete image file: $e');
-      });
+      }
     }
     _attachedImages.clear();
   }
@@ -587,23 +552,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     List<StudyMaterial> chatMaterials,
   ) async {
     try {
-      await _ensureModel();
-    } catch (error) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(l10n?.chatCouldNotLoadModel(error.toString()) ??
-                'Could not load model'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-      return;
-    }
-
-    try {
-      await _ensureCoachSession(bundle.session, chatMaterials);
+      await _ensureSession(bundle.session, chatMaterials);
     } catch (e) {
       if (mounted) {
         final l10n = AppLocalizations.of(context);
@@ -633,12 +582,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _scrollToBottom();
 
     try {
-      if (_sessionService == null) {
-        debugPrint('Session service is null in _sendAudioMessage');
-        setState(() => _sending = false);
-        return;
-      }
-      final stream = _sessionService!.sendCoachAudioMessage(audioBytes);
+      final stream = _sessionService.sendUserAudio(audioBytes);
       final result = await _handleStream(stream);
 
       if (mounted) {
@@ -659,13 +603,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
       _scrollToBottom();
     } catch (e) {
-      debugPrint('Coach audio stream error: $e');
+      debugPrint('Audio stream error: $e');
       _tokenCount = 0;
       if (mounted) {
         final l10n = AppLocalizations.of(context);
         setState(() {
-          _coachSessionInitialized = false;
-          _sessionService = null;
+          // Session reset via _sessionService.resetSession()
           _streamingContent = null;
           _thinkingContent = null;
           _sending = false;
@@ -688,25 +631,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final text = _textController.text.trim();
     if ((text.isEmpty && _attachedImages.isEmpty) || _sending) return;
 
-    try {
-      await _ensureModel();
-    } catch (error) {
-      if (mounted) {
-        final l10n = AppLocalizations.of(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(l10n?.chatCouldNotLoadModel(error.toString()) ??
-                'Could not load model'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-      return;
-    }
-
     // Initialize session once per screen visit.
     try {
-      await _ensureCoachSession(bundle.session, chatMaterials);
+      await _ensureSession(bundle.session, chatMaterials);
     } catch (e) {
       if (mounted) {
         final l10n = AppLocalizations.of(context);
@@ -732,11 +659,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     }
 
-    // Add images to Gemma inference queue
-    if (imageBytes.isNotEmpty && _sessionService != null) {
-      await _sessionService!.inference.addImagesToQueue(imageBytes);
-    }
-
     setState(() {
       _sending = true;
       _streamingContent = '';
@@ -759,12 +681,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _scrollToBottom();
 
     try {
-      if (_sessionService == null) {
-        debugPrint('Session service is null in _sendMessage');
-        setState(() => _sending = false);
-        return;
-      }
-      final stream = _sessionService!.sendCoachMessage(text);
+      final stream = _sessionService.sendUserMessage(text, images: imageBytes);
       final result = await _handleStream(stream);
 
       if (mounted) {
@@ -785,14 +702,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
       _scrollToBottom();
     } catch (e) {
-      debugPrint('Coach stream error: $e');
+      debugPrint('Stream error: $e');
       _tokenCount = 0;
 
       if (mounted) {
         final l10n = AppLocalizations.of(context);
         setState(() {
-          _coachSessionInitialized = false;
-          _sessionService = null;
+          // Session reset via _sessionService.resetSession()
           _streamingContent = null;
           _thinkingContent = null;
           _sending = false;
@@ -846,7 +762,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final suggestions = QuexAi.highlights(chatMaterials);
 
         // Fire opener once when bundle and materials are ready
-        if (!_openerFired) {
+        if (!_openerFired && _sessionService.isInitialized) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) _fireOpener(bundle, chatMaterials);
           });
@@ -956,8 +872,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                                 );
                               },
                             );
-                            if (confirm == true)
+                            if (confirm == true) {
                               unawaited(_resetChat(bundle, chatMaterials));
+                            }
                           },
                     child: Text(l10n?.chatReset ?? 'Reset'),
                   ),
@@ -2143,7 +2060,7 @@ class ThinkingModeToggle extends StatelessWidget {
           Switch(
             value: isThinkingMode,
             onChanged: (_) => onToggle(),
-            activeColor: scheme.primary,
+            activeTrackColor: scheme.primary,
           ),
           const SizedBox(width: 8),
           Text(
