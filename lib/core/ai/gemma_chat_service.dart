@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
@@ -24,6 +25,7 @@ class GemmaChatService {
   gemma.InferenceModel? _model;
   gemma.InferenceChat? _chat;
   ToolExecutor? _toolExecutor;
+  int? _effectiveMaxTokens;
 
   /// Factory constructor returns singleton instance.
   factory GemmaChatService() => _instance ??= GemmaChatService._internal();
@@ -37,7 +39,11 @@ class GemmaChatService {
 
   bool get hasActiveSession => _chat != null;
 
-  static const int _defaultMaxTokens = 16384;
+  /// The effective max tokens used by the model after applying upper bound.
+  /// Available after initialize() is called successfully.
+  int? get effectiveMaxTokens => _effectiveMaxTokens;
+
+  static const int _defaultMaxTokens = 8192;
 
   /// Initialize the service by creating the model.
   /// Only needed if no model was provided in the constructor.
@@ -51,6 +57,7 @@ class GemmaChatService {
       maxTokens,
       defaultValue: _defaultMaxTokens,
     );
+    _effectiveMaxTokens = effectiveMaxTokens;
 
     _model = await gemma.FlutterGemma.getActiveModel(
       maxTokens: effectiveMaxTokens,
@@ -221,6 +228,28 @@ class GemmaChatService {
   Future<void> closeSession() async {
     await _chat?.close();
     _chat = null;
+  }
+
+  /// Get session metrics from the current chat session.
+  /// Returns null if no session exists or metrics are unavailable.
+  /// Note: Metrics are only available on FFI/.litertlm platforms.
+  ///       MediaPipe platforms return zeroed metrics.
+  /// Uses dynamic to avoid compilation errors with older flutter_gemma versions.
+  dynamic getSessionMetrics() {
+    try {
+      final session = _chat?.session;
+      debugPrint(
+          'GemmaChatService.getSessionMetrics: _chat=$_chat, session=$session');
+      if (session == null) return null;
+      // Use dynamic to call getSessionMetrics which may not be available in all versions
+      final dynamic dynamicSession = session;
+      final metrics = dynamicSession.getSessionMetrics();
+      debugPrint('GemmaChatService.getSessionMetrics: metrics=$metrics');
+      return metrics;
+    } catch (e) {
+      debugPrint('SessionMetrics not available: $e');
+      return null;
+    }
   }
 
   /// Dispose the service and release resources.

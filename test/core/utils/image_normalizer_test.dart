@@ -47,7 +47,7 @@ void main() {
       expect(normalized, isNotNull);
       expect(normalized!.file, isNotNull);
       expect(normalized.file!.existsSync(), isTrue);
-      expect(normalized.file!.path, endsWith('.jpg'));
+      expect(normalized.file!.path, endsWith('.png'));
 
       final decoded = img.decodeImage(await normalized.file!.readAsBytes());
       expect(decoded, isNotNull);
@@ -108,7 +108,6 @@ void main() {
         expect(args[0], source.path);
         expect(args[1], ImageNormalizer.maxDimension);
         expect(args[2], ImageNormalizer.maxDimension);
-        expect(args[3], ImageNormalizer.jpegQuality);
         return fallbackBytes;
       });
       addTearDown(() {
@@ -126,7 +125,7 @@ void main() {
       expect(calls, 1);
       expect(normalized!.file, isNotNull);
       expect(normalized.file!.existsSync(), isTrue);
-      expect(normalized.file!.path, endsWith('.jpg'));
+      expect(normalized.file!.path, endsWith('.png'));
 
       final decoded = img.decodeImage(await normalized.file!.readAsBytes());
       expect(decoded, isNotNull);

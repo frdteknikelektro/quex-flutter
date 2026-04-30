@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'llm_memory_calculator.dart';
 import '../device/device_info.dart';
 import 'model_manager.dart';
@@ -34,7 +35,7 @@ class GemmaConfigService {
       _cachedMaxTokens = maxTokens;
       return maxTokens;
     } catch (e) {
-      print('[GemmaConfigService] Failed to calculate maxTokens: $e');
+      debugPrint('[GemmaConfigService] Failed to calculate maxTokens: $e');
       _cachedMaxTokens = fallback;
       return fallback;
     }

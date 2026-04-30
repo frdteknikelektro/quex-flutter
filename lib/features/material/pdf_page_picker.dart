@@ -128,14 +128,13 @@ class _PdfPagePickerModalState extends State<PdfPagePickerModal> {
         final image = await page.render(
           width: renderW,
           height: renderH,
-          format: PdfPageImageFormat.jpeg,
-          quality: ImageNormalizer.jpegQuality,
+          format: PdfPageImageFormat.png,
           backgroundColor: '#FFFFFF',
         );
         await page.close();
 
         if (image != null) {
-          final filename = '${const Uuid().v4()}_page_${pageIndex + 1}.jpg';
+          final filename = '${const Uuid().v4()}_page_${pageIndex + 1}.png';
           final dest = '${dir.path}/$filename';
           await File(dest).writeAsBytes(image.bytes);
           paths.add(dest);

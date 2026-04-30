@@ -14,7 +14,6 @@ import 'package:record/record.dart';
 
 import '../../app/breakpoints.dart';
 import '../../app/theme.dart';
-import '../../core/ai/gemma_config_service.dart';
 import '../../core/ai/session_chat_service.dart';
 import '../../core/ai/quex_ai.dart';
 import '../../core/models/models.dart';
@@ -110,8 +109,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       if (mounted) setState(() => _modelLoading = true);
       await _sessionService.initialize();
-      final maxTokens = await GemmaConfigService.getMaxTokensUpperBound();
-      if (mounted) setState(() => _maxTokens = maxTokens);
+      // Get effective max tokens from the service (applies upper bound to default)
+      final effectiveMaxTokens = _sessionService.effectiveMaxTokens ?? 8192;
+      if (mounted) setState(() => _maxTokens = effectiveMaxTokens);
     } catch (e) {
       debugPrint('Failed to initialize chat service: $e');
     } finally {
@@ -274,8 +274,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final l10n = AppLocalizations.of(context);
       final locale = l10n?.localeName ?? 'en';
-      final stream = _sessionService.sendOpener(locale);
+
+      // Convert attached images to bytes if user attached images before opener
+      debugPrint(
+          '[ChatScreen] _fireOpener: ${_attachedImages.length} images in _attachedImages');
+      final imageBytes = <Uint8List>[];
+      for (final image in _attachedImages) {
+        try {
+          final bytes = await image.readAsBytes();
+          debugPrint(
+              '[ChatScreen] _fireOpener: Read ${bytes.length} bytes from ${image.path}');
+          imageBytes.add(bytes);
+        } catch (e) {
+          debugPrint(
+              '[ChatScreen] _fireOpener: Failed to read opener image bytes: $e');
+        }
+      }
+      debugPrint(
+          '[ChatScreen] _fireOpener: Sending opener with ${imageBytes.length} images');
+
+      final stream = _sessionService.sendOpener(locale, images: imageBytes);
       final result = await _handleStream(stream);
+
+      // Clear attached images after sending with opener
+      _clearImages();
 
       if (mounted) {
         setState(() {
@@ -357,7 +379,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       onDone: () {
         _scrollToBottom();
         if (mounted) {
-          setState(() => _totalTokens = _tokenCount);
+          // Get accurate token count from metrics (FFI/.litertlm only)
+          // Falls back to 0 if metrics not available (MediaPipe/Web)
+          _captureSessionMetrics();
         }
         completer.complete();
       },
@@ -393,6 +417,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _isScrolling = false;
       }
     });
+  }
+
+  /// Capture session metrics after generation completes.
+  /// Uses totalTokens from metrics for accurate session-wide counting on FFI platforms.
+  /// On MediaPipe/Web: _totalTokens will be 0 (metrics unavailable).
+  void _captureSessionMetrics() {
+    try {
+      final metrics = _sessionService.getSessionMetrics();
+      debugPrint('SessionMetrics: raw metrics=$metrics');
+      if (metrics == null) {
+        debugPrint('SessionMetrics: metrics is null (MediaPipe platform)');
+        if (mounted) setState(() => _totalTokens = 0);
+        return;
+      }
+
+      // Access metrics fields dynamically
+      final dynamic m = metrics;
+      final metricsTotal = m.totalTokens as int? ?? 0;
+
+      debugPrint('SessionMetrics: totalTokens=$metricsTotal');
+
+      // Use metrics total (0 if unavailable on this platform)
+      if (mounted) {
+        setState(() => _totalTokens = metricsTotal);
+        debugPrint('SessionMetrics: applied _totalTokens=$metricsTotal');
+      }
+    } catch (e, st) {
+      debugPrint('Failed to capture session metrics: $e');
+      debugPrint('Stack trace: $st');
+      if (mounted) setState(() => _totalTokens = 0);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -681,7 +736,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     });
     _textController.clear();
-    _clearImages();
+    _clearImages(); // async - call outside setState
+    setState(() {}); // just trigger rebuild
     _scrollToBottom();
 
     try {

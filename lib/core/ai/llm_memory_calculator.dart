@@ -10,7 +10,7 @@ class LLMMemoryCalculator {
   static const int _e4bBytesPerToken = 86016; // 2×42×2×256×2
 
   static const int _maxPositionEmbeddings = 131072;
-  static const double _budgetPercent = 0.60;
+  static const double _budgetPercent = 0.50;
   static const int _roundTo = 64;
 
   static int calculateMaxTokens({

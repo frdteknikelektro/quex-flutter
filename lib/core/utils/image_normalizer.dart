@@ -18,23 +18,20 @@ class NormalizedImage {
 
 /// Normalizes image files before persistence.
 ///
-/// The normalized output is JPEG, capped at [maxDimension] on the longest
+/// The normalized output is PNG, capped at [maxDimension] on the longest
 /// side, and never upscales smaller inputs.
 class ImageNormalizer {
   static const int maxDimension = 896;
-  static const int jpegQuality = 85;
 
   static Future<NormalizedImage?> normalizeFile(
     File source, {
     Directory? outputDirectory,
     String? fileStem,
     int maxDimension = ImageNormalizer.maxDimension,
-    int quality = jpegQuality,
   }) async {
     final bytes = await normalizeBytesFromFile(
       source,
       maxDimension: maxDimension,
-      quality: quality,
     );
     if (bytes == null) return null;
 
@@ -51,7 +48,7 @@ class ImageNormalizer {
       fileStem ?? pathlib.basenameWithoutExtension(source.path),
     );
     final dest = File(
-      '${targetDir.path}/${const Uuid().v4()}_$normalizedStem.jpg',
+      '${targetDir.path}/${const Uuid().v4()}_$normalizedStem.png',
     );
     await dest.writeAsBytes(bytes, flush: true);
     return NormalizedImage(bytes: bytes, file: dest);
@@ -60,21 +57,18 @@ class ImageNormalizer {
   static Future<Uint8List?> normalizeBytesFromFile(
     File source, {
     int maxDimension = ImageNormalizer.maxDimension,
-    int quality = jpegQuality,
   }) async {
     if (!await source.exists()) return null;
 
     final raw = await source.readAsBytes();
     final decoded = img.decodeImage(raw);
     if (decoded != null) {
-      return _encodeNormalized(decoded,
-          maxDimension: maxDimension, quality: quality);
+      return _encodeNormalized(decoded, maxDimension: maxDimension);
     }
 
     final compressed = await _compressNative(
       source.path,
       maxDimension: maxDimension,
-      quality: quality,
     );
     if (compressed == null || compressed.isEmpty) return null;
 
@@ -84,35 +78,31 @@ class ImageNormalizer {
     return _encodeNormalized(
       compressedDecoded,
       maxDimension: maxDimension,
-      quality: quality,
     );
   }
 
   static Uint8List _encodeNormalized(
     img.Image source, {
     required int maxDimension,
-    required int quality,
   }) {
     final oriented = img.bakeOrientation(source);
     final resized = _needsResize(oriented, maxDimension)
         ? _resizeToLongestSide(oriented, maxDimension)
         : oriented;
 
-    return Uint8List.fromList(img.encodeJpg(resized, quality: quality));
+    return Uint8List.fromList(img.encodePng(resized));
   }
 
   static Future<Uint8List?> _compressNative(
     String path, {
     required int maxDimension,
-    required int quality,
   }) async {
     try {
       final compressed = await FlutterImageCompress.compressWithFile(
         path,
         minWidth: maxDimension,
         minHeight: maxDimension,
-        quality: quality,
-        format: CompressFormat.jpeg,
+        format: CompressFormat.png,
       );
       if (compressed == null || compressed.isEmpty) return null;
       return compressed;
