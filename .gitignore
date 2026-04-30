@@ -46,3 +46,11 @@ app.*.map.json
 
 # FVM Version Cache
 .fvm/
+
+# Configuration files with sensitive data
+config.json
+*.task
+*.bin
+*.tflite
+*.litertlm
+*.safetensors

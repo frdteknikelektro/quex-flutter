@@ -2,18 +2,20 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
-import 'package:flutter/foundation.dart' show visibleForTesting;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../device/device_info.dart';
+import 'auth_token_service.dart';
+import 'llm_memory_calculator.dart';
 
 /// ModelManager handles Gemma 4 model installation and status.
 ///
-/// Supports two variants based on device RAM:
-/// - Gemma 4 E4B: ~3.65GB (for devices with ≥9GB RAM)
-/// - Gemma 4 E2B: ~2.58GB (for devices with <9GB RAM)
+/// Supports two variants based on maxTokens calculation:
+/// - Gemma 4 E4B: ~3.65GB (selected if device can support 8192+ tokens with E4B)
+/// - Gemma 4 E2B: ~2.58GB (fallback when E4B would limit tokens below 8192)
 ///
 /// Both use ModelType.gemmaIt and .litertlm format for LiteRT-LM framework.
 /// Capabilities: Text, Image, Audio, Function Calling, Thinking Mode
@@ -25,7 +27,9 @@ class ModelManager {
 
   static const String variantE4B = 'e4b';
   static const String variantE2B = 'e2b';
-  static const int ramThresholdGB = 9;
+
+  /// Minimum tokens required to select E4B variant
+  static const int minTokensForE4B = 8192;
 
   // Gemma 4 E4B from litert-community (.litertlm format)
   static const String gemmaE4BModelUrl =
@@ -51,10 +55,20 @@ class ModelManager {
   static GemmaInstallModelBuilder installModelFactory =
       FlutterGemma.installModel;
 
-  /// Select model variant based on device RAM.
-  /// Returns 'e2b' for <9GB RAM, 'e4b' for ≥9GB RAM.
-  static String selectModelVariant(int ramGB) {
-    return ramGB < ramThresholdGB ? variantE2B : variantE4B;
+  /// Select model variant based on maxTokens calculation.
+  /// Uses exact RAM in MB to calculate if E4B can support at least [minTokensForE4B] tokens.
+  /// Returns 'e4b' if E4B supports 8192+ tokens, otherwise 'e2b'.
+  static String selectModelVariant(int ramMB) {
+    try {
+      final e4bMaxTokens = LLMMemoryCalculator.calculateMaxTokens(
+        ramMB: ramMB,
+        isE4B: true,
+      );
+      return e4bMaxTokens >= minTokensForE4B ? variantE4B : variantE2B;
+    } catch (e) {
+      // Insufficient RAM for E4B, fallback to E2B
+      return variantE2B;
+    }
   }
 
   /// Get the currently selected model variant.
@@ -72,9 +86,9 @@ class ModelManager {
       return savedVariant;
     }
 
-    // No saved variant, select based on RAM
-    final ramGB = await _getDeviceRamGB();
-    _selectedVariant = selectModelVariant(ramGB);
+    // No saved variant, select based on exact RAM and maxTokens calculation
+    final ramMB = await DeviceInfo.getPhysicalRamMB();
+    _selectedVariant = selectModelVariant(ramMB);
     await prefs.setString(modelVariantKey, _selectedVariant!);
     return _selectedVariant!;
   }
@@ -95,15 +109,6 @@ class ModelManager {
   static Future<String> getModelSize() async {
     final variant = await getSelectedVariant();
     return variant == variantE2B ? gemmaE2BSize : gemmaE4BSize;
-  }
-
-  static Future<int> _getDeviceRamGB() async {
-    try {
-      return await DeviceInfo.getPhysicalRamGB();
-    } catch (e) {
-      print('[ModelManager] Failed to get device RAM: $e');
-      return 0; // Fallback to E2B
-    }
   }
 
   static Future<bool> isReady() async {
@@ -150,7 +155,7 @@ class ModelManager {
       if (key.contains('gemma') ||
           key.contains('model') ||
           key.contains('install')) {
-        print('🗑️ Removing FlutterGemma key: $key');
+        debugPrint('🗑️ Removing FlutterGemma key: $key');
         await prefs.remove(key);
       }
     }
@@ -162,19 +167,20 @@ class ModelManager {
     try {
       final appDir = await getApplicationDocumentsDirectory();
       final fileName = await getModelFileName();
-      print('🗑️ App directory: ${appDir.path}');
+      debugPrint('🗑️ App directory: ${appDir.path}');
       final modelFile = File('${appDir.path}/$fileName');
-      print('🗑️ Attempting to delete model from: ${modelFile.path}');
-      print('🗑️ File exists: ${await modelFile.exists()}');
+      debugPrint('🗑️ Attempting to delete model from: ${modelFile.path}');
+      debugPrint('🗑️ File exists: ${await modelFile.exists()}');
       if (await modelFile.exists()) {
         await modelFile.delete();
-        print('🗑️ File deleted successfully');
-        print('🗑️ File exists after deletion: ${await modelFile.exists()}');
+        debugPrint('🗑️ File deleted successfully');
+        debugPrint(
+            '🗑️ File exists after deletion: ${await modelFile.exists()}');
       } else {
-        print('🗑️ File does not exist');
+        debugPrint('🗑️ File does not exist');
       }
     } catch (e) {
-      print('🗑️ Deletion error: $e');
+      debugPrint('🗑️ Deletion error: $e');
     }
   }
 
@@ -199,7 +205,10 @@ class ModelManager {
   /// Pass a [CancelToken] to support cancellation; cancelling the token
   /// also closes the stream.
   /// Times out after 60 seconds if no progress updates (e.g., stuck in resume pending).
-  static Stream<double> downloadModel({CancelToken? cancelToken}) async* {
+  static Stream<double> downloadModel({
+    CancelToken? cancelToken,
+    String? token,
+  }) async* {
     if (_isInstalling) return;
     _isInstalling = true;
     try {
@@ -224,6 +233,7 @@ class ModelManager {
             controller.add(clamped / 100.0);
           }
         },
+        token: token,
       ).then((_) async {
         if (!controller.isClosed) {
           controller.add(1.0);
@@ -250,11 +260,14 @@ class ModelManager {
     }
   }
 
-  static InferenceInstallationBuilder _buildGemmaInstaller(String modelUrl) {
+  static InferenceInstallationBuilder _buildGemmaInstaller(
+    String modelUrl, {
+    String? token,
+  }) {
     return installModelFactory(
       modelType: ModelType.gemmaIt,
       fileType: ModelFileType.litertlm,
-    ).fromNetwork(modelUrl);
+    ).fromNetwork(modelUrl, token: token);
   }
 
   /// Legacy simulate download for testing (fallback).
@@ -270,6 +283,7 @@ class ModelManager {
   static Future<void> activateModel({
     CancelToken? cancelToken,
     void Function(int progress)? onProgress,
+    String? token,
   }) async {
     if (FlutterGemma.hasActiveModel()) {
       await markReady();
@@ -278,11 +292,16 @@ class ModelManager {
 
     final modelUrl = await getModelUrl();
     final effectiveCancelToken = cancelToken ?? CancelToken();
-    final installer = _buildGemmaInstaller(modelUrl)
-        .withProgress((progress) {
-          onProgress?.call(progress);
-        })
-        .withCancelToken(effectiveCancelToken);
+
+    // Load token from AuthTokenService if not provided
+    final authToken = token ?? await AuthTokenService.loadToken();
+
+    final installer = _buildGemmaInstaller(
+      modelUrl,
+      token: authToken,
+    ).withProgress((progress) {
+      onProgress?.call(progress);
+    }).withCancelToken(effectiveCancelToken);
 
     await installer.install();
     await markReady();

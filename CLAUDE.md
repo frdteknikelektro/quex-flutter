@@ -18,6 +18,29 @@ fvm flutter test             # run tests (currently minimal: one smoke test)
 dart run build_runner build  # generates .g.dart for riverpod_generator (unused currently)
 ```
 
+### HuggingFace Token Configuration (Optional)
+
+The models used (Gemma 4 E4B/E2B from litert-community) are **publicly accessible** and do not require a token. However, you can configure a HuggingFace access token for higher rate limits or future gated models.
+
+**Setup:**
+1. Copy the template: `cp config.json.example config.json`
+2. Edit `config.json` and add your token: `{"HUGGINGFACE_TOKEN": "hf_your_token_here"}`
+3. Get your token at: https://huggingface.co/settings/tokens
+
+**Run with token:**
+```bash
+fvm flutter run --dart-define-from-file=config.json
+```
+
+**Run without token (default):**
+```bash
+fvm flutter run
+```
+
+The `config.json` file is gitignored for security. The `AuthTokenService` loads tokens with priority:
+1. `dart-define` (HUGGINGFACE_TOKEN) — saved to SharedPreferences
+2. SharedPreferences — fallback if no dart-define
+
 ## Architecture
 
 **State management**: Riverpod (`flutter_riverpod`). All providers in `lib/core/state/app_state.dart`. Pattern: `FutureProvider.family` for data fetching, `StateProvider` for UI state, `NotifierProvider` for complex state. DAOs instantiated directly inside providers (no DI container).
