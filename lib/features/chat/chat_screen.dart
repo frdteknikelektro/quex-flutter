@@ -2018,21 +2018,24 @@ class ModelLoadingOverlay extends StatelessWidget {
 
     return Container(
       color: scheme.surface,
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            PulsingBrain(emoji: emoji),
-            const SizedBox(height: 16),
-            Text(
-              text,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: scheme.onSurface,
+      child: SafeArea(
+        top: false,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              PulsingBrain(emoji: emoji),
+              const SizedBox(height: 16),
+              Text(
+                text,
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
