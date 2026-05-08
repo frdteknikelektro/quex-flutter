@@ -20,18 +20,18 @@ class LLMMemoryCalculator {
   }) {
     final budgetMB = (ramMB * _budgetPercent).floor();
     final weightsMB = isE4B ? _e4bWeightsMB : _e2bWeightsMB;
-    final availableForKV_MB = budgetMB - weightsMB;
+    final availableForKvMb = budgetMB - weightsMB;
 
-    if (availableForKV_MB <= 0) {
+    if (availableForKvMb <= 0) {
       throw Exception(
         'Insufficient RAM: need ${weightsMB}MB for weights, '
         'have ${budgetMB}MB budget (70% of ${ramMB}MB)',
       );
     }
 
-    final availableForKV_B = availableForKV_MB * 1024 * 1024;
+    final availableForKvB = availableForKvMb * 1024 * 1024;
     final bytesPerToken = isE4B ? _e4bBytesPerToken : _e2bBytesPerToken;
-    final rawTokens = availableForKV_B ~/ bytesPerToken;
+    final rawTokens = availableForKvB ~/ bytesPerToken;
     final roundedTokens = (rawTokens ~/ _roundTo) * _roundTo;
 
     var finalTokens = roundedTokens > _maxPositionEmbeddings

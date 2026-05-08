@@ -19,25 +19,6 @@ class ProfileSelectionScreen extends ConsumerStatefulWidget {
 
 class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
     with TickerProviderStateMixin {
-  static const _emojiOptions = [
-    '👧',
-    '👦',
-    '🧒',
-    '👶',
-    '🎓',
-    '🌟',
-    '⭐',
-    '🦁',
-    '🐯',
-    '🦊',
-    '🐼',
-    '🐨',
-    '🦆',
-    '🐤',
-    '🦄',
-    '🐙',
-  ];
-
   late final AnimationController _headerController;
   late final AnimationController _cardsController;
   late final Animation<double> _headerFade;
@@ -833,7 +814,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: Sp.md),
                         child: DropdownButtonFormField<int>(
-                          value: _grade,
+                          initialValue: _grade,
                           decoration: InputDecoration(labelText: l10n.gradeLevel),
                           items: List.generate(
                             12,

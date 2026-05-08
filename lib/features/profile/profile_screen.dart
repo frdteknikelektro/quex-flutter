@@ -21,8 +21,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
     with TickerProviderStateMixin {
   late final AnimationController _headerController;
   late final AnimationController _cardController;
-  late final Animation<double> _headerFade;
-  late final Animation<Offset> _headerSlide;
 
   @override
   void initState() {
@@ -37,19 +35,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen>
       duration: const Duration(milliseconds: 700),
       vsync: this,
     );
-
-    _headerFade = CurvedAnimation(
-      parent: _headerController,
-      curve: Curves.easeOut,
-    );
-
-    _headerSlide = Tween<Offset>(
-      begin: const Offset(0, 0.2),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _headerController,
-      curve: Curves.easeOutCubic,
-    ));
 
     // Staggered entry
     Future.delayed(const Duration(milliseconds: 100), () {
@@ -379,7 +364,7 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
             const SizedBox(height: 16),
             Text(
               l10n.typeProfileName,
-              style: TextStyle(fontWeight: FontWeight.w600),
+              style: const TextStyle(fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 8),
             TextField(
@@ -486,7 +471,7 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
                 ),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
-                  value: _selectedLanguage ?? 'en',
+                  initialValue: _selectedLanguage ?? 'en',
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: scheme.surfaceContainerHighest,

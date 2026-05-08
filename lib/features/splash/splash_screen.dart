@@ -124,7 +124,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                     },
                     child: SlideTransition(
                       position: _bounceAnimation,
-                      child: Text(
+                      child: const Text(
                         '🦆',
                         style: TextStyle(
                           fontSize: 72,
@@ -298,7 +298,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           Text(
             l10n.downloadingModelVariant(variantName, size),
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant.withOpacity(0.7),
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
                   fontWeight: FontWeight.w500,
                 ),
           ),

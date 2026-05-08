@@ -922,12 +922,7 @@ class _KindSelector extends StatelessWidget {
     required this.scheme,
   });
 
-  static const _kinds = [
-    (kind: MaterialKind.photo, emoji: '📷', label: 'Photo'),
-    (kind: MaterialKind.document, emoji: '📄', label: 'PDF'),
-    (kind: MaterialKind.text, emoji: '📝', label: 'Text'),
-  ];
-
+  
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;

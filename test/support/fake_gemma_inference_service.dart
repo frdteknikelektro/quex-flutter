@@ -15,6 +15,7 @@ class FakeGemmaInferenceService extends GemmaInferenceService {
   Future<void> initialize({
     int? maxTokens,
     gemma.PreferredBackend preferredBackend = gemma.PreferredBackend.cpu,
+    bool enableSpeculativeDecoding = true,
   }) async {
     initializeCalls++;
     _ready = true;

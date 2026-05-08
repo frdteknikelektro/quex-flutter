@@ -164,7 +164,7 @@ void main() {
     final service = _QueuedGemmaInferenceService(
       Queue.of([
         [
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'plan',
             args: {
               'steps': [
@@ -176,11 +176,11 @@ void main() {
               ],
             },
           ),
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'complete_step',
             args: {'index': 0},
           ),
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'analyze_materials',
             args: {
               'question_count': 2,
@@ -189,7 +189,7 @@ void main() {
           ),
         ],
         [
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'generate_question',
             args: {
               'type': 'multipleChoice',
@@ -203,7 +203,7 @@ void main() {
           ),
         ],
         [
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'generate_question',
             args: {
               'type': 'multipleChoice',
@@ -217,7 +217,7 @@ void main() {
           ),
         ],
         [
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'review_quiz',
             args: {
               'issues_found': [],
@@ -227,7 +227,7 @@ void main() {
           ),
         ],
         [
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'finish_run',
             args: {
               'summary': 'Created two distinct plant questions',
@@ -290,7 +290,7 @@ void main() {
     final service = _QueuedGemmaInferenceService(
       Queue.of([
         [
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'plan',
             args: {
               'steps': [
@@ -302,11 +302,11 @@ void main() {
               ],
             },
           ),
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'complete_step',
             args: {'index': 0},
           ),
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'analyze_materials',
             args: {
               'question_count': 1,
@@ -315,7 +315,7 @@ void main() {
           ),
         ],
         [
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'generate_question',
             args: {
               'type': 'multipleChoice',
@@ -329,7 +329,7 @@ void main() {
           ),
         ],
         [
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'review_quiz',
             args: {
               'issues_found': [],
@@ -339,7 +339,7 @@ void main() {
           ),
         ],
         [
-          gemma.FunctionCallResponse(
+          const gemma.FunctionCallResponse(
             name: 'finish_run',
             args: {
               'summary': 'Created one plant question',
