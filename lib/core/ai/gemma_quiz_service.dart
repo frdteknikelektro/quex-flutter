@@ -143,8 +143,9 @@ RULES:
       tools: const [],
       supportsFunctionCalls: false,
       supportImage: hasImages,
-      temperature: 0.3,
-      topK: 10,
+      temperature: 1.0,
+      topP: 0.95,
+      topK: 64,
     );
 
     // Queue images before text
@@ -199,8 +200,9 @@ RULES:
       tools: const [],
       supportsFunctionCalls: false,
       supportImage: hasImages,
-      temperature: 0.6,
-      topK: 40,
+      temperature: 1.0,
+      topP: 0.95,
+      topK: 64,
     );
 
     // Queue images before text

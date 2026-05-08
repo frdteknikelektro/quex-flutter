@@ -102,8 +102,9 @@ class GemmaSessionService {
 
     await _inference.createSession(
       systemInstruction: systemInstruction.toString(),
-      temperature: 0.8,
-      topK: 40,
+      temperature: 1.0,
+      topP: 0.95,
+      topK: 64,
       supportImage: true,
       toolChoice: gemma.ToolChoice.auto,
       tools: [_evaluateTool],
@@ -235,8 +236,9 @@ class GemmaSessionService {
 
     await _inference.createSession(
       systemInstruction: systemInstruction.toString(),
-      temperature: 1.1,
-      topK: 40,
+      temperature: 1.0,
+      topP: 0.95,
+      topK: 64,
       supportImage: true,
       supportAudio: true,
       toolChoice: gemma.ToolChoice.auto,

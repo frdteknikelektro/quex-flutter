@@ -60,7 +60,9 @@ class SessionChatService {
 
     await _chatService.createSession(
       systemInstruction: systemInstruction.toString(),
-      temperature: 1.1,
+      temperature: 1.0,
+      topP: 0.95,
+      topK: 64,
       isThinking: isThinking,
     );
     _sessionCreated = true;

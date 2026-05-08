@@ -70,9 +70,10 @@ class _PreloadRecordingInferenceService extends GemmaInferenceService {
   @override
   Future<void> createSession({
     String? systemInstruction,
-    double temperature = 0.8,
+    double temperature = 1.0,
     int randomSeed = 1,
-    int topK = 1,
+    int topK = 64,
+    double topP = 0.95,
     gemma.ModelType modelType = gemma.ModelType.gemmaIt,
     bool supportImage = false,
     bool supportAudio = false,

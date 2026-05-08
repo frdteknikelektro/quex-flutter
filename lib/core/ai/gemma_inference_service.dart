@@ -63,14 +63,17 @@ class GemmaInferenceService {
   /// Create a new session with optional configuration.
   ///
   /// [systemInstruction] - System prompt to guide model behavior
-  /// [temperature] - Controls randomness (0.0-1.0, default: 0.8)
+  /// [temperature] - Controls randomness (0.0-1.0, default: 1.0)
+  /// [topP] - Nucleus sampling (0.0-1.0, default: 0.95)
+  /// [topK] - Top-K sampling (default: 64)
   /// [supportImage] - Enable image support for multimodal chat
   /// [isThinking] - Enable thinking mode (for reasoning tasks)
   Future<void> createSession({
     String? systemInstruction,
-    double temperature = 0.8,
+    double temperature = 1.0,
     int randomSeed = 1,
-    int topK = 1,
+    int topK = 64,
+    double topP = 0.95,
     gemma.ModelType modelType = gemma.ModelType.gemmaIt,
     bool supportImage = false,
     bool supportAudio = false,
@@ -93,6 +96,7 @@ class GemmaInferenceService {
       temperature: temperature,
       randomSeed: randomSeed,
       topK: topK,
+      topP: topP,
       supportImage: supportImage,
       supportAudio: supportAudio,
       isThinking: isThinking,

@@ -70,12 +70,16 @@ class GemmaChatService {
   ///
   /// [systemInstruction] - Optional system prompt
   /// [temperature] - Sampling temperature (0.0-1.0)
+  /// [topP] - Nucleus sampling (0.0-1.0)
+  /// [topK] - Top-K sampling
   /// [isThinking] - Enable thinking mode for reasoning
   /// [tools] - List of available tools for function calling
   /// [toolExecutor] - Callback to execute tool calls
   Future<void> createSession({
     String? systemInstruction,
-    double temperature = 1.1,
+    double temperature = 1.0,
+    double topP = 0.95,
+    int topK = 64,
     bool isThinking = false,
     List<gemma.Tool> tools = const [],
     ToolExecutor? toolExecutor,
@@ -91,7 +95,8 @@ class GemmaChatService {
     _chat = await _model!.createChat(
       systemInstruction: systemInstruction,
       temperature: temperature,
-      topK: 64,
+      topP: topP,
+      topK: topK,
       supportImage: true,
       supportAudio: true,
       isThinking: isThinking,
