@@ -72,7 +72,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         if (next.isCompleted && previous?.isCompleted != true) {
           debugPrint(
               '[Splash] Download completed, navigating to profile selection');
-          Future.delayed(const Duration(milliseconds: 500), () {
+          Future.delayed(const Duration(milliseconds: 2000), () {
             if (mounted) {
               context.go(Routes.profileSelection);
             }

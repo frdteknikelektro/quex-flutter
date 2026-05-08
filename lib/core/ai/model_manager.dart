@@ -17,7 +17,7 @@ import 'llm_memory_calculator.dart';
 /// - Gemma 4 E4B: ~3.65GB (selected if device can support 8192+ tokens with E4B)
 /// - Gemma 4 E2B: ~2.58GB (fallback when E4B would limit tokens below 8192)
 ///
-/// Both use ModelType.gemmaIt and .litertlm format for LiteRT-LM framework.
+/// Both use ModelType.gemma4 and .litertlm format for LiteRT-LM framework.
 /// Capabilities: Text, Image, Audio, Function Calling, Thinking Mode
 class ModelManager {
   static const modelReadyKey = 'model_ready';
@@ -265,7 +265,7 @@ class ModelManager {
     String? token,
   }) {
     return installModelFactory(
-      modelType: ModelType.gemmaIt,
+      modelType: ModelType.gemma4,
       fileType: ModelFileType.litertlm,
     ).fromNetwork(modelUrl, token: token);
   }

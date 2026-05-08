@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
@@ -46,8 +47,16 @@ class GemmaChatService {
   /// Initialize the service by creating the model.
   /// Only needed if no model was provided in the constructor.
   /// [maxTokens] is capped by the calculated upper bound based on device RAM.
-  Future<void> initialize({int? maxTokens}) async {
-    if (_model != null) return;
+  Future<void> initialize({
+    int maxTokens = 8192,
+    gemma.PreferredBackend? preferredBackend = gemma.PreferredBackend.gpu,
+    int? maxNumImages = 16,
+    bool? enableSpeculativeDecoding = true,
+  }) async {
+    if (_model != null) {
+      _model?.close();
+      _model = null;
+    }
 
     await ModelManager.activateModel();
 
@@ -59,10 +68,11 @@ class GemmaChatService {
 
     _model = await gemma.FlutterGemma.getActiveModel(
       maxTokens: effectiveMaxTokens,
-      preferredBackend: gemma.PreferredBackend.cpu,
+      preferredBackend: preferredBackend,
       supportImage: true,
       supportAudio: true,
-      maxNumImages: 32,
+      maxNumImages: maxNumImages,
+      enableSpeculativeDecoding: enableSpeculativeDecoding
     );
   }
 
@@ -104,6 +114,8 @@ class GemmaChatService {
           tools.isNotEmpty ? gemma.ToolChoice.auto : gemma.ToolChoice.none,
       tools: tools,
       supportsFunctionCalls: tools.isNotEmpty,
+      maxFunctionBufferLength: 2048,
+      randomSeed: Random().nextInt(1000000)
     );
   }
 

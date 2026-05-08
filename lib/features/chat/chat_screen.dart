@@ -190,7 +190,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _openerFired = false;
       });
     }
-    unawaited(_fireOpener(bundle, chatMaterials));
   }
 
   Future<void> _toggleThinkingMode(
