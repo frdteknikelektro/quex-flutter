@@ -33,6 +33,12 @@ class GemmaChatService {
 
   GemmaChatService._internal();
 
+  @visibleForTesting
+  Stream<({String? text, String? thinking})> processResponseStream(
+    Stream<gemma.ModelResponse> stream,
+  ) =>
+      _processResponseStream(stream);
+
   bool get isInitialized => _model != null;
 
   bool get hasActiveSession => _chat != null;
@@ -141,21 +147,111 @@ class GemmaChatService {
     final toolCalls = <({String name, Map<String, Object?> args})>[];
     var gotToolCall = false;
 
+    // Track processed calls to avoid duplicates if library yields them at end of stream.
+    // This is especially important for Gemma 4 where we manually scan the text stream.
+    final processedCalls = <String>{};
+    String funcBuffer = '';
+    bool inThinkingChannel = false;
+
     await for (final response in stream) {
-      switch (response) {
-        case gemma.TextResponse(:final token):
-          yield (text: token, thinking: null);
-        case gemma.ThinkingResponse(:final content):
-          yield (text: null, thinking: content);
-        case gemma.FunctionCallResponse(:final name, :final args):
+      if (response is gemma.TextResponse) {
+        String token = response.token;
+
+        // 1. Handle Channel Tags (Native thinking markers in Gemma 4)
+        if (token.contains('<|channel')) {
+          inThinkingChannel = true;
+          // Extract any text before the tag and yield it
+          final tagIndex = token.indexOf('<|channel');
+          if (tagIndex > 0) {
+            yield (text: token.substring(0, tagIndex), thinking: null);
+          }
+
+          // Check if the tag is complete in this token
+          if (token.contains('<channel|>')) {
+            const startMarker = 'thought\n';
+            final startIdx = token.indexOf(startMarker);
+            final endIdx = token.indexOf('<channel|>');
+
+            if (startIdx != -1 && endIdx > startIdx) {
+              final thought =
+                  token.substring(startIdx + startMarker.length, endIdx);
+              if (thought.isNotEmpty) yield (text: null, thinking: thought);
+            }
+            inThinkingChannel = false;
+
+            final remaining = token.substring(endIdx + '<channel|>'.length);
+            if (remaining.isEmpty) continue;
+            token = remaining; // Continue processing the rest of the token
+          } else {
+            // Started but not ended in this token
+            const startMarker = 'thought\n';
+            final startIdx = token.indexOf(startMarker);
+            if (startIdx != -1) {
+              final thought = token.substring(startIdx + startMarker.length);
+              if (thought.isNotEmpty) yield (text: null, thinking: thought);
+            }
+            continue;
+          }
+        } else if (inThinkingChannel) {
+          if (token.contains('<channel|>')) {
+            final parts = token.split('<channel|>');
+            if (parts[0].isNotEmpty) yield (text: null, thinking: parts[0]);
+            inThinkingChannel = false;
+            if (parts[1].isEmpty) continue;
+            token = parts[1];
+          } else {
+            yield (text: null, thinking: token);
+            continue;
+          }
+        }
+
+        // 2. Handle Function Calls (JSON tool calling)
+        if (funcBuffer.isEmpty) {
+          // Detect start of a function call (JSON block).
+          if (gemma.FunctionCallParser.isFunctionCallStart(token)) {
+            funcBuffer = token;
+            continue;
+          } else {
+            yield (text: token, thinking: null);
+          }
+        } else {
+          funcBuffer += token;
+          // Check if the buffered block is now a complete tool call.
+          if (gemma.FunctionCallParser.isFunctionCallComplete(funcBuffer)) {
+            final calls = gemma.FunctionCallParser.parseAll(funcBuffer);
+            for (final call in calls) {
+              final key = '${call.name}:${call.args}';
+              if (processedCalls.add(key)) {
+                gotToolCall = true;
+                toolCalls.add((name: call.name, args: call.args));
+              }
+            }
+            funcBuffer = '';
+          }
+          continue;
+        }
+      } else if (response is gemma.ThinkingResponse) {
+        yield (text: null, thinking: response.content);
+      } else if (response is gemma.FunctionCallResponse) {
+        final key = '${response.name}:${response.args}';
+        if (processedCalls.add(key)) {
           gotToolCall = true;
-          toolCalls.add((name: name, args: args));
-        case gemma.ParallelFunctionCallResponse(:final calls):
-          gotToolCall = true;
-          for (final call in calls) {
+          toolCalls.add((name: response.name, args: response.args));
+        }
+      } else if (response is gemma.ParallelFunctionCallResponse) {
+        for (final call in response.calls) {
+          final key = '${call.name}:${call.args}';
+          if (processedCalls.add(key)) {
+            gotToolCall = true;
             toolCalls.add((name: call.name, args: call.args));
           }
+        }
       }
+    }
+
+    // If stream ended without a complete tool call, flush the buffer to UI.
+    if (funcBuffer.isNotEmpty && !gotToolCall) {
+      yield (text: funcBuffer, thinking: null);
     }
 
     // Handle tool calls if any
