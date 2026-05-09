@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/theme.dart';
+import '../../core/ai/gemma_chat_service.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
@@ -29,6 +32,7 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
   @override
   void initState() {
     super.initState();
+    unawaited(_initializeGemma());
 
     _staggerController = AnimationController(
       duration: const Duration(milliseconds: 800),
@@ -49,6 +53,14 @@ class _SessionDetailScreenState extends ConsumerState<SessionDetailScreen>
     Future.delayed(const Duration(milliseconds: 100), () {
       if (mounted) _staggerController.forward();
     });
+  }
+
+  Future<void> _initializeGemma() async {
+    try {
+      await GemmaChatService.getInstance().initialize();
+    } catch (e) {
+      debugPrint('[SessionDetailScreen] Gemma pre-init failed: $e');
+    }
   }
 
   @override

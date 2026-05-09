@@ -53,10 +53,7 @@ class GemmaChatService {
     int? maxNumImages = 16,
     bool? enableSpeculativeDecoding = true,
   }) async {
-    if (_model != null) {
-      _model?.close();
-      _model = null;
-    }
+    if (_model != null) return;
 
     await ModelManager.activateModel();
 

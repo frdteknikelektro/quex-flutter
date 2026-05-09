@@ -1,35 +1,39 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../widgets/math_markdown.dart';
 import 'package:go_router/go_router.dart';
-import 'package:open_filex/open_filex.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as pathlib;
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../../app/theme.dart';
-import '../../core/ai/gemma_inference_service.dart';
-import '../../core/ai/gemma_service_host.dart';
-import '../../core/ai/gemma_session_service.dart';
+import '../../core/ai/question_chat_service.dart';
 import '../../core/ai/tutor_event.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import '../../core/utils/image_normalizer.dart';
 import '../../generated/l10n/app_localizations.dart';
+import '../../widgets/math_markdown.dart';
+import '../chat/chat_screen.dart';
+
+const String _kVoiceSentinel = '__voice__';
 
 class QuestionChatScreen extends ConsumerStatefulWidget {
   final int sessionId;
   final int quizId;
   final int questionId;
-  final GemmaInferenceService Function()? gemmaServiceFactory;
 
   const QuestionChatScreen({
     super.key,
     required this.sessionId,
     required this.quizId,
     required this.questionId,
-    this.gemmaServiceFactory,
   });
 
   @override
@@ -37,122 +41,240 @@ class QuestionChatScreen extends ConsumerStatefulWidget {
 }
 
 class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
-  final _controller = TextEditingController();
+  // ===========================================================================
+  // Controllers
+  // ===========================================================================
+  final _textController = TextEditingController();
   final _scrollController = ScrollController();
-  late final GemmaServiceHost _gemmaHost;
-  bool _sending = false;
-  bool _modelLoading = false;
-  Future<void>? _preloadFuture;
-  String? _streamingContent; // reply tokens accumulating
-  String?
-      _thinkingContent; // thinking tokens accumulating (null = not thinking)
-  bool _thinkingExpanded = false;
-  StreamSubscription<TutorEvent>? _streamSub;
-  GemmaSessionService? _sessionService;
 
-  // Persistent session state
+  // ===========================================================================
+  // Services
+  // ===========================================================================
+  final QuestionChatService _chatService = QuestionChatService();
+  StreamSubscription<TutorEvent>? _streamSub;
+
+  // ===========================================================================
+  // Chat State
+  // ===========================================================================
+  final List<QuestionMessage> _messages = [];
+  bool _openerFired = false;
+
+  // ===========================================================================
+  // AI / Streaming State
+  // ===========================================================================
+  bool _sending = true;
+  bool _modelLoading = false;
+  String? _streamingContent;
+  String? _thinkingContent;
+  bool _thinkingExpanded = false;
+
+  // ===========================================================================
+  // Session State
+  // ===========================================================================
+  bool _isThinkingMode = false;
+
+  // ===========================================================================
+  // Audio Recording State
+  // ===========================================================================
+  final AudioRecorder _recorder = AudioRecorder();
+  bool _isRecording = false;
+  DateTime? _recordingStartTime;
+
+  // ===========================================================================
+  // Image Attachment State
+  // ===========================================================================
+  final List<File> _attachedImages = [];
+  static const int _maxAttachedImages = 4;
+  final Map<int, List<File>> _messageImages = {};
+
+  // ===========================================================================
+  // UI / Scroll State
+  // ===========================================================================
+  int _tokenCount = 0;
+  int _totalTokens = 0;
+  int _maxTokens = 8192;
+  static const int _scrollThrottleTokens = 10;
+  bool _isScrolling = false;
+
+  // ===========================================================================
+  // Score State
+  // ===========================================================================
   double? _currentScore;
 
   @override
   void initState() {
     super.initState();
-    _gemmaHost = GemmaServiceHost(
-      service: widget.gemmaServiceFactory?.call(),
-    );
-    unawaited(_warmModel());
+    unawaited(_initialize());
   }
 
-  @override
-  void dispose() {
-    _streamSub?.cancel();
-    _controller.dispose();
-    _scrollController.dispose();
-    unawaited(_gemmaHost.dispose());
-    super.dispose();
-  }
-
-  Future<GemmaInferenceService> _ensureModel() {
-    return _gemmaHost.ensureInitialized();
-  }
-
-  Future<void> _warmModel() async {
+  Future<void> _initialize() async {
+    if (_chatService.isInitialized) {
+      final effectiveMaxTokens = _chatService.effectiveMaxTokens ?? 8192;
+      if (mounted) setState(() => _maxTokens = effectiveMaxTokens);
+      return;
+    }
     try {
       if (mounted) setState(() => _modelLoading = true);
-      await _ensureModel();
-    } catch (_) {
-      // Send path will surface model load failure if needed.
+      await _chatService.initialize();
+      final effectiveMaxTokens = _chatService.effectiveMaxTokens ?? 8192;
+      if (mounted) setState(() => _maxTokens = effectiveMaxTokens);
+    } catch (e) {
+      debugPrint('Failed to initialize chat service: $e');
     } finally {
       if (mounted) setState(() => _modelLoading = false);
     }
   }
 
-  void _startTutorSessionPreload(
-    Question question,
-    List<StudyMaterial> materials,
-    List<QuestionMessage> messages,
-  ) {
-    if (_preloadFuture != null) return;
-
-    final future = _preloadTutorSession(question, materials, messages);
-    _preloadFuture = future;
-    future.then((_) {
-      if (!mounted) return;
-      setState(() {});
-    }).catchError((Object error) {
-      debugPrint('Failed to preload tutor session: $error');
-      if (!mounted) return;
-      final l10n = AppLocalizations.of(context)!;
-      setState(() {
-        _sessionService = null;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(l10n.questionChatFailedToPreload(error.toString()))),
-      );
-    });
+  @override
+  void dispose() {
+    _streamSub?.cancel();
+    _textController.dispose();
+    _scrollController.dispose();
+    _cleanupOnDispose();
+    super.dispose();
   }
 
-  Future<void> _preloadTutorSession(
-    Question question,
-    List<StudyMaterial> materials,
-    List<QuestionMessage> messages,
-  ) async {
-    final service = await _ensureModel();
-    _sessionService = GemmaSessionService(service);
-    await _sessionService!.preloadQuestionTutorSession(
-      question: question,
-      materials: materials,
-      history: messages,
-    );
-  }
-
-  /// Initialize tutor session with proper guards for concurrent calls.
-  Future<void> _ensureTutorSession(
-    Question question,
-    List<StudyMaterial> materials,
-    List<QuestionMessage> messages,
-  ) async {
-    _startTutorSessionPreload(question, materials, messages);
-    final preload = _preloadFuture;
-    if (preload == null) {
-      throw StateError('Failed to start tutor preload.');
+  void _cleanupOnDispose() async {
+    try {
+      await _chatService.dispose();
+    } catch (e) {
+      debugPrint('Error disposing chat service: $e');
     }
-    await preload;
+    try {
+      await _recorder.dispose();
+    } catch (e) {
+      debugPrint('Error disposing recorder: $e');
+    }
+    if (_isRecording) {
+      try {
+        await _recorder.stop();
+      } catch (e) {
+        debugPrint('Error stopping recording on dispose: $e');
+      }
+    }
   }
 
-  /// Handle score from tool evaluation.
+  // ---------------------------------------------------------------------------
+  // Session Management
+  // ---------------------------------------------------------------------------
+
+  Future<void> _firePreload(
+    Question question,
+    List<StudyMaterial> materials,
+  ) async {
+    if (_openerFired) return;
+    _openerFired = true;
+
+    if (mounted) setState(() => _sending = true);
+
+    final l10n = AppLocalizations.of(context);
+    try {
+      await _chatService.createSession(
+        question: question,
+        materials: materials,
+        locale: l10n?.localeName ?? 'en',
+        isThinking: _isThinkingMode,
+      );
+    } catch (e) {
+      debugPrint('Failed to preload tutor session: $e');
+      if (mounted) {
+        setState(() {
+          _openerFired = false;
+          _sending = false;
+        });
+      }
+      return;
+    }
+
+    if (mounted) setState(() => _sending = false);
+  }
+
+  Future<void> _resetChat(
+    Question question,
+    List<StudyMaterial> materials,
+  ) async {
+    await _streamSub?.cancel();
+    _streamSub = null;
+    _clearImages();
+    _messageImages.clear();
+    await _chatService.resetSession();
+    if (mounted) {
+      setState(() {
+        _messages.clear();
+        _sending = false;
+        _streamingContent = null;
+        _thinkingContent = null;
+        _openerFired = false;
+      });
+    }
+  }
+
+  Future<void> _toggleThinkingMode(
+    Question question,
+    List<StudyMaterial> materials,
+  ) async {
+    final l10n = AppLocalizations.of(context);
+    if (l10n == null) return;
+
+    final newValue = !_isThinkingMode;
+    final title = newValue
+        ? l10n.chatThinkingModeConfirm
+        : l10n.chatThinkingModeDisableConfirm;
+    final message = newValue
+        ? l10n.chatThinkingModeConfirmMessage
+        : l10n.chatThinkingModeDisableMessage;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        final dialogL10n = AppLocalizations.of(ctx);
+        return AlertDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(dialogL10n?.cancel ?? 'Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(dialogL10n?.continueButton ?? 'Continue'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true && mounted) {
+      setState(() {
+        _isThinkingMode = newValue;
+        _sending = true;
+      });
+      await _resetChat(question, materials);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Score Handling
+  // ---------------------------------------------------------------------------
+
   Future<void> _handleScore(double score) async {
     if (!mounted) return;
-
     setState(() => _currentScore = score);
-
     await QuestionDAO().saveScore(widget.questionId, score);
     ref.invalidate(questionProvider(widget.questionId));
     ref.invalidate(quizBundleProvider(widget.quizId));
   }
 
+  // ---------------------------------------------------------------------------
+  // Streaming & UI Helpers
+  // ---------------------------------------------------------------------------
+
   Future<void> _stopGeneration() async {
     await _streamSub?.cancel();
     _streamSub = null;
+    _tokenCount = 0;
+    await _chatService.stopGeneration();
     if (mounted) {
       setState(() {
         _sending = false;
@@ -162,40 +284,252 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     }
   }
 
+  Future<({String reply, String thinking})> _handleTutorStream(
+    Stream<TutorEvent> stream,
+  ) async {
+    final accumulatedReply = StringBuffer();
+    final accumulatedThinking = StringBuffer();
+    final completer = Completer<void>();
+    _tokenCount = 0;
+
+    await _streamSub?.cancel();
+    _streamSub = stream.listen(
+      (event) {
+        if (!mounted) return;
+        if (event is TutorThinking) {
+          accumulatedThinking.write(event.token);
+          if (mounted) {
+            setState(() => _thinkingContent = accumulatedThinking.toString());
+          }
+        } else if (event is TutorReply) {
+          accumulatedReply.write(event.token);
+          if (mounted) {
+            setState(() => _streamingContent = accumulatedReply.toString());
+          }
+          _tokenCount++;
+          if (_tokenCount % _scrollThrottleTokens == 0) _scrollToBottom();
+        } else if (event is TutorEvaluation) {
+          unawaited(_handleScore(event.score));
+        }
+      },
+      onDone: () {
+        _scrollToBottom();
+        if (mounted) _captureSessionMetrics();
+        completer.complete();
+      },
+      onError: (e) {
+        _streamSub = null;
+        completer.completeError(e);
+      },
+      cancelOnError: true,
+    );
+
+    await completer.future;
+    return (
+      reply: accumulatedReply.toString(),
+      thinking: accumulatedThinking.toString(),
+    );
+  }
+
   void _scrollToBottom() {
+    if (!mounted || _isScrolling) return;
+    _isScrolling = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
-        _scrollController.animateTo(
+      if (mounted && _scrollController.hasClients) {
+        _scrollController
+            .animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
-        );
+        )
+            .then((_) {
+          _isScrolling = false;
+        });
+      } else {
+        _isScrolling = false;
       }
     });
   }
 
-  Future<void> _sendMessage(
-    Question question,
-    List<StudyMaterial> materials,
-    List<QuestionMessage> messages,
-  ) async {
-    final text = _controller.text.trim();
-    if (text.isEmpty || _sending) return;
-
-    // Initialize session once per screen visit.
+  void _captureSessionMetrics() {
     try {
-      await _ensureTutorSession(question, materials, messages);
+      final metrics = _chatService.getSessionMetrics();
+      if (metrics == null) {
+        if (mounted) setState(() => _totalTokens = 0);
+        return;
+      }
+      final dynamic m = metrics;
+      final metricsTotal = m.totalTokens as int? ?? 0;
+      if (mounted) setState(() => _totalTokens = metricsTotal);
     } catch (e) {
+      debugPrint('Failed to capture session metrics: $e');
+      if (mounted) setState(() => _totalTokens = 0);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Image Attachment
+  // ---------------------------------------------------------------------------
+
+  Future<File?> _compressImage(File image) async {
+    try {
+      final dir = await getTemporaryDirectory();
+      final normalized = await ImageNormalizer.normalizeFile(
+        image,
+        outputDirectory: dir,
+        fileStem: pathlib.basenameWithoutExtension(image.path),
+      );
+      return normalized?.file;
+    } catch (e) {
+      debugPrint('Failed to normalize image: $e');
+      return null;
+    }
+  }
+
+  Future<void> _addImage() async {
+    if (_attachedImages.length >= _maxAttachedImages) return;
+
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile == null) return;
+
+    if (mounted) setState(() => _sending = true);
+
+    try {
+      final originalFile = File(pickedFile.path);
+      final compressedFile = await _compressImage(originalFile);
+
+      if (compressedFile == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not process image. Please try another one.'),
+            ),
+          );
+          setState(() => _sending = false);
+        }
+        return;
+      }
+
       if (mounted) {
-        final l10n = AppLocalizations.of(context)!;
-        final message = e is StateError && e.message.contains('model')
-            ? l10n.chatCouldNotLoadModel(e.toString())
-            : l10n.chatFailedToStartSession;
+        setState(() {
+          _attachedImages.add(compressedFile);
+          _sending = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to add image: $e');
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  void _removeImage(int index) async {
+    if (index >= 0 && index < _attachedImages.length) {
+      final file = _attachedImages[index];
+      try {
+        await file.delete();
+      } catch (e) {
+        debugPrint('Failed to delete image file: $e');
+      }
+      setState(() => _attachedImages.removeAt(index));
+    }
+  }
+
+  void _clearImages() async {
+    for (final file in _attachedImages) {
+      try {
+        await file.delete();
+      } catch (e) {
+        debugPrint('Failed to delete image file: $e');
+      }
+    }
+    _attachedImages.clear();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Audio Recording
+  // ---------------------------------------------------------------------------
+
+  Future<void> _startRecording() async {
+    if (_sending || _isRecording) return;
+    final hasPermission = await _recorder.hasPermission();
+    if (!hasPermission) {
+      if (mounted) {
+        final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
+          SnackBar(
+            content: Text(
+                l10n?.chatMicPermissionDenied ?? 'Microphone permission denied'),
+            duration: const Duration(seconds: 4),
+          ),
         );
       }
       return;
+    }
+    if (!mounted) return;
+    final dir = await getTemporaryDirectory();
+    final path =
+        '${dir.path}/quex_voice_${DateTime.now().millisecondsSinceEpoch}.wav';
+    try {
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+        path: path,
+      );
+      _recordingStartTime = DateTime.now();
+      if (mounted) setState(() => _isRecording = true);
+    } catch (e) {
+      debugPrint('Failed to start recording: $e');
+      if (mounted) setState(() => _isRecording = false);
+    }
+  }
+
+  Future<void> _stopAndSendAudio(
+    Question question,
+    List<StudyMaterial> materials,
+  ) async {
+    final path = await _recorder.stop();
+    if (mounted) setState(() => _isRecording = false);
+
+    final elapsed = _recordingStartTime != null
+        ? DateTime.now().difference(_recordingStartTime!)
+        : Duration.zero;
+    _recordingStartTime = null;
+    if (elapsed.inMilliseconds < 2000) return;
+
+    if (path == null) return;
+
+    final bytes = await File(path).readAsBytes();
+    try {
+      await File(path).delete();
+    } catch (e) {
+      debugPrint('Failed to delete temp audio file: $e');
+    }
+
+    if (bytes.isEmpty) return;
+    await _sendAudioMessage(bytes, question, materials);
+  }
+
+  Future<void> _sendAudioMessage(
+    Uint8List audioBytes,
+    Question question,
+    List<StudyMaterial> materials,
+  ) async {
+    if (!_chatService.hasSession) {
+      try {
+        await _firePreload(question, materials);
+      } catch (e) {
+        if (mounted) {
+          final l10n = AppLocalizations.of(context)!;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.chatFailedToStartSession)),
+          );
+        }
+        return;
+      }
     }
 
     setState(() {
@@ -203,80 +537,138 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       _streamingContent = '';
       _thinkingContent = null;
       _thinkingExpanded = false;
+      _messages.add(QuestionMessage(
+        questionId: widget.questionId,
+        role: QuestionMessageRole.user,
+        content: _kVoiceSentinel,
+        createdAt: DateTime.now(),
+      ));
     });
-    _controller.clear();
-
-    // Save user message
-    await QuestionMessageDAO().insert(QuestionMessage(
-      questionId: widget.questionId,
-      role: QuestionMessageRole.user,
-      content: text,
-      createdAt: DateTime.now(),
-    ));
-    ref.invalidate(questionMessagesProvider(widget.questionId));
     _scrollToBottom();
 
-    final accumulatedReply = StringBuffer();
-    final accumulatedThinking = StringBuffer();
-
     try {
-      final stream = _sessionService!.sendQuestionTutorMessage(text);
-
-      await _streamSub?.cancel();
-      final completer = Completer<void>();
-
-      _streamSub = stream.listen(
-        (event) {
-          if (!mounted) return;
-          if (event is TutorThinking) {
-            accumulatedThinking.write(event.token);
-            setState(() => _thinkingContent = accumulatedThinking.toString());
-          } else if (event is TutorReply) {
-            accumulatedReply.write(event.token);
-            setState(() => _streamingContent = accumulatedReply.toString());
-            _scrollToBottom();
-          } else if (event is TutorEvaluation) {
-            unawaited(_handleScore(event.score));
-          }
-        },
-        onDone: () => completer.complete(),
-        onError: (e) => completer.completeError(e),
-        cancelOnError: true,
-      );
-
-      await completer.future;
-
-      final reply = accumulatedReply.toString();
-      final thinking = accumulatedThinking.toString();
-
-      // Save assistant reply
-      if (reply.isNotEmpty) {
-        await QuestionMessageDAO().insert(QuestionMessage(
-          questionId: widget.questionId,
-          role: QuestionMessageRole.assistant,
-          content: reply,
-          createdAt: DateTime.now(),
-        ));
-        ref.invalidate(questionMessagesProvider(widget.questionId));
-        await ref.read(questionMessagesProvider(widget.questionId).future);
-      }
+      final stream = _chatService.sendUserAudio(audioBytes);
+      final result = await _handleTutorStream(stream);
 
       if (mounted) {
         setState(() {
+          if (result.reply.isNotEmpty) {
+            _messages.add(QuestionMessage(
+              questionId: widget.questionId,
+              role: QuestionMessageRole.assistant,
+              content: result.reply,
+              createdAt: DateTime.now(),
+            ));
+          }
           _streamingContent = null;
           _sending = false;
-          _thinkingContent = thinking.isEmpty ? null : thinking;
+          _thinkingContent = result.thinking.isEmpty ? null : result.thinking;
+          _thinkingExpanded = false;
+        });
+      }
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint('Audio stream error: $e');
+      _tokenCount = 0;
+      if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
+        setState(() {
+          _streamingContent = null;
+          _thinkingContent = null;
+          _sending = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.chatSessionInterrupted),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Message Sending
+  // ---------------------------------------------------------------------------
+
+  Future<void> _sendMessage(
+    Question question,
+    List<StudyMaterial> materials,
+  ) async {
+    final text = _textController.text.trim();
+    if ((text.isEmpty && _attachedImages.isEmpty) || _sending) return;
+
+    if (!_chatService.hasSession) {
+      try {
+        await _firePreload(question, materials);
+      } catch (e) {
+        if (mounted) {
+          final l10n = AppLocalizations.of(context)!;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.chatFailedToStartSession)),
+          );
+        }
+        return;
+      }
+    }
+
+    final imageBytes = <Uint8List>[];
+    for (final image in _attachedImages) {
+      try {
+        final bytes = await image.readAsBytes();
+        imageBytes.add(bytes);
+      } catch (e) {
+        debugPrint('Failed to read image bytes: $e');
+      }
+    }
+
+    setState(() {
+      _sending = true;
+      _streamingContent = '';
+      _thinkingContent = null;
+      _thinkingExpanded = false;
+      _messages.add(QuestionMessage(
+        questionId: widget.questionId,
+        role: QuestionMessageRole.user,
+        content: text,
+        createdAt: DateTime.now(),
+      ));
+      if (_attachedImages.isNotEmpty) {
+        _messageImages[_messages.length - 1] = List.from(_attachedImages);
+      }
+    });
+    _textController.clear();
+    _clearImages();
+    setState(() {});
+    _scrollToBottom();
+
+    try {
+      final stream = _chatService.sendMessage(text, images: imageBytes);
+      final result = await _handleTutorStream(stream);
+
+      if (mounted) {
+        setState(() {
+          if (result.reply.isNotEmpty) {
+            _messages.add(QuestionMessage(
+              questionId: widget.questionId,
+              role: QuestionMessageRole.assistant,
+              content: result.reply,
+              createdAt: DateTime.now(),
+            ));
+          }
+          _streamingContent = null;
+          _sending = false;
+          _thinkingContent = result.thinking.isEmpty ? null : result.thinking;
           _thinkingExpanded = false;
         });
       }
       _scrollToBottom();
     } catch (e) {
       debugPrint('Tutor stream error: $e');
-
+      _tokenCount = 0;
       if (mounted) {
         final l10n = AppLocalizations.of(context)!;
         setState(() {
-          _sessionService = null;
           _streamingContent = null;
           _thinkingContent = null;
           _sending = false;
@@ -301,27 +693,23 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final materialsAsync = ref.watch(materialsProvider(widget.sessionId));
     final materials = materialsAsync.valueOrNull ?? const <StudyMaterial>[];
     final materialsReady = materialsAsync.hasValue;
-    final messagesAsync =
-        ref.watch(questionMessagesProvider(widget.questionId));
-    final messages = messagesAsync.valueOrNull ?? const <QuestionMessage>[];
-    final messagesReady = messagesAsync.hasValue;
 
     final currentQuestion = questionAsync.valueOrNull;
-    if (currentQuestion != null &&
-        materialsReady &&
-        messagesReady &&
-        _preloadFuture == null) {
-      _startTutorSessionPreload(
-        currentQuestion,
-        materials,
-        messages,
-      );
+
+    if (!_openerFired &&
+        _chatService.isInitialized &&
+        currentQuestion != null &&
+        materialsReady) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _firePreload(currentQuestion, materials);
+      });
     }
 
     return questionAsync.when(
       loading: () =>
           const Scaffold(body: Center(child: CircularProgressIndicator())),
-      error: (e, _) => Scaffold(body: Center(child: Text(l10n.chatError(e.toString())))),
+      error: (e, _) =>
+          Scaffold(body: Center(child: Text(l10n.chatError(e.toString())))),
       data: (question) {
         if (question == null) {
           return Scaffold(
@@ -329,6 +717,10 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
             body: Center(child: Text(l10n.questionChatNotFound)),
           );
         }
+
+        final hasThinking = _thinkingContent != null;
+        final hasStreaming = _streamingContent != null;
+        final isEmpty = _messages.isEmpty && !hasThinking && !hasStreaming;
 
         return Scaffold(
           appBar: AppBar(
@@ -341,195 +733,125 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
               style: theme.textTheme.titleMedium
                   ?.copyWith(fontWeight: FontWeight.w700),
             ),
+            actions: [
+              if (!isEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: TextButton(
+                    onPressed: _sending
+                        ? null
+                        : () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) {
+                                final dialogL10n = AppLocalizations.of(ctx);
+                                return AlertDialog(
+                                  title: Text(dialogL10n?.chatResetQuestion ??
+                                      'Reset chat?'),
+                                  content: Text(dialogL10n?.chatResetConfirm ??
+                                      'This will clear all messages'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(ctx, false),
+                                      child:
+                                          Text(dialogL10n?.cancel ?? 'Cancel'),
+                                    ),
+                                    FilledButton(
+                                      onPressed: () => Navigator.pop(ctx, true),
+                                      child: Text(
+                                          dialogL10n?.chatReset ?? 'Reset'),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                            if (confirm == true) {
+                              unawaited(_resetChat(question, materials));
+                            }
+                          },
+                    child: Text(l10n.chatReset),
+                  ),
+                ),
+            ],
           ),
-          body: Column(
+          body: Stack(
             children: [
-              if (materials.isNotEmpty)
-                _MaterialsStrip(
-                  materials: materials,
-                  sessionId: widget.sessionId,
+              Column(
+                children: [
+                  if (materials.isNotEmpty)
+                    MaterialsStrip(
+                      materials: materials,
+                      sessionId: widget.sessionId,
+                      scheme: scheme,
+                      theme: theme,
+                    ),
+                  if ((_currentScore ?? question.score) != null)
+                    _ScoreBadgeRow(
+                      score: _currentScore ?? question.score ?? 0.0,
+                      scheme: scheme,
+                      theme: theme,
+                    ),
+                  Expanded(
+                    child: _ThreadList(
+                      question: question,
+                      messages: _messages,
+                      streamingContent: _streamingContent,
+                      thinkingContent: _thinkingContent,
+                      thinkingExpanded: _thinkingExpanded,
+                      onThinkingToggle: () =>
+                          setState(() => _thinkingExpanded = !_thinkingExpanded),
+                      isSending: _sending,
+                      scrollController: _scrollController,
+                      scheme: scheme,
+                      theme: theme,
+                      messageImages: _messageImages,
+                    ),
+                  ),
+                  ImageAttachmentRow(
+                    images: _attachedImages,
+                    isRecording: _isRecording,
+                    onAddImage: _addImage,
+                    onRemoveImage: _removeImage,
+                    scheme: scheme,
+                    theme: theme,
+                  ),
+                  ChatInputBar(
+                    controller: _textController,
+                    sending: _sending,
+                    modelLoading: _modelLoading,
+                    onSend: () => _sendMessage(question, materials),
+                    onStop: _stopGeneration,
+                    isRecording: _isRecording,
+                    onMicStart: _startRecording,
+                    onMicStop: () => _stopAndSendAudio(question, materials),
+                    scheme: scheme,
+                    theme: theme,
+                  ),
+                  ThinkingModeToggle(
+                    isThinkingMode: _isThinkingMode,
+                    totalTokens: _totalTokens,
+                    maxTokens: _maxTokens,
+                    onToggle: () => _toggleThinkingMode(question, materials),
+                    scheme: scheme,
+                    theme: theme,
+                  ),
+                ],
+              ),
+              if (_modelLoading ||
+                  (_sending &&
+                      _messages.isEmpty &&
+                      (_streamingContent == null ||
+                          _streamingContent!.isEmpty)))
+                ModelLoadingOverlay(
                   scheme: scheme,
                   theme: theme,
+                  isWaitingForResponse: !_modelLoading && _sending,
                 ),
-              if ((_currentScore ?? question.score) != null)
-                _ScoreBadgeRow(
-                    score: _currentScore ?? question.score ?? 0.0,
-                    scheme: scheme,
-                    theme: theme),
-
-              Expanded(
-                child: messagesAsync.when(
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (e, _) => Center(child: Text('Error: $e')),
-                  data: (messages) => (messages.isEmpty &&
-                          _streamingContent == null &&
-                          _thinkingContent == null)
-                      ? _ThreadList(
-                          question: question,
-                          messages: const [],
-                          streamingContent: null,
-                          thinkingContent: null,
-                          thinkingExpanded: _thinkingExpanded,
-                          onThinkingToggle: () => setState(
-                              () => _thinkingExpanded = !_thinkingExpanded),
-                          isSending: _sending,
-                          scrollController: _scrollController,
-                          scheme: scheme,
-                          theme: theme,
-                        )
-                      : _ThreadList(
-                          question: question,
-                          messages: messages,
-                          streamingContent: _streamingContent,
-                          thinkingContent: _thinkingContent,
-                          thinkingExpanded: _thinkingExpanded,
-                          onThinkingToggle: () => setState(
-                              () => _thinkingExpanded = !_thinkingExpanded),
-                          isSending: _sending,
-                          scrollController: _scrollController,
-                          scheme: scheme,
-                          theme: theme,
-                        ),
-                ),
-              ),
-
-              // Input bar
-              _InputBar(
-                controller: _controller,
-                sending: _sending,
-                modelLoading: _modelLoading,
-                canSend: materialsReady && messagesReady,
-                onSend: () => _sendMessage(question, materials, messages),
-                onStop: _stopGeneration,
-                scheme: scheme,
-                theme: theme,
-              ),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-// ─── Materials thumbnail strip ────────────────────────────────────────────────
-
-class _MaterialsStrip extends StatelessWidget {
-  final List<StudyMaterial> materials;
-  final int sessionId;
-  final ColorScheme scheme;
-  final ThemeData theme;
-
-  const _MaterialsStrip({
-    required this.materials,
-    required this.sessionId,
-    required this.scheme,
-    required this.theme,
-  });
-
-  static ({String emoji, Color color}) _kindMeta(
-          MaterialKind kind, ColorScheme scheme) =>
-      switch (kind) {
-        MaterialKind.text => (emoji: '📝', color: scheme.primaryContainer),
-        MaterialKind.document => (
-            emoji: '📄',
-            color: scheme.secondaryContainer
-          ),
-        MaterialKind.photo => (emoji: '🖼️', color: scheme.tertiaryContainer),
-      };
-
-  static const double _thumbSize = 54;
-
-  Widget _buildThumbnail(StudyMaterial m, ColorScheme scheme) {
-    if (m.kind == MaterialKind.photo && m.content.isNotEmpty) {
-      final firstPath = m.content.split('\n').firstWhere(
-            (p) => p.isNotEmpty,
-            orElse: () => '',
-          );
-      if (firstPath.isNotEmpty) {
-        return ClipRRect(
-          borderRadius: Br.sm,
-          child: Image.file(
-            File(firstPath),
-            width: _thumbSize,
-            height: _thumbSize,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _emojiAvatar(m.kind, scheme),
-          ),
-        );
-      }
-    }
-    return _emojiAvatar(m.kind, scheme);
-  }
-
-  Widget _emojiAvatar(MaterialKind kind, ColorScheme scheme) {
-    final meta = _kindMeta(kind, scheme);
-    return Container(
-      width: _thumbSize,
-      height: _thumbSize,
-      decoration: BoxDecoration(color: meta.color, borderRadius: Br.sm),
-      alignment: Alignment.center,
-      child: Text(meta.emoji, style: const TextStyle(fontSize: 22)),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 96,
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        border: Border(bottom: BorderSide(color: scheme.outlineVariant)),
-      ),
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        itemCount: materials.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (context, index) {
-          final m = materials[index];
-          return SizedBox(
-            width: 64,
-            child: InkWell(
-              borderRadius: Br.sm,
-              onTap: () async {
-                if (m.kind == MaterialKind.document) {
-                  final result = await OpenFilex.open(m.content);
-                  if (result.type != ResultType.done && context.mounted) {
-                    final l10n = AppLocalizations.of(context)!;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                          content: Text(l10n.materialCouldNotOpen(result.message))),
-                    );
-                  }
-                } else {
-                  context.push('/session/$sessionId/material/${m.id}');
-                }
-              },
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _buildThumbnail(m, scheme),
-                  const SizedBox(height: 2),
-                  Text(
-                    m.title,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                      fontSize: 10,
-                      height: 1.1,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
     );
   }
 }
@@ -691,7 +1013,8 @@ class _QuestionCard extends StatelessWidget {
                         Expanded(
                           child: MathMarkdownBody(
                             data: entry.value,
-                            styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                            styleSheet:
+                                MarkdownStyleSheet.fromTheme(theme).copyWith(
                               p: theme.textTheme.bodyMedium?.copyWith(
                                 color: scheme.onSurfaceVariant,
                                 height: 1.35,
@@ -729,6 +1052,7 @@ class _ThreadList extends StatelessWidget {
   final ScrollController scrollController;
   final ColorScheme scheme;
   final ThemeData theme;
+  final Map<int, List<File>> messageImages;
 
   const _ThreadList({
     required this.question,
@@ -741,15 +1065,23 @@ class _ThreadList extends StatelessWidget {
     required this.scrollController,
     required this.scheme,
     required this.theme,
+    required this.messageImages,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Question bubble + extra slots: thinking bubble + reply bubble (when active)
     final hasThinking = thinkingContent != null;
     final hasStreaming = streamingContent != null;
     final extraItems = (hasThinking ? 1 : 0) + (hasStreaming ? 1 : 0);
     final totalItems = 1 + messages.length + extraItems;
+
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final maxBubbleWidth = screenWidth * 0.78;
+    final markdownStyle = MarkdownStyleSheet.fromTheme(theme).copyWith(
+      p: theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface),
+    );
+    final textStyle =
+        theme.textTheme.bodyMedium?.copyWith(color: scheme.onSurface);
 
     return ListView.builder(
       controller: scrollController,
@@ -769,16 +1101,14 @@ class _ThreadList extends StatelessWidget {
 
         final messageIndex = index - 1;
 
-        // Thinking bubble — appears before streaming reply
         if (hasThinking && messageIndex == messages.length) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 6),
-            child: _ThinkingBubble(
+            child: ThinkingBubble(
               content: thinkingContent!,
               expanded: thinkingExpanded,
-              isStreaming: isSending && streamingContent != null
-                  ? false // reply started — thinking done
-                  : isSending, // still thinking if sending and no reply yet
+              isStreaming:
+                  isSending && streamingContent != null ? false : isSending,
               onToggle: onThinkingToggle,
               scheme: scheme,
               theme: theme,
@@ -786,7 +1116,6 @@ class _ThreadList extends StatelessWidget {
           );
         }
 
-        // Streaming reply bubble — after thinking
         final replyIndex = messages.length + (hasThinking ? 1 : 0);
         if (hasStreaming && messageIndex == replyIndex) {
           return Padding(
@@ -794,9 +1123,7 @@ class _ThreadList extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Container(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.sizeOf(context).width * 0.78,
-                ),
+                constraints: BoxConstraints(maxWidth: maxBubbleWidth),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
@@ -809,17 +1136,11 @@ class _ThreadList extends StatelessWidget {
                   ),
                 ),
                 child: streamingContent!.isEmpty
-                    ? _TypingIndicator(scheme: scheme)
+                    ? TypingIndicator(scheme: scheme)
                     : MathMarkdownBody(
                         data: streamingContent!,
-                        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                          p: theme.textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurface,
-                          ),
-                        ),
-                        textStyle: theme.textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurface,
-                        ),
+                        styleSheet: markdownStyle,
+                        textStyle: textStyle,
                       ),
               ),
             ),
@@ -828,330 +1149,75 @@ class _ThreadList extends StatelessWidget {
 
         final msg = messages[messageIndex];
         final isUser = msg.role == QuestionMessageRole.user;
+        final images = messageImages[messageIndex];
+
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
-          child: Align(
-            alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.sizeOf(context).width * 0.78,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isUser
-                    ? scheme.primaryContainer
-                    : scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(isUser ? 18 : 4),
-                  bottomRight: Radius.circular(isUser ? 4 : 18),
+          child: Column(
+            crossAxisAlignment:
+                isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+            children: [
+              if (isUser && images != null && images.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: images.map((image) {
+                      return SizedBox(
+                        width: 80,
+                        height: 80,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            image,
+                            width: 80,
+                            height: 80,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              Align(
+                alignment:
+                    isUser ? Alignment.centerRight : Alignment.centerLeft,
+                child: Container(
+                  constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: isUser
+                        ? scheme.primaryContainer
+                        : scheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(18),
+                      topRight: const Radius.circular(18),
+                      bottomLeft: Radius.circular(isUser ? 18 : 4),
+                      bottomRight: Radius.circular(isUser ? 4 : 18),
+                    ),
+                  ),
+                  child: isUser
+                      ? (msg.content == _kVoiceSentinel
+                          ? VoiceMessageBubble(scheme: scheme, theme: theme)
+                          : Text(
+                              msg.content,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: scheme.onPrimaryContainer,
+                              ),
+                            ))
+                      : MathMarkdownBody(
+                          data: msg.content,
+                          styleSheet: markdownStyle,
+                          textStyle: textStyle,
+                        ),
                 ),
               ),
-              child: isUser
-                  ? Text(
-                      msg.content,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: scheme.onPrimaryContainer,
-                      ),
-                    )
-                  : MathMarkdownBody(
-                      data: msg.content,
-                      styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-                        p: theme.textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurface,
-                        ),
-                      ),
-                      textStyle: theme.textTheme.bodyMedium?.copyWith(
-                        color: scheme.onSurface,
-                      ),
-                    ),
-            ),
+            ],
           ),
         );
       },
-    );
-  }
-}
-
-// ─── Thinking bubble ──────────────────────────────────────────────────────────
-
-class _ThinkingBubble extends StatelessWidget {
-  final String content;
-  final bool expanded;
-  final bool isStreaming;
-  final VoidCallback onToggle;
-  final ColorScheme scheme;
-  final ThemeData theme;
-
-  const _ThinkingBubble({
-    required this.content,
-    required this.expanded,
-    required this.isStreaming,
-    required this.onToggle,
-    required this.scheme,
-    required this.theme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    final labelColor = scheme.onSurfaceVariant;
-    final bgColor = scheme.surfaceContainerLow;
-    final borderColor = scheme.outlineVariant;
-
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.85,
-        ),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: Br.md,
-          border: Border.all(color: borderColor),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header — always visible, tap to toggle
-            InkWell(
-              onTap: content.isEmpty ? null : onToggle,
-              borderRadius: expanded
-                  ? const BorderRadius.vertical(top: Radius.circular(16))
-                  : Br.md,
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (isStreaming)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: _TypingIndicator(scheme: scheme),
-                      )
-                    else
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: Icon(Icons.psychology_outlined,
-                            size: 14, color: labelColor),
-                      ),
-                    Text(
-                      isStreaming ? l10n.chatThinking : l10n.chatThoughtProcess,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                        color: labelColor,
-                        fontWeight: FontWeight.w600,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                    if (!isStreaming && content.isNotEmpty) ...[
-                      const SizedBox(width: 4),
-                      Icon(
-                        expanded ? Icons.expand_less : Icons.expand_more,
-                        size: 14,
-                        color: labelColor,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            // Expandable content
-            if (expanded && content.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                child: Text(
-                  content,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    fontStyle: FontStyle.italic,
-                    height: 1.5,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Typing indicator ─────────────────────────────────────────────────────────
-
-class _TypingIndicator extends StatefulWidget {
-  final ColorScheme scheme;
-
-  const _TypingIndicator({required this.scheme});
-
-  @override
-  State<_TypingIndicator> createState() => _TypingIndicatorState();
-}
-
-class _TypingIndicatorState extends State<_TypingIndicator>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    )..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(3, (i) {
-        final offset = i / 3;
-        return AnimatedBuilder(
-          animation: _controller,
-          builder: (context, _) {
-            final t = ((_controller.value + offset) % 1.0);
-            final opacity = (t < 0.5 ? t * 2 : (1 - t) * 2).clamp(0.3, 1.0);
-            return Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2),
-              child: Opacity(
-                opacity: opacity,
-                child: Container(
-                  width: 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: widget.scheme.onSurfaceVariant,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      }),
-    );
-  }
-}
-
-// ─── Input bar ────────────────────────────────────────────────────────────────
-
-class _InputBar extends StatelessWidget {
-  final TextEditingController controller;
-  final bool sending;
-  final bool modelLoading;
-  final bool canSend;
-  final VoidCallback onSend;
-  final VoidCallback onStop;
-  final ColorScheme scheme;
-  final ThemeData theme;
-
-  const _InputBar({
-    required this.controller,
-    required this.sending,
-    required this.modelLoading,
-    required this.canSend,
-    required this.onSend,
-    required this.onStop,
-    required this.scheme,
-    required this.theme,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context)!;
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        16,
-        10,
-        16,
-        10 + MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        border: Border(top: BorderSide(color: scheme.outlineVariant)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                enabled: !sending && !modelLoading && canSend,
-                textInputAction: TextInputAction.newline,
-                decoration: InputDecoration(
-                  hintText: l10n.questionChatTalkToQuex,
-                  hintStyle: TextStyle(color: scheme.onSurfaceVariant),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(color: scheme.outlineVariant),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(color: scheme.outlineVariant),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide(color: scheme.primary, width: 1.5),
-                  ),
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  isDense: true,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              child: modelLoading
-                  ? SizedBox(
-                      key: const ValueKey('loading'),
-                      width: 44,
-                      height: 44,
-                      child: Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.5,
-                            color: scheme.primary,
-                          ),
-                        ),
-                      ),
-                    )
-                  : sending
-                      ? IconButton(
-                          key: const ValueKey('stop'),
-                          onPressed: onStop,
-                          icon: Icon(
-                            Icons.stop_rounded,
-                            color: scheme.onErrorContainer,
-                          ),
-                          style: IconButton.styleFrom(
-                            backgroundColor: scheme.errorContainer,
-                            minimumSize: const Size(44, 44),
-                          ),
-                        )
-                      : IconButton(
-                          key: const ValueKey('send'),
-                          onPressed: canSend ? onSend : null,
-                          icon: Icon(Icons.send_rounded, color: scheme.primary),
-                          style: IconButton.styleFrom(
-                            backgroundColor: scheme.primaryContainer,
-                            minimumSize: const Size(44, 44),
-                          ),
-                        ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

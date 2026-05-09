@@ -106,10 +106,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _initialize() async {
+    if (_sessionService.isInitialized) {
+      final effectiveMaxTokens = _sessionService.effectiveMaxTokens ?? 8192;
+      if (mounted) setState(() => _maxTokens = effectiveMaxTokens);
+      return;
+    }
     try {
       if (mounted) setState(() => _modelLoading = true);
       await _sessionService.initialize();
-      // Get effective max tokens from the service (applies upper bound to default)
       final effectiveMaxTokens = _sessionService.effectiveMaxTokens ?? 8192;
       if (mounted) setState(() => _maxTokens = effectiveMaxTokens);
     } catch (e) {
