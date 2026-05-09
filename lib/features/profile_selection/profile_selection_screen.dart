@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:quex/generated/l10n/app_localizations.dart';
 import 'package:go_router/go_router.dart';
+import 'package:quex/generated/l10n/app_localizations.dart';
 
 import '../../app/router.dart';
 import '../../app/theme.dart';
@@ -19,6 +19,11 @@ class ProfileSelectionScreen extends ConsumerStatefulWidget {
 
 class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
     with TickerProviderStateMixin {
+  static const _topAccentsAsset =
+      'assets/images/profile_selection/profile_selection_top_accents.png';
+  static const _bottomLandscapeAsset =
+      'assets/images/profile_selection/profile_selection_bottom_landscape.png';
+
   late final AnimationController _headerController;
   late final AnimationController _cardsController;
   late final Animation<double> _headerFade;
@@ -29,12 +34,11 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
     super.initState();
 
     _headerController = AnimationController(
-      duration: const Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 560),
       vsync: this,
     );
-
     _cardsController = AnimationController(
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 760),
       vsync: this,
     );
 
@@ -42,20 +46,18 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
       parent: _headerController,
       curve: Curves.easeOut,
     );
-
     _headerSlide = Tween<Offset>(
-      begin: const Offset(0, 0.3),
+      begin: const Offset(0, 0.16),
       end: Offset.zero,
     ).animate(CurvedAnimation(
       parent: _headerController,
       curve: Curves.easeOutCubic,
     ));
 
-    // Staggered entry
-    Future.delayed(const Duration(milliseconds: 100), () {
+    Future.delayed(const Duration(milliseconds: 80), () {
       if (mounted) _headerController.forward();
     });
-    Future.delayed(const Duration(milliseconds: 300), () {
+    Future.delayed(const Duration(milliseconds: 220), () {
       if (mounted) _cardsController.forward();
     });
   }
@@ -78,8 +80,8 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
 
   Future<void> _showProfileDialog({Profile? profile}) async {
     final nameController = TextEditingController(text: profile?.name ?? '');
-    String emoji = profile?.emoji ?? '🧒';
-    int grade = profile?.grade ?? 3;
+    final emoji = profile?.emoji ?? '🧒';
+    final grade = profile?.grade ?? 3;
 
     if (!mounted) return;
     await showModalBottomSheet<void>(
@@ -113,14 +115,12 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
         },
       ),
     );
+    nameController.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final profilesAsync = ref.watch(profilesProvider);
-    final l10n = AppLocalizations.of(context)!;
 
     return Scaffold(
       body: profilesAsync.when(
@@ -134,32 +134,90 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
             return const Center(child: CircularProgressIndicator());
           }
 
-          return SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 48),
-                // Animated header
-                FadeTransition(
-                  opacity: _headerFade,
-                  child: SlideTransition(
-                    position: _headerSlide,
+          return _ProfileSelectionShell(
+            headerFade: _headerFade,
+            headerSlide: _headerSlide,
+            cardsController: _cardsController,
+            profiles: profiles,
+            onAddProfile: () => _showProfileDialog(),
+            onSelectProfile: _selectProfile,
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ProfileSelectionShell extends StatelessWidget {
+  final Animation<double> headerFade;
+  final Animation<Offset> headerSlide;
+  final Animation<double> cardsController;
+  final List<Profile> profiles;
+  final VoidCallback onAddProfile;
+  final ValueChanged<Profile> onSelectProfile;
+
+  const _ProfileSelectionShell({
+    required this.headerFade,
+    required this.headerSlide,
+    required this.cardsController,
+    required this.profiles,
+    required this.onAddProfile,
+    required this.onSelectProfile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context)!;
+    final topInset = MediaQuery.paddingOf(context).top;
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Color(0xFFEAF8FF),
+            Color(0xFFF9FDFF),
+            Color(0xFFFFFBF4),
+          ],
+          stops: [0.0, 0.56, 1.0],
+        ),
+      ),
+      child: Stack(
+        children: [
+          _DecorativeBackdrop(
+            topInset: topInset,
+            bottomInset: bottomInset,
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(height: topInset + 48),
+              FadeTransition(
+                opacity: headerFade,
+                child: SlideTransition(
+                  position: headerSlide,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 26),
                     child: Column(
                       children: [
                         Text(
                           l10n.whoStudying,
-                          style: theme.textTheme.displaySmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                            color: scheme.primary,
+                          style: theme.textTheme.headlineMedium?.copyWith(
+                            color: const Color(0xFF060D35),
+                            fontWeight: FontWeight.w900,
+                            height: 1.08,
                           ),
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 8),
                         Text(
                           l10n.pickProfile,
-                          style: theme.textTheme.bodyLarge?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w500,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: const Color(0xFF202847),
+                            fontWeight: FontWeight.w600,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -167,57 +225,176 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final crossAxisCount =
-                          constraints.maxWidth >= 600 ? 3 : 2;
-                      return GridView.builder(
-                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-                        physics: const ClampingScrollPhysics(),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: crossAxisCount,
-                          crossAxisSpacing: 20,
-                          mainAxisSpacing: 20,
-                          childAspectRatio: 0.75,
-                        ),
-                        itemCount: profiles.length + 1,
-                        itemBuilder: (context, index) {
-                          // Staggered animation delay
-                          final delay = index * 0.08;
-                          final start = delay.clamp(0.0, 0.6);
+              ),
+              const SizedBox(height: 32),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, gridConstraints) {
+                    final wide = gridConstraints.maxWidth >= 600;
+                    final crossAxisCount = wide ? 3 : 2;
+                    final sidePadding = wide ? 40.0 : 22.0;
+                    const rowHeight = 184.0;
 
-                          if (index == profiles.length) {
-                            return _AnimatedCardEntry(
-                              animation: _cardsController,
-                              delay: start,
-                              child: _AddProfileCard(
-                                onTap: () => _showProfileDialog(),
-                              ),
-                            );
-                          }
-                          final profile = profiles[index];
+                    return GridView.builder(
+                      padding: EdgeInsets.fromLTRB(
+                        sidePadding,
+                        0,
+                        sidePadding,
+                        130 + bottomInset,
+                      ),
+                      physics: const BouncingScrollPhysics(),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        crossAxisSpacing: 20,
+                        mainAxisSpacing: 20,
+                        mainAxisExtent: rowHeight,
+                      ),
+                      itemCount: profiles.length + 1,
+                      itemBuilder: (context, index) {
+                        final delay = (index * 0.075).clamp(0.0, 0.52);
+
+                        if (index == profiles.length) {
                           return _AnimatedCardEntry(
-                            animation: _cardsController,
-                            delay: start,
-                            child: _ProfileCard(
-                              profile: profile,
-                              onTap: () => _selectProfile(profile),
-                            ),
+                            animation: cardsController,
+                            delay: delay,
+                            child: _AddProfileCard(onTap: onAddProfile),
                           );
-                        },
-                      );
-                    },
-                  ),
+                        }
+
+                        final profile = profiles[index];
+                        return _AnimatedCardEntry(
+                          animation: cardsController,
+                          delay: delay,
+                          child: _ProfileCard(
+                            profile: profile,
+                            toneIndex: index,
+                            onTap: () => onSelectProfile(profile),
+                          ),
+                        );
+                      },
+                    );
+                  },
                 ),
-              ],
-            ),
-          );
-        },
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
+}
+
+class _DecorativeBackdrop extends StatelessWidget {
+  final double topInset;
+  final double bottomInset;
+
+  const _DecorativeBackdrop({
+    required this.topInset,
+    required this.bottomInset,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final size = constraints.biggest;
+            final bottomHeight = (size.height * 0.14).clamp(92.0, 132.0);
+
+            return Stack(
+              children: [
+                Positioned(
+                  top: topInset + 14,
+                  left: 22,
+                  right: 20,
+                  height: 76,
+                  child: Image.asset(
+                    _ProfileSelectionScreenState._topAccentsAsset,
+                    fit: BoxFit.fill,
+                    alignment: Alignment.topCenter,
+                  ),
+                ),
+                Positioned(
+                  left: -2,
+                  right: -2,
+                  bottom: bottomInset, // Offset by navigation bar height
+                  height: bottomHeight,
+                  child: Image.asset(
+                    _ProfileSelectionScreenState._bottomLandscapeAsset,
+                    fit: BoxFit.fill,
+                    alignment: Alignment.bottomCenter,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _SplashLandscapePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final farHill = Path()
+      ..moveTo(0, size.height)
+      ..lineTo(0, size.height * 0.72)
+      ..quadraticBezierTo(
+        size.width * 0.44,
+        size.height * 0.58,
+        size.width,
+        size.height * 0.71,
+      )
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(
+      farHill,
+      Paint()..color = const Color(0xFFC7ED62),
+    );
+
+    final nearHill = Path()
+      ..moveTo(0, size.height)
+      ..lineTo(0, size.height * 0.8)
+      ..quadraticBezierTo(
+        size.width * 0.32,
+        size.height * 0.68,
+        size.width * 0.64,
+        size.height * 0.76,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.84,
+        size.height * 0.82,
+        size.width,
+        size.height * 0.75,
+      )
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(
+      nearHill,
+      Paint()..color = const Color(0xFF9BDD32),
+    );
+
+    final foreground = Path()
+      ..moveTo(0, size.height)
+      ..lineTo(0, size.height * 0.9)
+      ..quadraticBezierTo(
+        size.width * 0.34,
+        size.height * 0.82,
+        size.width,
+        size.height * 0.88,
+      )
+      ..lineTo(size.width, size.height)
+      ..close();
+    canvas.drawPath(
+      foreground,
+      Paint()..color = const Color(0xFF79C92D),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _AnimatedCardEntry extends StatelessWidget {
@@ -237,8 +414,8 @@ class _AnimatedCardEntry extends StatelessWidget {
       parent: animation,
       curve: Interval(
         delay.clamp(0.0, 0.6),
-        (delay + 0.4).clamp(0.4, 1.0),
-        curve: Curves.elasticOut,
+        (delay + 0.36).clamp(0.36, 1.0),
+        curve: Curves.easeOutBack,
       ),
     );
 
@@ -246,11 +423,14 @@ class _AnimatedCardEntry extends StatelessWidget {
       animation: delayedAnimation,
       builder: (context, child) {
         final value = delayedAnimation.value;
-        return Transform.scale(
-          scale: 0.8 + (value * 0.2),
-          child: Opacity(
-            opacity: value.clamp(0.0, 1.0),
-            child: child,
+        return Transform.translate(
+          offset: Offset(0, 18 * (1 - value)),
+          child: Transform.scale(
+            scale: 0.94 + (value * 0.06),
+            child: Opacity(
+              opacity: value.clamp(0.0, 1.0),
+              child: child,
+            ),
           ),
         );
       },
@@ -261,10 +441,12 @@ class _AnimatedCardEntry extends StatelessWidget {
 
 class _ProfileCard extends StatefulWidget {
   final Profile profile;
+  final int toneIndex;
   final VoidCallback onTap;
 
   const _ProfileCard({
     required this.profile,
+    required this.toneIndex,
     required this.onTap,
   });
 
@@ -273,101 +455,120 @@ class _ProfileCard extends StatefulWidget {
 }
 
 class _ProfileCardState extends State<_ProfileCard> {
-  double _scale = 1.0;
+  bool _pressed = false;
 
-  void _onTapDown(TapDownDetails details) {
-    setState(() => _scale = 0.96);
-  }
-
-  void _onTapUp(TapUpDetails details) {
-    setState(() => _scale = 1.0);
-  }
-
-  void _onTapCancel() {
-    setState(() => _scale = 1.0);
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-
-    // Dynamic background color based on emoji
-    final quexColors = theme.extension<QuexColors>();
-    final bgColors = [
-      scheme.primaryContainer,
-      quexColors?.warmRed ?? scheme.secondaryContainer,
-      quexColors?.amber ?? scheme.tertiaryContainer,
-      scheme.primaryContainer.withValues(alpha: 0.7),
-      scheme.secondaryContainer.withValues(alpha: 0.7),
-    ];
-    final bgColor = bgColors[widget.profile.name.length % bgColors.length];
+    final bgColor = _avatarColor(context, widget.profile.name);
 
     return GestureDetector(
-      onTapDown: _onTapDown,
-      onTapUp: _onTapUp,
-      onTapCancel: _onTapCancel,
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
       onTap: widget.onTap,
       child: AnimatedScale(
-        scale: _scale,
-        duration: const Duration(milliseconds: 100),
+        scale: _pressed ? 0.965 : 1,
+        duration: const Duration(milliseconds: 120),
         curve: Curves.easeOutCubic,
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          elevation: 0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOutCubic,
+          decoration: BoxDecoration(
+            color: scheme.surface.withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(
+              color: _pressed ? scheme.primary : scheme.outlineVariant,
+              width: _pressed ? 2 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: scheme.shadow.withValues(alpha: _pressed ? 0.12 : 0.08),
+                blurRadius: _pressed ? 14 : 10,
+                offset: const Offset(0, 7),
+              ),
+            ],
+          ),
           child: Stack(
             children: [
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Center(
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Large avatar with dynamic background
-                      Container(
-                        width: 100,
-                        height: 100,
-                        decoration: BoxDecoration(
-                          color: bgColor,
-                          borderRadius: BorderRadius.circular(28),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          widget.profile.emoji,
-                          style: const TextStyle(fontSize: 48),
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Container(
+                            width: 68,
+                            height: 68,
+                            decoration: BoxDecoration(
+                              color: bgColor,
+                              borderRadius: BorderRadius.circular(32),
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              widget.profile.emoji,
+                              style: const TextStyle(fontSize: 36),
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
                       Text(
                         widget.profile.name,
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          color: const Color(0xFF060D35),
+                          fontWeight: FontWeight.w900,
+                          height: 1.1,
                         ),
                         textAlign: TextAlign.center,
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 8),
-                      // Grade badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          'Grade ${widget.profile.grade}',
-                          style: theme.textTheme.labelMedium?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                      const SizedBox(height: 10),
+                      _GradePill(
+                        grade: widget.profile.grade,
+                        toneIndex: widget.toneIndex,
                       ),
                     ],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 10,
+                right: 10,
+                child: AnimatedOpacity(
+                  opacity: _pressed ? 1 : 0,
+                  duration: const Duration(milliseconds: 120),
+                  child: Container(
+                    width: 24,
+                    height: 24,
+                    decoration: BoxDecoration(
+                      color: scheme.primary,
+                      borderRadius: Br.full,
+                      boxShadow: [
+                        BoxShadow(
+                          color: scheme.primary.withValues(alpha: 0.24),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.check_rounded,
+                      color: scheme.onPrimary,
+                      size: 17,
+                    ),
                   ),
                 ),
               ),
@@ -389,18 +590,11 @@ class _AddProfileCard extends StatefulWidget {
 }
 
 class _AddProfileCardState extends State<_AddProfileCard> {
-  double _scale = 1.0;
+  bool _pressed = false;
 
-  void _onTapDown(TapDownDetails details) {
-    setState(() => _scale = 0.96);
-  }
-
-  void _onTapUp(TapUpDetails details) {
-    setState(() => _scale = 1.0);
-  }
-
-  void _onTapCancel() {
-    setState(() => _scale = 1.0);
+  void _setPressed(bool value) {
+    if (_pressed == value) return;
+    setState(() => _pressed = value);
   }
 
   @override
@@ -410,47 +604,57 @@ class _AddProfileCardState extends State<_AddProfileCard> {
     final l10n = AppLocalizations.of(context)!;
 
     return GestureDetector(
-      onTapDown: _onTapDown,
-      onTapUp: _onTapUp,
-      onTapCancel: _onTapCancel,
+      behavior: HitTestBehavior.opaque,
+      onTapDown: (_) => _setPressed(true),
+      onTapUp: (_) => _setPressed(false),
+      onTapCancel: () => _setPressed(false),
       onTap: widget.onTap,
       child: AnimatedScale(
-        scale: _scale,
-        duration: const Duration(milliseconds: 100),
+        scale: _pressed ? 0.965 : 1,
+        duration: const Duration(milliseconds: 120),
         curve: Curves.easeOutCubic,
-        child: Card(
-          clipBehavior: Clip.antiAlias,
-          elevation: 0,
-          color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Center(
+        child: CustomPaint(
+          painter: _DashedRRectPainter(
+            color: const Color(0xFF9FD0F4).withValues(
+              alpha: _pressed ? 0.92 : 0.58,
+            ),
+            radius: 32,
+          ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: scheme.surface.withValues(alpha: 0.34),
+              borderRadius: BorderRadius.circular(32),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
-                    width: 100,
-                    height: 100,
+                    width: 48,
+                    height: 48,
                     decoration: BoxDecoration(
-                      color: scheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(28),
+                      color: const Color(0xFFE4F3FF),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     alignment: Alignment.center,
-                    child: Icon(
-                      Icons.add,
-                      size: 48,
-                      color: scheme.onSurfaceVariant,
+                    child: const Icon(
+                      Icons.add_rounded,
+                      size: 28,
+                      color: Color(0xFF1F7BEA),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   Text(
                     l10n.addNewProfile,
-                    style: theme.textTheme.titleLarge?.copyWith(
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: const Color(0xFF060D35),
                       fontWeight: FontWeight.w700,
-                      color: scheme.onSurfaceVariant,
+                      height: 1.16,
                     ),
                     textAlign: TextAlign.center,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
@@ -462,7 +666,83 @@ class _AddProfileCardState extends State<_AddProfileCard> {
   }
 }
 
-// Sticker-style emoji picker widget
+class _GradePill extends StatelessWidget {
+  final int grade;
+  final int toneIndex;
+
+  const _GradePill({
+    required this.grade,
+    required this.toneIndex,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tones = [
+      (const Color(0xFFE5F1FF), const Color(0xFF1F7BEA)),
+      (const Color(0xFFE8F8E8), const Color(0xFF29943D)),
+    ];
+    final tone = tones[toneIndex % tones.length];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: tone.$1,
+        borderRadius: Br.full,
+      ),
+      child: Text(
+        'Grade $grade',
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: tone.$2,
+          fontWeight: FontWeight.w900,
+          height: 1,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+}
+
+class _DashedRRectPainter extends CustomPainter {
+  final Color color;
+  final double radius;
+
+  const _DashedRRectPainter({
+    required this.color,
+    required this.radius,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(radius));
+    final path = Path()..addRRect(rrect.deflate(1));
+    final metrics = path.computeMetrics();
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.45
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    for (final metric in metrics) {
+      var distance = 0.0;
+      const dash = 9.0;
+      const gap = 7.0;
+      while (distance < metric.length) {
+        final next = (distance + dash).clamp(0.0, metric.length);
+        canvas.drawPath(metric.extractPath(distance, next), paint);
+        distance += dash + gap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedRRectPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.radius != radius;
+  }
+}
+
 class _StickerEmoji extends StatelessWidget {
   final String emoji;
   final bool isSelected;
@@ -483,20 +763,22 @@ class _StickerEmoji extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
         curve: Curves.easeOutCubic,
-        width: 48,
-        height: 48,
+        width: 52,
+        height: 52,
         decoration: BoxDecoration(
           color: isSelected
               ? scheme.primaryContainer
-              : scheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(16),
-          border:
-              isSelected ? Border.all(color: scheme.primary, width: 2) : null,
+              : scheme.surfaceContainerHighest.withValues(alpha: 0.58),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color: isSelected ? scheme.primary : scheme.outlineVariant,
+            width: isSelected ? 2 : 1,
+          ),
         ),
         alignment: Alignment.center,
         child: Text(
           emoji,
-          style: const TextStyle(fontSize: 24),
+          style: const TextStyle(fontSize: 25),
         ),
       ),
     );
@@ -561,17 +843,15 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
     _grade = widget.initialGrade;
 
     _slideController = AnimationController(
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 420),
       vsync: this,
     );
-
     _scaleController = AnimationController(
       duration: const Duration(milliseconds: 200),
       vsync: this,
     );
-
     _staggerController = AnimationController(
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 760),
       vsync: this,
     );
 
@@ -582,29 +862,25 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
       parent: _slideController,
       curve: Curves.easeOutCubic,
     ));
-
     _scaleAnimation = Tween<double>(
-      begin: 0.95,
-      end: 1.0,
+      begin: 0.92,
+      end: 1,
     ).animate(CurvedAnimation(
       parent: _scaleController,
-      curve: Curves.easeOutCubic,
+      curve: Curves.easeOutBack,
     ));
-
-    // Staggered animations for fields (5 fields: title, emoji, name, picker, grade, buttons)
     _staggerAnimations = List.generate(6, (index) {
-      final start = (index * 0.1).clamp(0.0, 0.5);
-      final end = (start + 0.2).clamp(0.2, 1.0);
-      return Tween<double>(begin: 0.0, end: 1.0).animate(
-        CurvedAnimation(
-          parent: _staggerController,
-          curve: Interval(start, end, curve: Curves.easeOutCubic),
-        ),
+      final start = (index * 0.075).clamp(0.0, 0.42);
+      final end = (start + 0.26).clamp(0.26, 1.0);
+      return CurvedAnimation(
+        parent: _staggerController,
+        curve: Interval(start, end, curve: Curves.easeOutCubic),
       );
     });
 
     _slideController.forward();
-    Future.delayed(const Duration(milliseconds: 100), () {
+    _scaleController.forward();
+    Future.delayed(const Duration(milliseconds: 80), () {
       if (mounted) _staggerController.forward();
     });
   }
@@ -617,13 +893,9 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
     super.dispose();
   }
 
-  void _handleEmojiSelection(String newEmoji) {
-    setState(() => _emoji = newEmoji);
-    _scaleController.forward(from: 0);
-  }
-
   void _onEmojiTap(String emoji) {
-    _handleEmojiSelection(emoji);
+    setState(() => _emoji = emoji);
+    _scaleController.forward(from: 0);
   }
 
   Future<void> _handleSave() async {
@@ -644,247 +916,247 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context)!;
-
-    // Dynamic background color based on emoji
-    final quexColors = theme.extension<QuexColors>();
-    final bgColors = [
-      scheme.primaryContainer,
-      quexColors?.warmRed ?? scheme.secondaryContainer,
-      quexColors?.amber ?? scheme.tertiaryContainer,
-      scheme.primaryContainer.withValues(alpha: 0.7),
-      scheme.secondaryContainer.withValues(alpha: 0.7),
-    ];
-    final bgColor = bgColors[_emoji.length % bgColors.length];
+    final bgColor = _avatarColor(context, _emoji);
 
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: SlideTransition(
         position: _slideAnimation,
-        child: Container(
-          decoration: BoxDecoration(
-            color: scheme.surface,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Drag handle
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: scheme.surfaceContainerHighest,
-                  borderRadius: Br.full,
-                ),
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Container(
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(34)),
+                boxShadow: [
+                  BoxShadow(
+                    color: scheme.shadow.withValues(alpha: 0.14),
+                    blurRadius: 30,
+                    offset: const Offset(0, -12),
+                  ),
+                ],
               ),
-              const SizedBox(height: Sp.lg),
-              // Title
-              AnimatedBuilder(
-                animation: _staggerAnimations[0],
-                builder: (context, child) {
-                  return Opacity(
-                    opacity: _staggerAnimations[0].value,
-                    child: Transform.translate(
-                      offset: Offset(0, 20 * (1 - _staggerAnimations[0].value)),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: Sp.md),
-                        child: Text(
-                          widget.profile == null ? l10n.addNewProfile : l10n.editProfile,
-                          style: theme.textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.w800,
-                          ),
-                          textAlign: TextAlign.center,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.fromLTRB(
+                  20,
+                  12,
+                  20,
+                  MediaQuery.of(context).viewInsets.bottom +
+                      MediaQuery.of(context).padding.bottom +
+                      20,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 44,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: scheme.outlineVariant,
+                          borderRadius: Br.full,
                         ),
                       ),
                     ),
-                  );
-                },
-              ),
-              const SizedBox(height: Sp.xl),
-              // Emoji preview
-              AnimatedBuilder(
-                animation: _staggerAnimations[1],
-                builder: (context, child) {
-                  return Opacity(
-                    opacity: _staggerAnimations[1].value,
-                    child: Transform.translate(
-                      offset: Offset(0, 20 * (1 - _staggerAnimations[1].value)),
+                    const SizedBox(height: 22),
+                    _StaggeredSheetItem(
+                      animation: _staggerAnimations[0],
+                      child: Text(
+                        widget.profile == null
+                            ? l10n.addNewProfile
+                            : l10n.editProfile,
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          color: scheme.onSurface,
+                          fontWeight: FontWeight.w900,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    _StaggeredSheetItem(
+                      animation: _staggerAnimations[1],
                       child: Center(
-                        child: AnimatedScale(
-                          scale: _scaleAnimation.value,
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeOutCubic,
+                        child: AnimatedBuilder(
+                          animation: _scaleAnimation,
+                          builder: (context, child) {
+                            return Transform.scale(
+                              scale: _scaleAnimation.value,
+                              child: child,
+                            );
+                          },
                           child: Container(
-                            width: 96,
-                            height: 96,
+                            width: 108,
+                            height: 108,
                             decoration: BoxDecoration(
                               color: bgColor,
-                              borderRadius: Br.full,
+                              borderRadius: BorderRadius.circular(40),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: scheme.shadow.withValues(alpha: 0.1),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 10),
+                                ),
+                              ],
                             ),
                             alignment: Alignment.center,
                             child: Text(
                               _emoji,
-                              style: const TextStyle(fontSize: 44),
+                              style: const TextStyle(fontSize: 50),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  );
-                },
-              ),
-              const SizedBox(height: Sp.lg),
-              // Name field
-              AnimatedBuilder(
-                animation: _staggerAnimations[2],
-                builder: (context, child) {
-                  return Opacity(
-                    opacity: _staggerAnimations[2].value,
-                    child: Transform.translate(
-                      offset: Offset(0, 20 * (1 - _staggerAnimations[2].value)),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: Sp.md),
-                        child: TextField(
-                          controller: widget.nameController,
-                          decoration: InputDecoration(
-                            labelText: l10n.name,
-                            hintText: l10n.whatCallYou,
-                          ),
-                          textCapitalization: TextCapitalization.words,
+                    const SizedBox(height: 24),
+                    _StaggeredSheetItem(
+                      animation: _staggerAnimations[2],
+                      child: TextField(
+                        controller: widget.nameController,
+                        decoration: InputDecoration(
+                          labelText: l10n.name,
+                          hintText: l10n.whatCallYou,
                         ),
+                        textCapitalization: TextCapitalization.words,
                       ),
                     ),
-                  );
-                },
-              ),
-              const SizedBox(height: Sp.lg),
-              // Emoji picker
-              AnimatedBuilder(
-                animation: _staggerAnimations[3],
-                builder: (context, child) {
-                  return Opacity(
-                    opacity: _staggerAnimations[3].value,
-                    child: Transform.translate(
-                      offset: Offset(0, 20 * (1 - _staggerAnimations[3].value)),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: Sp.md),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              l10n.pickCharacter,
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                            const SizedBox(height: Sp.sm),
-                            SizedBox(
-                              height: 60,
-                              child: ListView.separated(
-                                scrollDirection: Axis.horizontal,
-                                itemCount: _emojiOptions.length,
-                                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                                itemBuilder: (context, index) {
-                                  final value = _emojiOptions[index];
-                                  return _StickerEmoji(
-                                    emoji: value,
-                                    isSelected: _emoji == value,
-                                    onTap: () => _onEmojiTap(value),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: Sp.lg),
-              // Grade dropdown
-              AnimatedBuilder(
-                animation: _staggerAnimations[4],
-                builder: (context, child) {
-                  return Opacity(
-                    opacity: _staggerAnimations[4].value,
-                    child: Transform.translate(
-                      offset: Offset(0, 20 * (1 - _staggerAnimations[4].value)),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: Sp.md),
-                        child: DropdownButtonFormField<int>(
-                          initialValue: _grade,
-                          decoration: InputDecoration(labelText: l10n.gradeLevel),
-                          items: List.generate(
-                            12,
-                            (index) => DropdownMenuItem(
-                              value: index + 1,
-                              child: Text('${l10n.grade} ${index + 1}'),
+                    const SizedBox(height: 20),
+                    _StaggeredSheetItem(
+                      animation: _staggerAnimations[3],
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            l10n.pickCharacter,
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: scheme.onSurface,
+                              fontWeight: FontWeight.w800,
                             ),
                           ),
-                          onChanged: (value) =>
-                              setState(() => _grade = value ?? _grade),
-                        ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            height: 58,
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _emojiOptions.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: 10),
+                              itemBuilder: (context, index) {
+                                final value = _emojiOptions[index];
+                                return _StickerEmoji(
+                                  emoji: value,
+                                  isSelected: _emoji == value,
+                                  onTap: () => _onEmojiTap(value),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  );
-                },
-              ),
-              const SizedBox(height: Sp.xl),
-              // Buttons
-              AnimatedBuilder(
-                animation: _staggerAnimations[5],
-                builder: (context, child) {
-                  return Opacity(
-                    opacity: _staggerAnimations[5].value,
-                    child: Transform.translate(
-                      offset: Offset(0, 20 * (1 - _staggerAnimations[5].value)),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(Sp.md, 0, Sp.md, Sp.xl),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () {
-                                  widget.nameController.dispose();
-                                  Navigator.of(context).pop();
-                                },
-                                child: Text(l10n.cancel),
-                              ),
-                            ),
-                            const SizedBox(width: Sp.md),
-                            Expanded(
-                              child: FilledButton(
-                                onPressed: _saving ? null : _handleSave,
-                                child: _saving
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : Text(l10n.save),
-                              ),
-                            ),
-                          ],
+                    const SizedBox(height: 20),
+                    _StaggeredSheetItem(
+                      animation: _staggerAnimations[4],
+                      child: DropdownButtonFormField<int>(
+                        initialValue: _grade,
+                        decoration: InputDecoration(labelText: l10n.gradeLevel),
+                        items: List.generate(
+                          12,
+                          (index) => DropdownMenuItem(
+                            value: index + 1,
+                            child: Text('${l10n.grade} ${index + 1}'),
+                          ),
                         ),
+                        onChanged: (value) =>
+                            setState(() => _grade = value ?? _grade),
                       ),
                     ),
-                  );
-                },
+                    const SizedBox(height: 24),
+                    _StaggeredSheetItem(
+                      animation: _staggerAnimations[5],
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _saving
+                                  ? null
+                                  : () => Navigator.of(context).pop(),
+                              child: Text(l10n.cancel),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: FilledButton(
+                              onPressed: _saving ? null : _handleSave,
+                              child: _saving
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Text(l10n.save),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              // Bottom padding for safe area (keyboard + system navigation bar)
-              SizedBox(
-                height: MediaQuery.of(context).viewInsets.bottom +
-                    MediaQuery.of(context).padding.bottom,
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class _StaggeredSheetItem extends StatelessWidget {
+  final Animation<double> animation;
+  final Widget child;
+
+  const _StaggeredSheetItem({
+    required this.animation,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final value = animation.value;
+        return Transform.translate(
+          offset: Offset(0, 14 * (1 - value)),
+          child: Opacity(
+            opacity: value.clamp(0.0, 1.0),
+            child: child,
+          ),
+        );
+      },
+      child: child,
+    );
+  }
+}
+
+Color _avatarColor(BuildContext context, String seed) {
+  final theme = Theme.of(context);
+  final scheme = theme.colorScheme;
+  final quexColors = theme.extension<QuexColors>();
+  final colors = [
+    scheme.primaryContainer,
+    scheme.secondaryContainer,
+    scheme.tertiaryContainer,
+    (quexColors?.warmRed ?? scheme.secondary).withValues(alpha: 0.18),
+    (quexColors?.amber ?? scheme.tertiary).withValues(alpha: 0.22),
+  ];
+
+  return colors[
+      seed.runes.fold<int>(0, (sum, rune) => sum + rune) % colors.length];
 }

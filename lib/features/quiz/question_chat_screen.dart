@@ -158,25 +158,24 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   // Session Management
   // ---------------------------------------------------------------------------
 
-  Future<void> _firePreload(
+  Future<void> _fireOpener(
     Question question,
     List<StudyMaterial> materials,
   ) async {
     if (_openerFired) return;
-    _openerFired = true;
-
-    if (mounted) setState(() => _sending = true);
 
     final l10n = AppLocalizations.of(context);
+    final locale = l10n?.localeName ?? 'en';
+
     try {
       await _chatService.createSession(
         question: question,
         materials: materials,
-        locale: l10n?.localeName ?? 'en',
+        locale: locale,
         isThinking: _isThinkingMode,
       );
     } catch (e) {
-      debugPrint('Failed to preload tutor session: $e');
+      debugPrint('Failed to create tutor session: $e');
       if (mounted) {
         setState(() {
           _openerFired = false;
@@ -186,7 +185,59 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       return;
     }
 
-    if (mounted) setState(() => _sending = false);
+    _openerFired = true;
+
+    if (!mounted) return;
+    setState(() {
+      _sending = true;
+      _streamingContent = '';
+      _thinkingContent = null;
+    });
+
+    try {
+      final imageBytes = <Uint8List>[];
+      for (final image in _attachedImages) {
+        try {
+          final bytes = await image.readAsBytes();
+          imageBytes.add(bytes);
+        } catch (e) {
+          debugPrint('Failed to read opener image bytes: $e');
+        }
+      }
+
+      final stream = _chatService.sendOpener(locale, images: imageBytes);
+      final result = await _handleTutorStream(stream);
+
+      _clearImages();
+
+      if (mounted) {
+        setState(() {
+          if (result.reply.isNotEmpty) {
+            _messages.add(QuestionMessage(
+              questionId: widget.questionId,
+              role: QuestionMessageRole.assistant,
+              content: result.reply,
+              createdAt: DateTime.now(),
+            ));
+          }
+          _streamingContent = null;
+          _sending = false;
+          _thinkingContent = result.thinking.isEmpty ? null : result.thinking;
+          _thinkingExpanded = false;
+        });
+      }
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint('Opener error: $e');
+      _tokenCount = 0;
+      if (mounted) {
+        setState(() {
+          _streamingContent = null;
+          _thinkingContent = null;
+          _sending = false;
+        });
+      }
+    }
   }
 
   Future<void> _resetChat(
@@ -520,7 +571,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   ) async {
     if (!_chatService.hasSession) {
       try {
-        await _firePreload(question, materials);
+        await _fireOpener(question, materials);
       } catch (e) {
         if (mounted) {
           final l10n = AppLocalizations.of(context)!;
@@ -600,7 +651,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
 
     if (!_chatService.hasSession) {
       try {
-        await _firePreload(question, materials);
+        await _fireOpener(question, materials);
       } catch (e) {
         if (mounted) {
           final l10n = AppLocalizations.of(context)!;
@@ -701,7 +752,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
         currentQuestion != null &&
         materialsReady) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _firePreload(currentQuestion, materials);
+        if (mounted) _fireOpener(currentQuestion, materials);
       });
     }
 

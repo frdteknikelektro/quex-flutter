@@ -73,6 +73,34 @@ class ChatPrompts {
     }
   }
 
+  /// Returns the system instruction for the question tutor.
+  static String getTutorSystemInstruction(String locale) {
+    switch (locale) {
+      case 'id':
+        return 'Anda adalah tutor ramah yang membantu siswa SD menjawab pertanyaan kuis. '
+            'Berikan respons yang singkat dan sederhana. Berikan petunjuk dan penyemangat. '
+            'Ketika siswa menjawab dengan benar, panggil evaluate_understanding terlebih dahulu untuk memberi nilai. '
+            'Setelah memanggil alat tersebut, selalu tunggu respons alat sebelum mengirim balasan teks Anda. '
+            'Setelah menerima respons alat, ucapkan selamat kepada siswa (misalnya, "Bagus sekali!", "Benar!", "Mantap!").';
+      default:
+        return 'You are a friendly tutor helping an elementary student answer a quiz question. '
+            'Keep responses short and simple. Give hints and encouragement. '
+            'When the student answers correctly, first call evaluate_understanding to score it. '
+            'After calling the tool, always wait for the tool response before sending your text reply. '
+            'After receiving the tool response, congratulate the student (e.g., "Great job!", "Correct!", "Well done!").';
+    }
+  }
+
+  /// Returns the opener message for the tutor session.
+  static String getTutorOpenerMessage(String locale) {
+    switch (locale) {
+      case 'id':
+        return 'Ini adalah pertanyaannya. Sapa siswa dan tawarkan bantuan untuk menjawabnya dalam 1 kalimat pendek.';
+      default:
+        return 'This is the question. Greet the student and offer help to answer it in 1 short sentence.';
+    }
+  }
+
   /// Returns the greeting message for warm-up.
   static String getWarmUpGreeting(String locale) {
     switch (locale) {

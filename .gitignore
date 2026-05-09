@@ -54,3 +54,5 @@ config.json
 *.tflite
 *.litertlm
 *.safetensors
+
+.env

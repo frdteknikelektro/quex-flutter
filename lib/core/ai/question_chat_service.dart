@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
 import '../models/models.dart';
+import 'chat_prompts.dart';
 import 'gemma_chat_service.dart';
 import 'material_preprocessor.dart';
 import 'tutor_event.dart';
@@ -45,11 +46,7 @@ class QuestionChatService {
         '[QuestionChatService] createSession: ${_materialImages.length} material images');
 
     final systemInstruction = StringBuffer(
-      'You are a friendly tutor helping an elementary student answer a quiz question. '
-      'Keep responses short and simple. Give hints and encouragement. '
-      'When the student answers correctly, first call evaluate_understanding to score it. '
-      'After calling the tool, always wait for the tool response before sending your text reply. '
-      'After receiving the tool response, congratulate the student (e.g., "Great job!", "Correct!", "Well done!").',
+      ChatPrompts.getTutorSystemInstruction(locale),
     );
     if (textContext.isNotEmpty) {
       systemInstruction
@@ -85,6 +82,30 @@ class QuestionChatService {
       },
     );
     _sessionCreated = true;
+  }
+
+  /// Send the opener/greeting message. Returns stream of tutor events.
+  Stream<TutorEvent> sendOpener(
+    String locale, {
+    List<Uint8List> images = const [],
+  }) async* {
+    _pendingScore = null;
+    final allImages = <Uint8List>[..._materialImages, ...images];
+    _materialImages.clear();
+
+    final openerMessage = ChatPrompts.getTutorOpenerMessage(locale);
+    final Stream<({String? text, String? thinking})> stream;
+
+    if (allImages.isNotEmpty) {
+      stream = _chatService.sendMessageWithImages(openerMessage, allImages);
+    } else {
+      stream = _chatService.sendMessage(openerMessage);
+    }
+
+    await for (final event in stream) {
+      if (event.thinking != null) yield TutorThinking(event.thinking!);
+      if (event.text != null) yield TutorReply(event.text!);
+    }
   }
 
   /// Stream TutorThinking, TutorReply, and optionally TutorEvaluation events.
