@@ -16,8 +16,7 @@ typedef ToolExecutor = Future<Map<String, Object?>> Function(
 
 /// Simple chat service wrapping flutter_gemma's InferenceChat.
 ///
-/// Much leaner than GemmaSessionService - no tutor/coach logic,
-/// just text chat with support for images, audio, streaming, and thinking mode.
+/// Supports text chat with support for images, audio, streaming, and thinking mode.
 class GemmaChatService {
   static GemmaChatService? _instance;
 

@@ -11,7 +11,8 @@ import 'model_manager.dart';
 /// Supports text, multimodal (image), and function calling.
 ///
 /// For higher-level features, see:
-/// - [GemmaSessionService] for tutor/coach chat sessions
+/// - [QuestionChatService] for tutor-style interactions
+/// - [SessionChatService] for coach-style interactions
 /// - [GemmaQuizService] for quiz generation
 class GemmaInferenceService {
   gemma.InferenceModel? _model;
