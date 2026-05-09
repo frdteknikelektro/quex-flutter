@@ -235,10 +235,10 @@ class _AppShellState extends ConsumerState<_AppShell> {
 
     Widget? getFloatingActionButton() {
       if (compact && _currentIndex == 0 && hasSessions) {
-        return FloatingActionButton.extended(
+        return FloatingActionButton(
           onPressed: () => context.push(Routes.newSession),
-          icon: const Icon(Icons.add),
-          label: Text(l10n.newSession),
+          tooltip: l10n.newSession,
+          child: const Icon(Icons.add),
         );
       }
       return null;
