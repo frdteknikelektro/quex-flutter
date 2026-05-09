@@ -63,13 +63,11 @@ class GemmaChatService {
     );
     _effectiveMaxTokens = effectiveMaxTokens;
 
-    _model = await gemma.FlutterGemma.getActiveModel(
+    _model = await ModelManager.getModel(
       maxTokens: effectiveMaxTokens,
       preferredBackend: preferredBackend,
-      supportImage: true,
-      supportAudio: true,
       maxNumImages: maxNumImages,
-      enableSpeculativeDecoding: enableSpeculativeDecoding
+      enableSpeculativeDecoding: enableSpeculativeDecoding,
     );
   }
 

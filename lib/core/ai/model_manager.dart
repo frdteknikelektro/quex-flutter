@@ -45,6 +45,12 @@ class ModelManager {
 
   static String? _selectedVariant;
 
+  static InferenceModel? _model;
+  static int? _lastMaxTokens;
+  static PreferredBackend? _lastPreferredBackend;
+  static int? _lastMaxNumImages;
+  static bool? _lastEnableSpeculativeDecoding;
+
   // Must match SmartDownloader._downloadGroup in flutter_gemma 0.13.x
   static const String _smartDownloaderGroup = 'smart_downloads';
 
@@ -312,6 +318,40 @@ class ModelManager {
     final variant = await getSelectedVariant();
     final variantName = variant == variantE2B ? 'E2B' : 'E4B';
     return ready ? '$size ready (Gemma 4 $variantName)' : 'Not downloaded';
+  }
+
+  /// Get the active model instance, creating it if necessary.
+  /// If parameters differ from the last call, the previous model is automatically
+  /// closed by the underlying plugin.
+  static Future<InferenceModel> getModel({
+    int maxTokens = 8192,
+    PreferredBackend? preferredBackend = PreferredBackend.gpu,
+    int? maxNumImages = 16,
+    bool? enableSpeculativeDecoding = true,
+  }) async {
+    if (_model != null &&
+        _lastMaxTokens == maxTokens &&
+        _lastPreferredBackend == preferredBackend &&
+        _lastMaxNumImages == maxNumImages &&
+        _lastEnableSpeculativeDecoding == enableSpeculativeDecoding) {
+      return _model!;
+    }
+
+    _model = await FlutterGemma.getActiveModel(
+      maxTokens: maxTokens,
+      preferredBackend: preferredBackend,
+      supportImage: true,
+      supportAudio: true,
+      maxNumImages: maxNumImages,
+      enableSpeculativeDecoding: enableSpeculativeDecoding,
+    );
+
+    _lastMaxTokens = maxTokens;
+    _lastPreferredBackend = preferredBackend;
+    _lastMaxNumImages = maxNumImages;
+    _lastEnableSpeculativeDecoding = enableSpeculativeDecoding;
+
+    return _model!;
   }
 }
 

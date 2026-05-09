@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
 import 'gemma_config_service.dart';
+import 'model_manager.dart';
 
 /// Service for running inference using Gemma 4 E4B model.
 ///
@@ -48,13 +49,13 @@ class GemmaInferenceService {
       defaultValue: _defaultMaxTokens,
     );
 
-    _model = await gemma.FlutterGemma.getActiveModel(
+    // Ensure model is activated (installed) before getting the instance
+    await ModelManager.activateModel();
+
+    _model = await ModelManager.getModel(
       maxTokens: effectiveMaxTokens,
       preferredBackend: preferredBackend,
-      supportImage: true,
-      supportAudio: true,
-      maxNumImages: 16,
-      enableSpeculativeDecoding: enableSpeculativeDecoding,  // Enable MTP (predictive encoding) for 3x faster inference
+      enableSpeculativeDecoding: enableSpeculativeDecoding,
     );
 
     _isInitialized = true;
