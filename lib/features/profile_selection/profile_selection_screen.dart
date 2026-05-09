@@ -194,29 +194,29 @@ class _ProfileSelectionShell extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(height: topInset + 48),
+              SizedBox(height: topInset + Sp.xl + Sp.md),
               FadeTransition(
                 opacity: headerFade,
                 child: SlideTransition(
                   position: headerSlide,
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 26),
+                    padding: const EdgeInsets.symmetric(horizontal: Sp.lg),
                     child: Column(
                       children: [
                         Text(
                           l10n.whoStudying,
                           style: theme.textTheme.headlineMedium?.copyWith(
-                            color: const Color(0xFF060D35),
+                            color: theme.colorScheme.onSurface,
                             fontWeight: FontWeight.w900,
                             height: 1.08,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: Sp.sm),
                         Text(
                           l10n.pickProfile,
                           style: theme.textTheme.bodyMedium?.copyWith(
-                            color: const Color(0xFF202847),
+                            color: theme.colorScheme.onSurfaceVariant,
                             fontWeight: FontWeight.w600,
                           ),
                           textAlign: TextAlign.center,
@@ -226,13 +226,13 @@ class _ProfileSelectionShell extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 32),
+              const SizedBox(height: Sp.xl),
               Expanded(
                 child: LayoutBuilder(
                   builder: (context, gridConstraints) {
                     final wide = gridConstraints.maxWidth >= 600;
                     final crossAxisCount = wide ? 3 : 2;
-                    final sidePadding = wide ? 40.0 : 22.0;
+                    final sidePadding = wide ? Sp.xl + Sp.sm : Sp.lg + Sp.xs;
                     const rowHeight = 184.0;
 
                     return GridView.builder(
@@ -240,13 +240,13 @@ class _ProfileSelectionShell extends StatelessWidget {
                         sidePadding,
                         0,
                         sidePadding,
-                        130 + bottomInset,
+                        128 + bottomInset,
                       ),
                       physics: const BouncingScrollPhysics(),
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: crossAxisCount,
-                        crossAxisSpacing: 20,
-                        mainAxisSpacing: 20,
+                        crossAxisSpacing: Sp.lg - Sp.xs,
+                        mainAxisSpacing: Sp.lg - Sp.xs,
                         mainAxisExtent: rowHeight,
                       ),
                       itemCount: profiles.length + 1,
@@ -335,68 +335,6 @@ class _DecorativeBackdrop extends StatelessWidget {
   }
 }
 
-class _SplashLandscapePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final farHill = Path()
-      ..moveTo(0, size.height)
-      ..lineTo(0, size.height * 0.72)
-      ..quadraticBezierTo(
-        size.width * 0.44,
-        size.height * 0.58,
-        size.width,
-        size.height * 0.71,
-      )
-      ..lineTo(size.width, size.height)
-      ..close();
-    canvas.drawPath(
-      farHill,
-      Paint()..color = const Color(0xFFC7ED62),
-    );
-
-    final nearHill = Path()
-      ..moveTo(0, size.height)
-      ..lineTo(0, size.height * 0.8)
-      ..quadraticBezierTo(
-        size.width * 0.32,
-        size.height * 0.68,
-        size.width * 0.64,
-        size.height * 0.76,
-      )
-      ..quadraticBezierTo(
-        size.width * 0.84,
-        size.height * 0.82,
-        size.width,
-        size.height * 0.75,
-      )
-      ..lineTo(size.width, size.height)
-      ..close();
-    canvas.drawPath(
-      nearHill,
-      Paint()..color = const Color(0xFF9BDD32),
-    );
-
-    final foreground = Path()
-      ..moveTo(0, size.height)
-      ..lineTo(0, size.height * 0.9)
-      ..quadraticBezierTo(
-        size.width * 0.34,
-        size.height * 0.82,
-        size.width,
-        size.height * 0.88,
-      )
-      ..lineTo(size.width, size.height)
-      ..close();
-    canvas.drawPath(
-      foreground,
-      Paint()..color = const Color(0xFF79C92D),
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
 class _AnimatedCardEntry extends StatelessWidget {
   final Animation<double> animation;
   final double delay;
@@ -483,7 +421,7 @@ class _ProfileCardState extends State<_ProfileCard> {
           curve: Curves.easeOutCubic,
           decoration: BoxDecoration(
             color: scheme.surface.withValues(alpha: 0.94),
-            borderRadius: BorderRadius.circular(32),
+            borderRadius: Br.lg,
             border: Border.all(
               color: _pressed ? scheme.primary : scheme.outlineVariant,
               width: _pressed ? 2 : 1,
@@ -500,7 +438,8 @@ class _ProfileCardState extends State<_ProfileCard> {
             children: [
               Positioned.fill(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: Sp.sm + Sp.xs / 2),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -513,21 +452,21 @@ class _ProfileCardState extends State<_ProfileCard> {
                             height: 68,
                             decoration: BoxDecoration(
                               color: bgColor,
-                              borderRadius: BorderRadius.circular(32),
+                              borderRadius: Br.md,
                             ),
                             alignment: Alignment.center,
                             child: Text(
                               widget.profile.emoji,
-                              style: const TextStyle(fontSize: 36),
+                              style: theme.textTheme.headlineMedium,
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: Sp.sm + Sp.xs / 2),
                       Text(
                         widget.profile.name,
                         style: theme.textTheme.titleSmall?.copyWith(
-                          color: const Color(0xFF060D35),
+                          color: scheme.onSurface,
                           fontWeight: FontWeight.w900,
                           height: 1.1,
                         ),
@@ -535,7 +474,7 @@ class _ProfileCardState extends State<_ProfileCard> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: Sp.sm + Sp.xs / 2),
                       _GradePill(
                         grade: widget.profile.grade,
                         toneIndex: widget.toneIndex,
@@ -615,18 +554,18 @@ class _AddProfileCardState extends State<_AddProfileCard> {
         curve: Curves.easeOutCubic,
         child: CustomPaint(
           painter: _DashedRRectPainter(
-            color: const Color(0xFF9FD0F4).withValues(
+            color: scheme.primaryContainer.withValues(
               alpha: _pressed ? 0.92 : 0.58,
             ),
-            radius: 32,
+            radius: 24,
           ),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: scheme.surface.withValues(alpha: 0.34),
-              borderRadius: BorderRadius.circular(32),
+              borderRadius: Br.lg,
             ),
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(Sp.sm + Sp.xs / 2),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -634,21 +573,21 @@ class _AddProfileCardState extends State<_AddProfileCard> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFE4F3FF),
-                      borderRadius: BorderRadius.circular(16),
+                      color: scheme.primaryContainer,
+                      borderRadius: Br.md,
                     ),
                     alignment: Alignment.center,
-                    child: const Icon(
+                    child: Icon(
                       Icons.add_rounded,
                       size: 28,
-                      color: Color(0xFF1F7BEA),
+                      color: scheme.primary,
                     ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: Sp.sm + Sp.xs + 2),
                   Text(
                     l10n.addNewProfile,
                     style: theme.textTheme.bodyMedium?.copyWith(
-                      color: const Color(0xFF060D35),
+                      color: scheme.onSurface,
                       fontWeight: FontWeight.w700,
                       height: 1.16,
                     ),
@@ -678,14 +617,15 @@ class _GradePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final tones = [
-      (const Color(0xFFE5F1FF), const Color(0xFF1F7BEA)),
-      (const Color(0xFFE8F8E8), const Color(0xFF29943D)),
+      (scheme.primaryContainer, scheme.primary),
+      (scheme.secondaryContainer, scheme.secondary),
     ];
     final tone = tones[toneIndex % tones.length];
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: Sp.sm + 2, vertical: 5),
       decoration: BoxDecoration(
         color: tone.$1,
         borderRadius: Br.full,
@@ -756,6 +696,7 @@ class _StickerEmoji extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final scheme = Theme.of(context).colorScheme;
 
     return GestureDetector(
@@ -769,7 +710,7 @@ class _StickerEmoji extends StatelessWidget {
           color: isSelected
               ? scheme.primaryContainer
               : scheme.surfaceContainerHighest.withValues(alpha: 0.58),
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: Br.lg,
           border: Border.all(
             color: isSelected ? scheme.primary : scheme.outlineVariant,
             width: isSelected ? 2 : 1,
@@ -778,7 +719,7 @@ class _StickerEmoji extends StatelessWidget {
         alignment: Alignment.center,
         child: Text(
           emoji,
-          style: const TextStyle(fontSize: 25),
+          style: theme.textTheme.titleLarge,
         ),
       ),
     );
@@ -929,8 +870,10 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
             child: Container(
               decoration: BoxDecoration(
                 color: scheme.surface,
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(34)),
+                borderRadius: BorderRadius.only(
+                  topLeft: Br.lg.topLeft,
+                  topRight: Br.lg.topRight,
+                ),
                 boxShadow: [
                   BoxShadow(
                     color: scheme.shadow.withValues(alpha: 0.14),
@@ -941,12 +884,12 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
               ),
               child: SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
-                  20,
-                  12,
-                  20,
+                  Sp.lg - Sp.xs,
+                  Sp.sm + Sp.xs / 2,
+                  Sp.lg - Sp.xs,
                   MediaQuery.of(context).viewInsets.bottom +
                       MediaQuery.of(context).padding.bottom +
-                      20,
+                      (Sp.lg - Sp.xs),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -962,7 +905,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                         ),
                       ),
                     ),
-                    const SizedBox(height: 22),
+                    const SizedBox(height: Sp.lg - Sp.xs),
                     _StaggeredSheetItem(
                       animation: _staggerAnimations[0],
                       child: Text(
@@ -976,7 +919,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                         textAlign: TextAlign.center,
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: Sp.lg - Sp.xs / 2),
                     _StaggeredSheetItem(
                       animation: _staggerAnimations[1],
                       child: Center(
@@ -993,7 +936,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                             height: 108,
                             decoration: BoxDecoration(
                               color: bgColor,
-                              borderRadius: BorderRadius.circular(40),
+                              borderRadius: Br.lg,
                               boxShadow: [
                                 BoxShadow(
                                   color: scheme.shadow.withValues(alpha: 0.1),
@@ -1005,13 +948,13 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                             alignment: Alignment.center,
                             child: Text(
                               _emoji,
-                              style: const TextStyle(fontSize: 50),
+                              style: theme.textTheme.displaySmall,
                             ),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: Sp.lg),
                     _StaggeredSheetItem(
                       animation: _staggerAnimations[2],
                       child: TextField(
@@ -1023,7 +966,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                         textCapitalization: TextCapitalization.words,
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: Sp.lg - Sp.xs / 2),
                     _StaggeredSheetItem(
                       animation: _staggerAnimations[3],
                       child: Column(
@@ -1036,14 +979,14 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                               fontWeight: FontWeight.w800,
                             ),
                           ),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: Sp.sm + Sp.xs / 2),
                           SizedBox(
                             height: 58,
                             child: ListView.separated(
                               scrollDirection: Axis.horizontal,
                               itemCount: _emojiOptions.length,
                               separatorBuilder: (_, __) =>
-                                  const SizedBox(width: 10),
+                                  const SizedBox(width: Sp.sm + 2),
                               itemBuilder: (context, index) {
                                 final value = _emojiOptions[index];
                                 return _StickerEmoji(
@@ -1057,7 +1000,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                         ],
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: Sp.lg - Sp.xs / 2),
                     _StaggeredSheetItem(
                       animation: _staggerAnimations[4],
                       child: DropdownButtonFormField<int>(
@@ -1074,7 +1017,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                             setState(() => _grade = value ?? _grade),
                       ),
                     ),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: Sp.lg),
                     _StaggeredSheetItem(
                       animation: _staggerAnimations[5],
                       child: Row(
@@ -1087,7 +1030,7 @@ class _ProfileBottomSheetState extends State<_ProfileBottomSheet>
                               child: Text(l10n.cancel),
                             ),
                           ),
-                          const SizedBox(width: 14),
+                          const SizedBox(width: Sp.sm + Sp.xs + 2),
                           Expanded(
                             child: FilledButton(
                               onPressed: _saving ? null : _handleSave,

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:quex/generated/l10n/app_localizations.dart';
 
+import '../../app/theme.dart';
 import '../../app/router.dart';
 import '../../core/ai/download_state.dart';
 import '../../core/ai/model_download_notifier.dart';
@@ -106,13 +107,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   @override
   Widget build(BuildContext context) {
     final downloadState = ref.watch(modelDownloadProvider);
+    final theme = Theme.of(context);
     final scheme = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context)!;
 
     debugPrint('[Splash] Build: state=${downloadState.status}');
 
     return Scaffold(
-      backgroundColor: const Color(0xFFEAF8FF),
+      backgroundColor: scheme.surface,
       body: LayoutBuilder(
         builder: (context, constraints) {
           final size = Size(constraints.maxWidth, constraints.maxHeight);
@@ -120,14 +122,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           final isLandscape = size.width > size.height;
           final sidePadding = isTablet ? 48.0 : 24.0;
           final contentWidth = math.min(
-              size.width - (sidePadding * 2), isTablet ? 520.0 : 360.0);
+              size.width - (sidePadding * 2), isTablet ? 420.0 : 300.0);
           final topInset = MediaQuery.paddingOf(context).top;
           final bottomInset = MediaQuery.paddingOf(context).bottom;
           final duckSize = _duckSize(size, isTablet, isLandscape);
-          final floraWidth = math.min(size.width * (isTablet ? 1.12 : 1.28),
-              isLandscape ? 960.0 : 760.0);
+          final floraWidth = math.min(size.width * (isTablet ? 1.06 : 1.16),
+              isLandscape ? 900.0 : 720.0);
           final skyWidth =
-              math.min(size.width * (isTablet ? 0.88 : 1.14), 760.0);
+              math.min(size.width * (isTablet ? 0.84 : 1.0), 720.0);
           final statusBottom = _statusBottom(size, bottomInset, isLandscape);
           final duckBottom = _duckBottom(size, isTablet, isLandscape);
 
@@ -158,13 +160,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               _PositionedAccentLayer(
                 asset: _skyAccentsAsset,
                 width: skyWidth,
-                top: math.max(0.0, topInset - 2.0),
-                left: isTablet ? (size.width - skyWidth) / 2 : -28.0,
-                opacity: 0.78,
+                top: math.max(0.0, topInset - Sp.xs),
+                opacity: 0.86,
               ),
               Positioned(
                 left: (size.width - floraWidth) / 2,
-                bottom: -18,
+                bottom: -10,
                 width: floraWidth,
                 child: IgnorePointer(
                   child: Image.asset(
@@ -209,29 +210,25 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 _QuexWordmark(text: l10n.appTitle),
-                                const SizedBox(height: 12),
+                                const SizedBox(height: Sp.lg),
                                 Text(
                                   l10n.appSubtitle,
                                   textAlign: TextAlign.center,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .titleMedium
-                                      ?.copyWith(
-                                        color: scheme.primary,
-                                        fontWeight: FontWeight.w900,
-                                      ),
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: theme.colorScheme.primary,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.0,
+                                  ),
                                 ),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: Sp.md * 0.75),
                                 Text(
                                   l10n.appTagline,
                                   textAlign: TextAlign.center,
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .bodyMedium
-                                      ?.copyWith(
-                                        color: const Color(0xFF356078),
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.05,
+                                  ),
                                 ),
                               ],
                             ),
@@ -278,79 +275,89 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   double _brandTopPadding(Size size, bool isTablet, bool isLandscape) {
-    if (isLandscape) return isTablet ? 30 : 18;
-    if (isTablet) return 70;
-    return size.height < 700 ? 44 : 72;
+    if (isLandscape) return isTablet ? 24 : 14;
+    if (isTablet) return 86;
+    return (size.height * 0.225).toDouble();
   }
 
   double _duckSize(Size size, bool isTablet, bool isLandscape) {
-    if (isLandscape) return math.min(size.height * 0.48, isTablet ? 300 : 220);
-    if (isTablet) return math.min(size.width * 0.34, 330);
-    return math.min(size.width * 0.58, size.height < 700 ? 200 : 260);
+    if (isLandscape) return math.min(size.height * 0.42, isTablet ? 280 : 200);
+    if (isTablet) return math.min(size.width * 0.28, 300);
+    return math.min(size.width * 0.45, size.height < 700 ? 190 : 220);
   }
 
   double _duckBottom(Size size, bool isTablet, bool isLandscape) {
-    if (isLandscape) return math.max(104, size.height * 0.18);
-    if (isTablet) return math.max(210, size.height * 0.24);
-    return math.max(size.height * 0.27, size.height < 700 ? 168 : 290);
+    if (isLandscape) return math.max(96, size.height * 0.16);
+    if (isTablet) return math.max(192, size.height * 0.22);
+    return math.max(size.height * 0.235, size.height < 700 ? 156 : 262);
   }
 
   double _statusBottom(Size size, double bottomInset, bool isLandscape) {
-    if (isLandscape) return math.max(bottomInset + 28, size.height * 0.1);
-    return math.max(bottomInset + 96, size.height * 0.14);
+    if (isLandscape) return math.max(bottomInset + 24, size.height * 0.09);
+    return math.max(bottomInset + 84, size.height * 0.13);
   }
 
   Widget _buildStateIndicator(
     ModelDownloadState downloadState,
     ColorScheme scheme,
   ) {
+    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
 
     if (downloadState.isCompleted) {
-      return _StatusPanel(
-        key: const ValueKey('ready'),
-        child: Text(
-          l10n.ready,
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: scheme.primary,
-                fontWeight: FontWeight.w900,
-              ),
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 152, maxWidth: 176),
+        child: _StatusPanel(
+          key: const ValueKey('ready'),
+          child: Text(
+            l10n.ready,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.primary,
+              fontWeight: FontWeight.w900,
+              height: 1.0,
+            ),
+          ),
         ),
       );
     }
 
     if (downloadState.hasFailed) {
-      return _StatusPanel(
-        key: const ValueKey('error'),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              l10n.oopsSomethingWentWrong,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: const Color(0xFF31556B),
-                    fontWeight: FontWeight.w800,
+      return ConstrainedBox(
+        constraints: const BoxConstraints(minWidth: 216, maxWidth: 240),
+        child: _StatusPanel(
+          key: const ValueKey('error'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                l10n.oopsSomethingWentWrong,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w800,
+                  height: 1.0,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: Sp.sm + Sp.xs / 2),
+              FilledButton.icon(
+                onPressed: () =>
+                    ref.read(modelDownloadProvider.notifier).retry(),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: Text(l10n.tryAgain),
+                style: FilledButton.styleFrom(
+                  backgroundColor: scheme.primary,
+                  foregroundColor: scheme.onPrimary,
+                  minimumSize: const Size(0, 40),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Sp.md,
+                    vertical: 10,
                   ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 10),
-            FilledButton.icon(
-              onPressed: () => ref.read(modelDownloadProvider.notifier).retry(),
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: Text(l10n.tryAgain),
-              style: FilledButton.styleFrom(
-                backgroundColor: scheme.primary,
-                foregroundColor: scheme.onPrimary,
-                minimumSize: const Size(0, 44),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  shape: RoundedRectangleBorder(borderRadius: Br.sm),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -360,39 +367,48 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     final variantName = variant == 'e2b' ? 'E2B' : 'E4B';
     final size = variant == 'e2b' ? '2.58 GB' : '3.65 GB';
 
-    return _StatusPanel(
-      key: const ValueKey('downloading'),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              minHeight: 9,
-              value: downloadState.progress.clamp(0.0, 1.0),
-              backgroundColor: const Color(0xFFD8EDFF),
-              color: scheme.primary,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 184, maxWidth: 192),
+      child: _StatusPanel(
+        key: const ValueKey('downloading'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: Br.full,
+              child: LinearProgressIndicator(
+                minHeight: Sp.sm - 1,
+                value: downloadState.progress.clamp(0.0, 1.0),
+                backgroundColor: scheme.primaryContainer,
+                color: scheme.primary,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            l10n.downloadingBrain(percent),
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: const Color(0xFF31556B),
-                  fontWeight: FontWeight.w900,
-                ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            l10n.downloadingModelVariant(variantName, size),
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFF5F7C8F),
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-        ],
+            const SizedBox(height: Sp.sm + Sp.xs / 2),
+            Text(
+              l10n.downloadingBrain(percent),
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w900,
+                    height: 1.0,
+                  ),
+            ),
+            const SizedBox(height: Sp.xs / 2),
+            Text(
+              l10n.downloadingModelVariant(variantName, size),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                    height: 1.0,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -405,11 +421,8 @@ class _QuexWordmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isTablet = MediaQuery.sizeOf(context).width >= 840;
-    final fontSize = isTablet ? 86.0 : 66.0;
     final baseStyle = Theme.of(context).textTheme.displayLarge?.copyWith(
-          fontSize: fontSize,
-          height: 0.9,
+          height: 0.88,
           fontWeight: FontWeight.w900,
           letterSpacing: 0,
         );
@@ -418,41 +431,11 @@ class _QuexWordmark extends StatelessWidget {
       clipBehavior: Clip.none,
       alignment: Alignment.center,
       children: [
-        Positioned(
-          left: -fontSize * 0.2,
-          top: -fontSize * 0.2,
-          child: Transform.rotate(
-            angle: -0.2,
-            child: const Icon(
-              Icons.workspace_premium_rounded,
-              color: Color(0xFFFFC83D),
-              size: 28,
-            ),
-          ),
-        ),
         Text(
           text,
           textAlign: TextAlign.center,
           style: baseStyle?.copyWith(
-            foreground: Paint()
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = isTablet ? 15 : 12
-              ..strokeJoin = StrokeJoin.round
-              ..color = Colors.white,
-            shadows: const [
-              Shadow(
-                color: Color(0x3F1E6BCB),
-                blurRadius: 12,
-                offset: Offset(0, 6),
-              ),
-            ],
-          ),
-        ),
-        Text(
-          text,
-          textAlign: TextAlign.center,
-          style: baseStyle?.copyWith(
-            color: const Color(0xFF2378F2),
+            color: QuexTheme.primaryBlue,
             shadows: const [
               Shadow(
                 color: Color(0x330D5DC3),
@@ -479,22 +462,25 @@ class _StatusPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(26),
+        color: Colors.white.withValues(alpha: 0.94),
+        borderRadius: Br.full,
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.84),
-          width: 1.2,
+          color: Colors.white.withValues(alpha: 0.92),
+          width: 1,
         ),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x242172C7),
-            blurRadius: 24,
-            offset: Offset(0, 10),
+            color: Color(0x1E4A90E2),
+            blurRadius: 18,
+            offset: Offset(0, 8),
           ),
         ],
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Sp.lg - Sp.sm,
+          vertical: Sp.sm + Sp.xs + 2,
+        ),
         child: child,
       ),
     );
@@ -506,21 +492,18 @@ class _PositionedAccentLayer extends StatelessWidget {
   final double width;
   final double top;
   final double opacity;
-  final double? left;
 
   const _PositionedAccentLayer({
     required this.asset,
     required this.width,
     required this.top,
     required this.opacity,
-    this.left,
   });
 
   @override
   Widget build(BuildContext context) {
     return Positioned(
       top: top,
-      left: left,
       width: width,
       child: IgnorePointer(
         child: Opacity(
