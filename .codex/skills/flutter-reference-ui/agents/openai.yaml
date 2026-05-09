@@ -1,0 +1,4 @@
+interface:
+  display_name: "Flutter Reference UI"
+  short_description: "Match Flutter screens to visual references"
+  default_prompt: "Use $flutter-reference-ui to redesign this Flutter screen from the supplied visual reference."
