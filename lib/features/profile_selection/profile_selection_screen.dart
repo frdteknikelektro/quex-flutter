@@ -23,6 +23,10 @@ class _ProfileSelectionScreenState extends ConsumerState<ProfileSelectionScreen>
       'assets/images/profile_selection/profile_selection_top_accents.png';
   static const _bottomLandscapeAsset =
       'assets/images/profile_selection/profile_selection_bottom_landscape.png';
+  static const _topAccentsDarkAsset =
+      'assets/images/profile_selection/profile_selection_top_accents-dark.png';
+  static const _bottomLandscapeDarkAsset =
+      'assets/images/profile_selection/profile_selection_bottom_landscape-dark.png';
 
   late final AnimationController _headerController;
   late final AnimationController _cardsController;
@@ -173,16 +177,22 @@ class _ProfileSelectionShell extends StatelessWidget {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFFEAF8FF),
-            Color(0xFFF9FDFF),
-            Color(0xFFFFFBF4),
-          ],
-          stops: [0.0, 0.56, 1.0],
+          colors: theme.brightness == Brightness.dark
+              ? [
+                  const Color(0xFF0D1B2A), // Midnight blue
+                  const Color(0xFF1B263B), // Dark blue
+                  const Color(0xFF2C3E50), // Slate blue
+                ]
+              : [
+                  const Color(0xFFEAF8FF), // Light blue
+                  const Color(0xFFF9FDFF), // Very light blue
+                  const Color(0xFFFFFBF4), // Warm yellow
+                ],
+          stops: const [0.0, 0.56, 1.0],
         ),
       ),
       child: Stack(
@@ -295,24 +305,35 @@ class _DecorativeBackdrop extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    
     return Positioned.fill(
       child: IgnorePointer(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final size = constraints.biggest;
-            final bottomHeight = (size.height * 0.14).clamp(92.0, 132.0);
+            final bottomHeight = size.height * 0.5;
 
             return Stack(
               children: [
                 Positioned(
                   top: topInset + 14,
-                  left: 22,
-                  right: 20,
-                  height: 76,
-                  child: Image.asset(
-                    _ProfileSelectionScreenState._topAccentsAsset,
-                    fit: BoxFit.fill,
-                    alignment: Alignment.topCenter,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: size.width > 600 ? size.width * 0.75 : double.infinity,
+                      ),
+                      child: Image.asset(
+                        isDark 
+                            ? _ProfileSelectionScreenState._topAccentsDarkAsset
+                            : _ProfileSelectionScreenState._topAccentsAsset,
+                        fit: BoxFit.cover,
+                        alignment: Alignment.topCenter,
+                      ),
+                    ),
                   ),
                 ),
                 Positioned(
@@ -321,8 +342,10 @@ class _DecorativeBackdrop extends StatelessWidget {
                   bottom: bottomInset, // Offset by navigation bar height
                   height: bottomHeight,
                   child: Image.asset(
-                    _ProfileSelectionScreenState._bottomLandscapeAsset,
-                    fit: BoxFit.fill,
+                    isDark 
+                        ? _ProfileSelectionScreenState._bottomLandscapeDarkAsset
+                        : _ProfileSelectionScreenState._bottomLandscapeAsset,
+                    fit: BoxFit.cover,
                     alignment: Alignment.bottomCenter,
                   ),
                 ),
