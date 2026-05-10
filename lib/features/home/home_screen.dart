@@ -599,10 +599,10 @@ class _EmptySessionsState extends State<_EmptySessions>
       vsync: this,
     );
     _bounceAnimation = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: -16.0), weight: 30),
-      TweenSequenceItem(tween: Tween(begin: -16.0, end: 0.0), weight: 20),
-      TweenSequenceItem(tween: Tween(begin: 0.0, end: -8.0), weight: 20),
-      TweenSequenceItem(tween: Tween(begin: -8.0, end: 0.0), weight: 30),
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: -20.0), weight: 30),
+      TweenSequenceItem(tween: Tween(begin: -20.0, end: 0.0), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: -10.0), weight: 20),
+      TweenSequenceItem(tween: Tween(begin: -10.0, end: 0.0), weight: 30),
     ]).animate(
       CurvedAnimation(
         parent: _bounceController,
@@ -620,87 +620,87 @@ class _EmptySessionsState extends State<_EmptySessions>
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
-    final scheme = theme.colorScheme;
-    final quexColors = theme.extension<QuexColors>();
+    final scheme = Theme.of(context).colorScheme;
+    final quexColors = Theme.of(context).extension<QuexColors>();
+    final screenHeight = MediaQuery.of(context).size.height;
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    // Approximate available space (appBar ~56, bottomNav ~80, greeting ~100, padding ~120)
+    final availableHeight = screenHeight - 360 - bottomPadding;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.surface.withValues(alpha: 0.9),
-        borderRadius: Br.lg,
-        border: Border.all(color: scheme.outlineVariant),
-        boxShadow: [
-          BoxShadow(
-            color: scheme.shadow.withValues(alpha: 0.08),
-            blurRadius: 18,
-            offset: const Offset(0, 8),
+    return SizedBox(
+      height: availableHeight.clamp(380, 600),
+      width: double.infinity,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          AnimatedBuilder(
+            animation: _bounceAnimation,
+            builder: (context, child) {
+              return Transform.translate(
+                offset: Offset(0, _bounceAnimation.value),
+                child: child,
+              );
+            },
+            child: Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    scheme.primaryContainer,
+                    quexColors?.warmRed?.withValues(alpha: 0.3) ??
+                        scheme.secondaryContainer,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(32),
+              ),
+              child: const Center(
+                child: Text(
+                  '🚀',
+                  style: TextStyle(fontSize: 64),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 32),
+          Text(
+            l10n.homeLetsStartLearning,
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: scheme.primary,
+                ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              l10n.homeCreateFirstSession,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    height: 1.4,
+                  ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+          const SizedBox(height: 32),
+          FilledButton.icon(
+            onPressed: widget.onCreate,
+            icon: const Icon(Icons.rocket_launch),
+            label: Text(l10n.homeStartMyAdventure),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(200, 56),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              textStyle: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(Sp.lg, Sp.xl, Sp.lg, Sp.xl),
-        child: Column(
-          children: [
-            AnimatedBuilder(
-              animation: _bounceAnimation,
-              builder: (context, child) {
-                return Transform.translate(
-                  offset: Offset(0, _bounceAnimation.value),
-                  child: child,
-                );
-              },
-              child: Container(
-                width: 128,
-                height: 128,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      scheme.primaryContainer,
-                      (quexColors?.amber ?? scheme.tertiary)
-                          .withValues(alpha: 0.24),
-                    ],
-                  ),
-                  borderRadius: Br.lg,
-                  border: Border.all(color: scheme.outlineVariant),
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  '🦆',
-                  style: theme.textTheme.displayMedium,
-                ),
-              ),
-            ),
-            const SizedBox(height: Sp.lg),
-            Text(
-              l10n.homeLetsStartLearning,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w900,
-                color: scheme.onSurface,
-                height: 1.08,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Sp.sm + Sp.xs),
-            Text(
-              l10n.homeCreateFirstSession,
-              style: theme.textTheme.bodyLarge?.copyWith(
-                color: scheme.onSurfaceVariant,
-                height: 1.32,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Sp.lg),
-            FilledButton.icon(
-              onPressed: widget.onCreate,
-              icon: const Icon(Icons.rocket_launch_rounded),
-              label: Text(l10n.homeStartMyAdventure),
-            ),
-          ],
-        ),
       ),
     );
   }
