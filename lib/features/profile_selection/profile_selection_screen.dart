@@ -330,22 +330,22 @@ class _DecorativeBackdrop extends StatelessWidget {
                         isDark 
                             ? _ProfileSelectionScreenState._topAccentsDarkAsset
                             : _ProfileSelectionScreenState._topAccentsAsset,
-                        fit: BoxFit.cover,
+                        fit: BoxFit.contain,
                         alignment: Alignment.topCenter,
                       ),
                     ),
                   ),
                 ),
                 Positioned(
-                  left: -2,
-                  right: -2,
+                  left: 0,
+                  right: 0,
                   bottom: bottomInset, // Offset by navigation bar height
                   height: bottomHeight,
                   child: Image.asset(
                     isDark 
                         ? _ProfileSelectionScreenState._bottomLandscapeDarkAsset
                         : _ProfileSelectionScreenState._bottomLandscapeAsset,
-                    fit: BoxFit.cover,
+                    fit: BoxFit.contain,
                     alignment: Alignment.bottomCenter,
                   ),
                 ),
