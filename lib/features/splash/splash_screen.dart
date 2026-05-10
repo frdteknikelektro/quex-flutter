@@ -21,8 +21,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     with TickerProviderStateMixin {
   static const _duckAsset = 'assets/images/splash/duck_mascot.png';
   static const _skyAccentsAsset = 'assets/images/splash/sky_accents.png';
+  static const _skyAccentsLeftAsset = 'assets/images/splash/sky_accents-left.png';
+  static const _skyAccentsRightAsset = 'assets/images/splash/sky_accents-right.png';
+  static const _skyAccentsLeftDarkAsset = 'assets/images/splash/sky_accents-left-dark.png';
+  static const _skyAccentsRightDarkAsset = 'assets/images/splash/sky_accents-right-dark.png';
   static const _foregroundFloraAsset =
       'assets/images/splash/foreground_flora.png';
+  static const _foregroundFloraLeftAsset =
+      'assets/images/splash/foreground_flora-left.png';
+  static const _foregroundFloraRightAsset =
+      'assets/images/splash/foreground_flora-right.png';
+  static const _foregroundFloraLeftDarkAsset =
+      'assets/images/splash/foreground_flora-left-dark.png';
+  static const _foregroundFloraRightDarkAsset =
+      'assets/images/splash/foreground_flora-right-dark.png';
 
   late final AnimationController _bounceController;
   late final AnimationController _fadeController;
@@ -126,8 +138,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           final topInset = MediaQuery.paddingOf(context).top;
           final bottomInset = MediaQuery.paddingOf(context).bottom;
           final duckSize = _duckSize(size, isTablet, isLandscape);
-          final floraWidth = math.min(size.width * (isTablet ? 1.06 : 1.16),
-              isLandscape ? 900.0 : 720.0);
+          final floraHeight = size.height * 0.6;
           final skyWidth =
               math.min(size.width * (isTablet ? 0.84 : 1.0), 720.0);
           final statusBottom = _statusBottom(size, bottomInset, isLandscape);
@@ -136,42 +147,116 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           return Stack(
             clipBehavior: Clip.none,
             children: [
-              const Positioned.fill(
+              Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [
-                        Color(0xFFEAF8FF),
-                        Color(0xFFF9FDFF),
-                        Color(0xFFFFFBF4),
-                      ],
-                      stops: [0.0, 0.56, 1.0],
+                      colors: theme.brightness == Brightness.dark
+                          ? [
+                              const Color(0xFF0D1B2A), // Midnight blue
+                              const Color(0xFF1B263B), // Dark blue
+                              const Color(0xFF2C3E50), // Slate blue
+                            ]
+                          : [
+                              const Color(0xFFEAF8FF), // Light blue
+                              const Color(0xFFF9FDFF), // Very light blue
+                              const Color(0xFFFFFBF4), // Warm yellow
+                            ],
+                      stops: const [0.0, 0.56, 1.0],
                     ),
                   ),
                 ),
               ),
               Positioned.fill(
                 child: CustomPaint(
-                  painter: _SplashLandscapePainter(),
+                  painter: _SplashLandscapePainter(isDark: theme.brightness == Brightness.dark),
                 ),
               ),
-              _PositionedAccentLayer(
-                asset: _skyAccentsAsset,
-                width: skyWidth,
-                top: math.max(0.0, topInset - Sp.xs),
-                opacity: 0.86,
-              ),
+              // Left half of sky accents
               Positioned(
-                left: (size.width - floraWidth) / 2,
-                bottom: -10,
-                width: floraWidth,
+                left: 0,
+                top: math.max(0.0, topInset - Sp.xs),
                 child: IgnorePointer(
-                  child: Image.asset(
-                    _foregroundFloraAsset,
-                    fit: BoxFit.contain,
-                    filterQuality: FilterQuality.high,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: size.width / 2,
+                      maxHeight: size.height * 0.3, // Limit to 30% of screen height
+                    ),
+                    child: Opacity(
+                      opacity: 0.86,
+                      child: Image.asset(
+                        theme.brightness == Brightness.dark 
+                            ? _skyAccentsLeftDarkAsset 
+                            : _skyAccentsLeftAsset,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Right half of sky accents
+              Positioned(
+                right: 0,
+                top: math.max(0.0, topInset - Sp.xs),
+                child: IgnorePointer(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: size.width / 2,
+                      maxHeight: size.height * 0.3, // Limit to 30% of screen height
+                    ),
+                    child: Opacity(
+                      opacity: 0.86,
+                      child: Image.asset(
+                        theme.brightness == Brightness.dark 
+                            ? _skyAccentsRightDarkAsset 
+                            : _skyAccentsRightAsset,
+                        fit: BoxFit.contain,
+                        filterQuality: FilterQuality.high,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              // Left half of flora
+              Positioned(
+                left: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: size.width / 2,
+                      maxHeight: floraHeight,
+                    ),
+                    child: Image.asset(
+                      theme.brightness == Brightness.dark 
+                          ? _foregroundFloraLeftDarkAsset 
+                          : _foregroundFloraLeftAsset,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                    ),
+                  ),
+                ),
+              ),
+              // Right half of flora
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: IgnorePointer(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: size.width / 2,
+                      maxHeight: floraHeight,
+                    ),
+                    child: Image.asset(
+                      theme.brightness == Brightness.dark 
+                          ? _foregroundFloraRightDarkAsset 
+                          : _foregroundFloraRightAsset,
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                    ),
                   ),
                 ),
               ),
@@ -275,8 +360,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   }
 
   double _brandTopPadding(Size size, bool isTablet, bool isLandscape) {
-    if (isLandscape) return isTablet ? 24 : 14;
-    if (isTablet) return 86;
     return (size.height * 0.225).toDouble();
   }
 
@@ -421,7 +504,8 @@ class _QuexWordmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseStyle = Theme.of(context).textTheme.displayLarge?.copyWith(
+    final theme = Theme.of(context);
+    final baseStyle = theme.textTheme.displayLarge?.copyWith(
           height: 0.88,
           fontWeight: FontWeight.w900,
           letterSpacing: 0,
@@ -436,11 +520,13 @@ class _QuexWordmark extends StatelessWidget {
           textAlign: TextAlign.center,
           style: baseStyle?.copyWith(
             color: QuexTheme.primaryBlue,
-            shadows: const [
+            shadows: [
               Shadow(
-                color: Color(0x330D5DC3),
+                color: theme.brightness == Brightness.dark
+                    ? Colors.white.withValues(alpha: 0.3)
+                    : const Color(0x330D5DC3),
                 blurRadius: 2,
-                offset: Offset(0, 2),
+                offset: const Offset(0, 2),
               ),
             ],
           ),
@@ -520,15 +606,32 @@ class _PositionedAccentLayer extends StatelessWidget {
 }
 
 class _SplashLandscapePainter extends CustomPainter {
+  final bool isDark;
+  
+  const _SplashLandscapePainter({this.isDark = false});
+  
   @override
   void paint(Canvas canvas, Size size) {
-    final cloudPaint = Paint()..color = Colors.white.withValues(alpha: 0.5);
+    // Cloud colors
+    final cloudColor = isDark 
+        ? Colors.black.withValues(alpha: 0.3)
+        : Colors.white.withValues(alpha: 0.5);
+    final cloudColorHighlight = isDark
+        ? Colors.black.withValues(alpha: 0.4)
+        : Colors.white.withValues(alpha: 0.62);
+    
+    final cloudPaint = Paint()..color = cloudColor;
     _drawCloud(
       canvas,
       Offset(size.width * 0.02, size.height * 0.34),
       size.width * 0.22,
-      cloudPaint..color = Colors.white.withValues(alpha: 0.62),
+      cloudPaint..color = cloudColorHighlight,
     );
+
+    // Hill colors - day vs night
+    final farHillColor = isDark ? const Color(0xFF2D4A2B) : const Color(0xFFC7ED62);
+    final nearHillColor = isDark ? const Color(0xFF1F3A1F) : const Color(0xFF9BDD32);
+    final foregroundColor = isDark ? const Color(0xFF152F15) : const Color(0xFF79C92D);
 
     final farHill = Path()
       ..moveTo(0, size.height)
@@ -543,7 +646,7 @@ class _SplashLandscapePainter extends CustomPainter {
       ..close();
     canvas.drawPath(
       farHill,
-      Paint()..color = const Color(0xFFC7ED62),
+      Paint()..color = farHillColor,
     );
 
     final nearHill = Path()
@@ -565,7 +668,7 @@ class _SplashLandscapePainter extends CustomPainter {
       ..close();
     canvas.drawPath(
       nearHill,
-      Paint()..color = const Color(0xFF9BDD32),
+      Paint()..color = nearHillColor,
     );
 
     final foreground = Path()
@@ -581,7 +684,7 @@ class _SplashLandscapePainter extends CustomPainter {
       ..close();
     canvas.drawPath(
       foreground,
-      Paint()..color = const Color(0xFF79C92D),
+      Paint()..color = foregroundColor,
     );
   }
 
@@ -615,5 +718,6 @@ class _SplashLandscapePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _SplashLandscapePainter oldDelegate) => 
+      oldDelegate.isDark != isDark;
 }
