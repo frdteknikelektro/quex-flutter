@@ -46,7 +46,8 @@ dependencies:
 
   # ── AI & ML ────────────────────────────────────────────────
   flutter_gemma:
-    path: ../flutter_gemma
+    git:
+      url: https://github.com/frdteknikelektro/flutter_gemma
   background_downloader: ^9.5.4
 
   # ── Notifications ──────────────────────────────────────────
