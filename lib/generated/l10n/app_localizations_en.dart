@@ -871,4 +871,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get quizDebugViewQuiz => 'View Quiz';
+
+  @override
+  String get chatTtsSayThinking => 'Let me think for a moment…';
 }

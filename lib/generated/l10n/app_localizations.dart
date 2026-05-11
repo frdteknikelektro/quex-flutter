@@ -1621,6 +1621,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'View Quiz'**
   String get quizDebugViewQuiz;
+
+  /// TTS phrase spoken when AI enters thinking mode
+  ///
+  /// In en, this message translates to:
+  /// **'Let me think for a moment…'**
+  String get chatTtsSayThinking;
 }
 
 class _AppLocalizationsDelegate

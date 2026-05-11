@@ -256,5 +256,9 @@
   "quizDebugReadyToReview": "{count} pertanyaan{s} siap ditinjau.",
   "quizDebugMultipleChoice": "Pilihan Ganda",
   "quizDebugTextAnswer": "Jawaban Teks",
-  "quizDebugViewQuiz": "Lihat Kuis"
+  "quizDebugViewQuiz": "Lihat Kuis",
+  "chatTtsSayThinking": "Tunggu ya, aku berpikir dulu…",
+  "@chatTtsSayThinking": {
+    "description": "Frasa TTS saat AI mulai berpikir"
+  }
 }

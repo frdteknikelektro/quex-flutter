@@ -72,6 +72,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   // Session State
   // ===========================================================================
   bool _isThinkingMode = false;
+  int _sendEra = 0;
 
   // ===========================================================================
   // Audio Recording State
@@ -190,6 +191,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     if (!mounted) return;
     setState(() {
       _sending = true;
+      _sendEra++;
       _streamingContent = '';
       _thinkingContent = null;
     });
@@ -300,6 +302,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       setState(() {
         _isThinkingMode = newValue;
         _sending = true;
+        _sendEra++;
       });
       await _resetChat(question, materials);
     }
@@ -444,7 +447,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     if (pickedFile == null) return;
 
-    if (mounted) setState(() => _sending = true);
+    if (mounted) setState(() { _sending = true; _sendEra++; });
 
     try {
       final originalFile = File(pickedFile.path);
@@ -585,6 +588,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
 
     setState(() {
       _sending = true;
+      _sendEra++;
       _streamingContent = '';
       _thinkingContent = null;
       _thinkingExpanded = false;
@@ -675,6 +679,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
 
     setState(() {
       _sending = true;
+      _sendEra++;
       _streamingContent = '';
       _thinkingContent = null;
       _thinkingExpanded = false;
@@ -870,6 +875,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
                   ChatInputBar(
                     controller: _textController,
                     sending: _sending,
+                    sendEra: _sendEra,
                     modelLoading: _modelLoading,
                     onSend: () => _sendMessage(question, materials),
                     onStop: _stopGeneration,

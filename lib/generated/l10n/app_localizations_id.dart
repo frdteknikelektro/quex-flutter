@@ -873,4 +873,7 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get quizDebugViewQuiz => 'Lihat Kuis';
+
+  @override
+  String get chatTtsSayThinking => 'Tunggu ya, aku berpikir dulu…';
 }

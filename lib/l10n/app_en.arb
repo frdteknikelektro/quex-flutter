@@ -1251,5 +1251,9 @@
   "quizDebugViewQuiz": "View Quiz",
   "@quizDebugViewQuiz": {
     "description": "Button to view quiz"
+  },
+  "chatTtsSayThinking": "Let me think for a moment…",
+  "@chatTtsSayThinking": {
+    "description": "TTS phrase spoken when AI enters thinking mode"
   }
 }

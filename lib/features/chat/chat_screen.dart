@@ -15,6 +15,7 @@ import 'package:record/record.dart';
 import '../../app/breakpoints.dart';
 import '../../app/theme.dart';
 import '../../core/ai/session_chat_service.dart';
+import '../../core/ai/tts_service.dart';
 import '../../core/ai/quex_ai.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
@@ -54,6 +55,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // Services
   // ===========================================================================
   final SessionChatService _sessionService = SessionChatService();
+  final TtsService _ttsService = TtsService();
   StreamSubscription<({String? text, String? thinking})>? _streamSub;
 
   // ===========================================================================
@@ -75,6 +77,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // Session State
   // ===========================================================================
   bool _isThinkingMode = false;
+  bool _thinkingSpeechFired = false;
+  // Increments each time a new send round starts; keeps AnimatedSwitcher keys
+  // unique across rapid false→true→false _sending transitions.
+  int _sendEra = 0;
 
   // ===========================================================================
   // Audio Recording State
@@ -106,6 +112,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _initialize() async {
+    unawaited(_ttsService.initialize());
+
     if (_sessionService.isInitialized) {
       final effectiveMaxTokens = _sessionService.effectiveMaxTokens ?? 8192;
       if (mounted) setState(() => _maxTokens = effectiveMaxTokens);
@@ -136,6 +144,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _cleanupOnDispose() async {
+    try {
+      await _ttsService.dispose();
+    } catch (e) {
+      debugPrint('Error disposing TTS service: $e');
+    }
     try {
       await _sessionService.dispose();
     } catch (e) {
@@ -179,6 +192,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     SessionBundle bundle,
     List<StudyMaterial> chatMaterials,
   ) async {
+    await _ttsService.stop();
     await _streamSub?.cancel();
     _streamSub = null;
     _clearImages();
@@ -187,11 +201,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (mounted) {
       setState(() {
         _messages.clear();
-        // Session reset via _sessionService.resetSession()
         _sending = false;
         _streamingContent = null;
         _thinkingContent = null;
         _openerFired = false;
+        _thinkingSpeechFired = false;
       });
     }
   }
@@ -235,7 +249,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (confirmed == true && mounted) {
       setState(() {
         _isThinkingMode = newValue;
-        _sending = true; // Show waiting modal immediately
+        _sending = true;
+        _sendEra++;
       });
       await _resetChat(bundle, chatMaterials);
     }
@@ -270,6 +285,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (!mounted) return;
     setState(() {
       _sending = true;
+      _sendEra++;
       _streamingContent = '';
       _thinkingContent = null;
     });
@@ -277,6 +293,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final l10n = AppLocalizations.of(context);
       final locale = l10n?.localeName ?? 'en';
+      unawaited(_ttsService.setLocale(locale));
 
       // Convert attached images to bytes if user attached images before opener
       debugPrint(
@@ -298,6 +315,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       final stream = _sessionService.sendOpener(locale, images: imageBytes);
       final result = await _handleStream(stream);
+      _thinkingSpeechFired = false;
+      unawaited(_ttsService.speak(result.reply));
 
       // Clear attached images after sending with opener
       _clearImages();
@@ -338,9 +357,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ---------------------------------------------------------------------------
 
   Future<void> _stopGeneration() async {
+    await _ttsService.stop();
     await _streamSub?.cancel();
     _streamSub = null;
     _tokenCount = 0;
+    _thinkingSpeechFired = false;
     await _sessionService.stopGeneration();
     if (mounted) {
       setState(() {
@@ -358,6 +379,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final accumulatedThinking = StringBuffer();
     final completer = Completer<void>();
     _tokenCount = 0;
+    // Resolve locale-dependent string before entering async callbacks.
+    final thinkingPhrase = AppLocalizations.of(context)?.chatTtsSayThinking
+        ?? 'Let me think for a moment…';
 
     await _streamSub?.cancel();
     _streamSub = stream.listen(
@@ -365,6 +389,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         if (!mounted) return;
         if (event.thinking != null) {
           accumulatedThinking.write(event.thinking);
+          if (!_thinkingSpeechFired) {
+            _thinkingSpeechFired = true;
+            unawaited(_ttsService.speak(thinkingPhrase));
+          }
           if (mounted) {
             setState(() => _thinkingContent = accumulatedThinking.toString());
           }
@@ -481,7 +509,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (pickedFile == null) return;
 
     if (mounted) {
-      setState(() => _sending = true);
+      setState(() { _sending = true; _sendEra++; });
     }
 
     try {
@@ -631,6 +659,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     setState(() {
       _sending = true;
+      _sendEra++;
       _streamingContent = '';
       _thinkingContent = null;
       _thinkingExpanded = false;
@@ -646,6 +675,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final stream = _sessionService.sendUserAudio(audioBytes);
       final result = await _handleStream(stream);
+      _thinkingSpeechFired = false;
+      unawaited(_ttsService.speak(result.reply));
 
       if (mounted) {
         setState(() {
@@ -723,6 +754,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     setState(() {
       _sending = true;
+      _sendEra++;
       _streamingContent = '';
       _thinkingContent = null;
       _thinkingExpanded = false;
@@ -746,6 +778,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final stream = _sessionService.sendUserMessage(text, images: imageBytes);
       final result = await _handleStream(stream);
+      _thinkingSpeechFired = false;
+      unawaited(_ttsService.speak(result.reply));
 
       if (mounted) {
         setState(() {
@@ -871,6 +905,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             ChatInputBar(
               controller: _textController,
               sending: _sending,
+              sendEra: _sendEra,
               modelLoading: _modelLoading,
               onSend: () => _sendMessage(bundle, chatMaterials),
               onStop: _stopGeneration,
@@ -904,6 +939,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   ?.copyWith(fontWeight: FontWeight.w700),
             ),
             actions: [
+              IconButton(
+                icon: Icon(
+                  _ttsService.isMuted
+                      ? Icons.volume_off_rounded
+                      : Icons.volume_up_rounded,
+                  color: scheme.onSurfaceVariant,
+                ),
+                onPressed: () async {
+                  await _ttsService.setMuted(!_ttsService.isMuted);
+                  setState(() {});
+                },
+              ),
               if (!isEmpty)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -1598,6 +1645,7 @@ class SuggestionChipsList extends StatelessWidget {
 class ChatInputBar extends StatelessWidget {
   final TextEditingController controller;
   final bool sending;
+  final int sendEra;
   final bool modelLoading;
   final VoidCallback onSend;
   final VoidCallback onStop;
@@ -1611,6 +1659,7 @@ class ChatInputBar extends StatelessWidget {
     super.key,
     required this.controller,
     required this.sending,
+    required this.sendEra,
     required this.modelLoading,
     required this.onSend,
     required this.onStop,
@@ -1684,7 +1733,7 @@ class ChatInputBar extends StatelessWidget {
                     )
                   : sending
                       ? IconButton(
-                          key: const ValueKey('stop'),
+                          key: ValueKey('stop-$sendEra'),
                           onPressed: onStop,
                           icon: Icon(Icons.stop_rounded,
                               color: scheme.onErrorContainer),
@@ -1694,7 +1743,7 @@ class ChatInputBar extends StatelessWidget {
                           ),
                         )
                       : IconButton(
-                          key: const ValueKey('send'),
+                          key: ValueKey('send-$sendEra'),
                           onPressed: onSend,
                           icon: Icon(Icons.send_rounded, color: scheme.primary),
                           style: IconButton.styleFrom(
