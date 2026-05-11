@@ -13,6 +13,7 @@ import 'package:record/record.dart';
 
 import '../../app/theme.dart';
 import '../../core/ai/question_chat_service.dart';
+import '../../core/ai/tts_service.dart';
 import '../../core/ai/tutor_event.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
@@ -51,6 +52,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   // Services
   // ===========================================================================
   final QuestionChatService _chatService = QuestionChatService();
+  final TtsService _ttsService = TtsService();
   StreamSubscription<TutorEvent>? _streamSub;
 
   // ===========================================================================
@@ -72,6 +74,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   // Session State
   // ===========================================================================
   bool _isThinkingMode = false;
+  bool _thinkingSpeechFired = false;
   int _sendEra = 0;
 
   // ===========================================================================
@@ -109,6 +112,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   }
 
   Future<void> _initialize() async {
+    unawaited(_ttsService.initialize());
+
     if (_chatService.isInitialized) {
       final effectiveMaxTokens = _chatService.effectiveMaxTokens ?? 8192;
       if (mounted) setState(() => _maxTokens = effectiveMaxTokens);
@@ -136,6 +141,11 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   }
 
   void _cleanupOnDispose() async {
+    try {
+      await _ttsService.dispose();
+    } catch (e) {
+      debugPrint('Error disposing tts service: $e');
+    }
     try {
       await _chatService.dispose();
     } catch (e) {
@@ -167,6 +177,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
 
     final l10n = AppLocalizations.of(context);
     final locale = l10n?.localeName ?? 'en';
+    unawaited(_ttsService.setLocale(locale));
 
     try {
       await _chatService.createSession(
@@ -209,6 +220,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
 
       final stream = _chatService.sendOpener(locale, images: imageBytes);
       final result = await _handleTutorStream(stream);
+      _thinkingSpeechFired = false;
+      unawaited(_ttsService.speak(result.reply));
 
       _clearImages();
 
@@ -246,6 +259,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     Question question,
     List<StudyMaterial> materials,
   ) async {
+    await _ttsService.stop();
     await _streamSub?.cancel();
     _streamSub = null;
     _clearImages();
@@ -257,6 +271,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
         _sending = false;
         _streamingContent = null;
         _thinkingContent = null;
+        _thinkingSpeechFired = false;
         _openerFired = false;
       });
     }
@@ -325,9 +340,11 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   // ---------------------------------------------------------------------------
 
   Future<void> _stopGeneration() async {
+    await _ttsService.stop();
     await _streamSub?.cancel();
     _streamSub = null;
     _tokenCount = 0;
+    _thinkingSpeechFired = false;
     await _chatService.stopGeneration();
     if (mounted) {
       setState(() {
@@ -345,6 +362,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final accumulatedThinking = StringBuffer();
     final completer = Completer<void>();
     _tokenCount = 0;
+    final thinkingPhrase = AppLocalizations.of(context)?.chatTtsSayThinking
+        ?? 'Let me think for a moment…';
 
     await _streamSub?.cancel();
     _streamSub = stream.listen(
@@ -352,6 +371,10 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
         if (!mounted) return;
         if (event is TutorThinking) {
           accumulatedThinking.write(event.token);
+          if (!_thinkingSpeechFired) {
+            _thinkingSpeechFired = true;
+            unawaited(_ttsService.speak(thinkingPhrase));
+          }
           if (mounted) {
             setState(() => _thinkingContent = accumulatedThinking.toString());
           }
@@ -604,6 +627,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     try {
       final stream = _chatService.sendUserAudio(audioBytes);
       final result = await _handleTutorStream(stream);
+      _thinkingSpeechFired = false;
+      unawaited(_ttsService.speak(result.reply));
 
       if (mounted) {
         setState(() {
@@ -701,6 +726,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     try {
       final stream = _chatService.sendMessage(text, images: imageBytes);
       final result = await _handleTutorStream(stream);
+      _thinkingSpeechFired = false;
+      unawaited(_ttsService.speak(result.reply));
 
       if (mounted) {
         setState(() {
@@ -790,6 +817,18 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
                   ?.copyWith(fontWeight: FontWeight.w700),
             ),
             actions: [
+              IconButton(
+                icon: Icon(
+                  _ttsService.isMuted
+                      ? Icons.volume_off_rounded
+                      : Icons.volume_up_rounded,
+                  color: scheme.onSurfaceVariant,
+                ),
+                onPressed: () async {
+                  await _ttsService.setMuted(!_ttsService.isMuted);
+                  setState(() {});
+                },
+              ),
               if (!isEmpty)
                 Padding(
                   padding: const EdgeInsets.only(right: 8),
