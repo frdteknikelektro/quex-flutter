@@ -13,8 +13,8 @@ void main() {
 
     test('should yield regular text tokens immediately', () async {
       final input = Stream.fromIterable([
-        gemma.TextResponse('Hello '),
-        gemma.TextResponse('world!'),
+        const gemma.TextResponse('Hello '),
+        const gemma.TextResponse('world!'),
       ]);
 
       final output = await service.processResponseStream(input).toList();
@@ -26,11 +26,11 @@ void main() {
 
     test('should buffer and suppress JSON tool calls from text stream', () async {
       final input = Stream.fromIterable([
-        gemma.TextResponse('Sure! '),
-        gemma.TextResponse('{"name": '),
-        gemma.TextResponse('"evaluate_understanding", '),
-        gemma.TextResponse('"parameters": {"score": 1.0}}'),
-        gemma.TextResponse(' Great job!'),
+        const gemma.TextResponse('Sure! '),
+        const gemma.TextResponse('{"name": '),
+        const gemma.TextResponse('"evaluate_understanding", '),
+        const gemma.TextResponse('"parameters": {"score": 1.0}}'),
+        const gemma.TextResponse(' Great job!'),
       ]);
 
       final output = await service.processResponseStream(input).toList();
@@ -42,10 +42,10 @@ void main() {
 
     test('should buffer and yield channel tags as thinking', () async {
       final input = Stream.fromIterable([
-        gemma.TextResponse('Answer: '),
-        gemma.TextResponse('<|channel>thought\nI should check the math.'),
-        gemma.TextResponse(' It seems correct.<channel|>'),
-        gemma.TextResponse(' Correct!'),
+        const gemma.TextResponse('Answer: '),
+        const gemma.TextResponse('<|channel>thought\nI should check the math.'),
+        const gemma.TextResponse(' It seems correct.<channel|>'),
+        const gemma.TextResponse(' Correct!'),
       ]);
 
       final output = await service.processResponseStream(input).toList();
@@ -58,7 +58,7 @@ void main() {
 
     test('should handle tag embedded in text token', () async {
       final input = Stream.fromIterable([
-        gemma.TextResponse('Start <|channel>thought\nReasoning<channel|> End'),
+        const gemma.TextResponse('Start <|channel>thought\nReasoning<channel|> End'),
       ]);
 
       final output = await service.processResponseStream(input).toList();
@@ -70,7 +70,7 @@ void main() {
 
     test('should flush buffer if stream ends without complete JSON', () async {
       final input = Stream.fromIterable([
-        gemma.TextResponse('This looks like JSON: {"name": "incomplete"'),
+        const gemma.TextResponse('This looks like JSON: {"name": "incomplete"'),
       ]);
 
       final output = await service.processResponseStream(input).toList();
@@ -80,8 +80,8 @@ void main() {
 
     test('should handle ThinkingResponse correctly', () async {
       final input = Stream.fromIterable([
-        gemma.ThinkingResponse('Thinking...'),
-        gemma.TextResponse('Final answer'),
+        const gemma.ThinkingResponse('Thinking...'),
+        const gemma.TextResponse('Final answer'),
       ]);
 
       final output = await service.processResponseStream(input).toList();
@@ -92,8 +92,8 @@ void main() {
 
     test('should deduplicate tool calls if library also yields them', () async {
       final input = Stream.fromIterable([
-        gemma.TextResponse('{"name": "test_tool", "parameters": {}}'),
-        gemma.FunctionCallResponse(name: 'test_tool', args: {}),
+        const gemma.TextResponse('{"name": "test_tool", "parameters": {}}'),
+        const gemma.FunctionCallResponse(name: 'test_tool', args: {}),
       ]);
 
       final output = await service.processResponseStream(input).toList();

@@ -1,15 +1,11 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/theme.dart';
-import '../../core/ai/gemma_inference_service.dart';
-import '../../core/ai/gemma_service_host.dart';
-import '../../core/ai/gemma_quiz_service.dart';
-import '../../core/ai/material_preprocessor.dart';
+import '../../core/ai/quiz_generation_service.dart';
 import '../../core/ai/quiz_generation_event.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
@@ -22,12 +18,10 @@ enum _ModalStep { materialSelection, extracting, extractionReview, generating, c
 
 class QuizGenerationModal extends ConsumerStatefulWidget {
   final int sessionId;
-  final GemmaInferenceService Function()? gemmaServiceFactory;
 
   const QuizGenerationModal({
     super.key,
     required this.sessionId,
-    this.gemmaServiceFactory,
   });
 
   @override
@@ -41,7 +35,6 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   List<String> _planSteps = [];
   final Set<int> _completedSteps = {};
   final _scrollController = ScrollController();
-  late final GemmaServiceHost _gemmaHost;
 
   _ModalStep _step = _ModalStep.materialSelection;
   List<StudyMaterial> _allMaterials = [];
@@ -54,7 +47,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   bool _isExtracting = false;
   StreamSubscription<QuizGenerationEvent>? _subscription;
   int? _quizId;
-  GemmaQuizService? _quizService;
+  QuizGenerationService? _quizService;
   Session? _session;
   String? _extractedQuestions;
   List<StudyMaterial> _selectedMaterials = [];
@@ -62,16 +55,12 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   @override
   void initState() {
     super.initState();
-    _gemmaHost = GemmaServiceHost(
-      service: widget.gemmaServiceFactory?.call(),
-    );
     _loadMaterials();
   }
 
   @override
   void dispose() {
     _subscription?.cancel();
-    unawaited(_gemmaHost.dispose());
     _scrollController.dispose();
     super.dispose();
   }
@@ -98,18 +87,14 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   Future<void> _initModelBackground() async {
     setState(() => _isLoadingModel = true);
     try {
-      await _ensureModel();
+      _quizService ??= QuizGenerationService();
+      await _quizService!.initialize();
     } catch (_) {
       // Generation will fall back to rule-based if model fails
     } finally {
       if (mounted) setState(() => _isLoadingModel = false);
     }
   }
-
-  Future<GemmaInferenceService> _ensureModel() {
-    return _gemmaHost.ensureInitialized();
-  }
-
 
   Future<void> _onGenerateTapped() async {
     final session = _session;
@@ -141,12 +126,13 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   Future<void> _startExtraction(
       List<StudyMaterial> selected, Session session) async {
     try {
-      final service = await _ensureModel();
-      _quizService ??= GemmaQuizService(service);
+      _quizService ??= QuizGenerationService();
+      await _quizService!.initialize();
 
-      final stream = _quizService!.runQuizAgent(
+      final stream = _quizService!.runExtractionSession(
         session: session,
         materials: selected,
+        locale: mounted ? Localizations.localeOf(context).languageCode : 'en',
       );
 
       _subscription = stream.listen(
@@ -175,27 +161,15 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     setState(() => _step = _ModalStep.generating);
 
     try {
-      await _ensureModel();
-
-      // Prepare materials for Session 2
-      final prepared = await MaterialPreprocessor.prepare(_selectedMaterials);
-      final hasImages = prepared.any((p) => p.images.isNotEmpty);
-      final textContext = prepared
-          .map((p) => p.textChunk)
-          .where((t) => t.isNotEmpty)
-          .join('\n\n');
-
-      final allImages = <Uint8List>[];
-      for (final prep in prepared) {
-        allImages.addAll(prep.images);
-      }
+      _quizService ??= QuizGenerationService();
+      await _quizService!.initialize();
 
       final stream = _quizService!.runGenerationSession(
         session: session,
-        textContext: textContext,
-        images: allImages,
-        hasImages: hasImages,
-        extractedQuestions: _extractedQuestions,
+        materials: _selectedMaterials,
+        extractedQuestions: _extractedQuestions ?? '',
+        targetCount: 10,
+        locale: mounted ? Localizations.localeOf(context).languageCode : 'en',
       );
 
       _subscription = stream.listen(
@@ -274,7 +248,13 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       case QuizTextToken(:final token):
         setState(() {
           _isGenerating = true;
-          _streamBuffer.write(token);
+          // Clean up markers for a better live preview in the terminal-like view
+          final cleanToken = token
+              .replaceAll('[Q]', '### Question\n')
+              .replaceAll('[/Q]', '\n\n')
+              .replaceAll('[CONTEXT]', '> ')
+              .replaceAll('[/CONTEXT]', '\n\n');
+          _streamBuffer.write(cleanToken);
         });
         _scrollToBottom();
       case QuizGenerationStarted():

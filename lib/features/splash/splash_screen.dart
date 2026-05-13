@@ -20,13 +20,10 @@ class SplashScreen extends ConsumerStatefulWidget {
 class _SplashScreenState extends ConsumerState<SplashScreen>
     with TickerProviderStateMixin {
   static const _duckAsset = 'assets/images/splash/duck_mascot.png';
-  static const _skyAccentsAsset = 'assets/images/splash/sky_accents.png';
   static const _skyAccentsLeftAsset = 'assets/images/splash/sky_accents-left.png';
   static const _skyAccentsRightAsset = 'assets/images/splash/sky_accents-right.png';
   static const _skyAccentsLeftDarkAsset = 'assets/images/splash/sky_accents-left-dark.png';
   static const _skyAccentsRightDarkAsset = 'assets/images/splash/sky_accents-right-dark.png';
-  static const _foregroundFloraAsset =
-      'assets/images/splash/foreground_flora.png';
   static const _foregroundFloraLeftAsset =
       'assets/images/splash/foreground_flora-left.png';
   static const _foregroundFloraRightAsset =
@@ -139,8 +136,6 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           final bottomInset = MediaQuery.paddingOf(context).bottom;
           final duckSize = _duckSize(size, isTablet, isLandscape);
           final floraHeight = size.height * 0.6;
-          final skyWidth =
-              math.min(size.width * (isTablet ? 0.84 : 1.0), 720.0);
           final statusBottom = _statusBottom(size, bottomInset, isLandscape);
           final duckBottom = _duckBottom(size, isTablet, isLandscape);
 
@@ -568,38 +563,6 @@ class _StatusPanel extends StatelessWidget {
           vertical: Sp.sm + Sp.xs + 2,
         ),
         child: child,
-      ),
-    );
-  }
-}
-
-class _PositionedAccentLayer extends StatelessWidget {
-  final String asset;
-  final double width;
-  final double top;
-  final double opacity;
-
-  const _PositionedAccentLayer({
-    required this.asset,
-    required this.width,
-    required this.top,
-    required this.opacity,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Positioned(
-      top: top,
-      width: width,
-      child: IgnorePointer(
-        child: Opacity(
-          opacity: opacity,
-          child: Image.asset(
-            asset,
-            fit: BoxFit.contain,
-            filterQuality: FilterQuality.high,
-          ),
-        ),
       ),
     );
   }
