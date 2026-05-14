@@ -17,13 +17,12 @@ class GemmaConfigService {
     }
 
     try {
-      final ramGB = await DeviceInfo.getPhysicalRamGB();
-      if (ramGB <= 0) {
+      final ramMB = await DeviceInfo.getPhysicalRamMB();
+      if (ramMB <= 0) {
         _cachedMaxTokens = fallback;
         return fallback;
       }
 
-      final ramMB = ramGB * 1024;
       final variant = await ModelManager.getSelectedVariant();
       final isE4B = variant == ModelManager.variantE4B;
 
@@ -49,8 +48,7 @@ class GemmaConfigService {
 
   /// Get diagnostics information for debugging.
   static Future<Map<String, dynamic>> getDiagnostics() async {
-    final ramGB = await DeviceInfo.getPhysicalRamGB();
-    final ramMB = ramGB * 1024;
+    final ramMB = await DeviceInfo.getPhysicalRamMB();
     final variant = await ModelManager.getSelectedVariant();
 
     return {

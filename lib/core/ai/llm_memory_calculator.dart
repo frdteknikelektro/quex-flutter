@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// Standalone LLM Memory Calculator for Gemma 4 models
 /// Calculates optimal maxTokens based on device RAM with 70% budget
 class LLMMemoryCalculator {
@@ -20,12 +22,13 @@ class LLMMemoryCalculator {
   }) {
     final budgetMB = (ramMB * _budgetPercent).floor();
     final weightsMB = isE4B ? _e4bWeightsMB : _e2bWeightsMB;
-    final availableForKvMb = budgetMB - weightsMB;
+    var availableForKvMb = budgetMB - weightsMB;
 
     if (availableForKvMb <= 0) {
-      throw Exception(
-        'Insufficient RAM: need ${weightsMB}MB for weights, '
-        'have ${budgetMB}MB budget (70% of ${ramMB}MB)',
+      availableForKvMb = 0;
+      debugPrint(
+        '[LLMMemoryCalculator] Insufficient RAM: need ${weightsMB}MB for weights, '
+        'have ${budgetMB}MB budget (${(_budgetPercent * 100).toInt()}% of ${ramMB}MB)',
       );
     }
 
@@ -42,7 +45,7 @@ class LLMMemoryCalculator {
       finalTokens = hardCap;
     }
 
-    return finalTokens < 512 ? 512 : finalTokens;
+    return finalTokens < 2048 ? 2048 : finalTokens;
   }
 
   static Map<String, dynamic> getDiagnostics(int ramMB) {
