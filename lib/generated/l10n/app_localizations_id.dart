@@ -188,6 +188,19 @@ class AppLocalizationsId extends AppLocalizations {
   String get switchProfile => 'Ganti Profil';
 
   @override
+  String get deleteAIModel => 'Hapus Model AI';
+
+  @override
+  String get deleteAIModelSubtitle => 'Hapus otak AI dan data';
+
+  @override
+  String get deleteAIModelQuestion => 'Hapus Model AI?';
+
+  @override
+  String get deleteAIModelConfirm =>
+      'Ini akan menghapus otak model AI yang telah diunduh. Anda harus mengunduhnya kembali untuk menggunakan Quex lagi.';
+
+  @override
   String get noProfileFound => 'Profil tidak ditemukan';
 
   @override

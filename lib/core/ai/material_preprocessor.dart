@@ -24,7 +24,7 @@ class PreparedMaterial {
 ///
 /// Total image cap: [totalImageCap] images across all materials (first-N).
 class MaterialPreprocessor {
-  static const int totalImageCap = 32;
+  static const int totalImageCap = 16;
 
   /// Prepare all materials. Never throws; bad files yield empty PreparedMaterial.
   static Future<List<PreparedMaterial>> prepare(

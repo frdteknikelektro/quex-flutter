@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/router.dart';
 import '../../app/theme.dart';
+import '../../core/ai/model_download_notifier.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
@@ -292,6 +293,7 @@ class _SettingsListCard extends ConsumerStatefulWidget {
 class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
   bool _clearingSessions = false;
   bool _deleting = false;
+  bool _deletingModel = false;
   String? _selectedLanguage;
 
   @override
@@ -414,6 +416,50 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
       }
     } finally {
       if (mounted) setState(() => _deleting = false);
+    }
+  }
+
+  Future<void> _deleteAIModel() async {
+    final l10n = AppLocalizations.of(context)!;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.warning_rounded, color: Theme.of(context).colorScheme.error),
+            const SizedBox(width: 8),
+            Text(l10n.deleteAIModelQuestion),
+          ],
+        ),
+        content: Text(l10n.deleteAIModelConfirm),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(l10n.cancel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            child: Text(l10n.delete),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _deletingModel = true);
+    try {
+      await ref.read(modelDownloadProvider.notifier).reset();
+      if (mounted) {
+        context.go(Routes.splash);
+      }
+    } finally {
+      if (mounted) setState(() => _deletingModel = false);
     }
   }
 
@@ -544,6 +590,30 @@ class _SettingsListCardState extends ConsumerState<_SettingsListCard> {
                       )
                     : Icon(Icons.chevron_right, color: scheme.error),
                 onTap: _deleting ? null : _deleteProfile,
+              ),
+              const Divider(height: 1, indent: 16, endIndent: 16),
+              // Delete AI Model (danger)
+              ListTile(
+                leading: Icon(Icons.psychology_outlined, color: scheme.error),
+                title: Text(
+                  l10n.deleteAIModel,
+                  style: TextStyle(color: scheme.error),
+                ),
+                subtitle: Text(
+                  l10n.deleteAIModelSubtitle,
+                  style: TextStyle(color: scheme.onSurfaceVariant),
+                ),
+                trailing: _deletingModel
+                    ? SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: scheme.error,
+                        ),
+                      )
+                    : Icon(Icons.chevron_right, color: scheme.error),
+                onTap: _deletingModel ? null : _deleteAIModel,
               ),
             ],
           ),

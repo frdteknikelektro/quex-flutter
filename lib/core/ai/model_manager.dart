@@ -339,7 +339,7 @@ class ModelManager {
 
     _model = await FlutterGemma.getActiveModel(
       maxTokens: maxTokens,
-      preferredBackend: preferredBackend,
+      preferredBackend: maxTokens < 4096 ? PreferredBackend.cpu : preferredBackend,
       supportImage: true,
       supportAudio: true,
       maxNumImages: maxNumImages,

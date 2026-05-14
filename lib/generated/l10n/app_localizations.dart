@@ -434,6 +434,30 @@ abstract class AppLocalizations {
   /// **'Switch Profile'**
   String get switchProfile;
 
+  /// Button to delete AI model
+  ///
+  /// In en, this message translates to:
+  /// **'Delete AI Model'**
+  String get deleteAIModel;
+
+  /// Subtitle for delete AI model action
+  ///
+  /// In en, this message translates to:
+  /// **'Remove AI brain and data'**
+  String get deleteAIModelSubtitle;
+
+  /// Confirmation dialog title for deleting AI model
+  ///
+  /// In en, this message translates to:
+  /// **'Delete AI Model?'**
+  String get deleteAIModelQuestion;
+
+  /// Confirmation message for deleting AI model
+  ///
+  /// In en, this message translates to:
+  /// **'This will delete the downloaded AI model brain. You will need to re-download it to use Quex again.'**
+  String get deleteAIModelConfirm;
+
   /// Error message when no profile exists
   ///
   /// In en, this message translates to:

@@ -188,6 +188,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String get switchProfile => 'Switch Profile';
 
   @override
+  String get deleteAIModel => 'Delete AI Model';
+
+  @override
+  String get deleteAIModelSubtitle => 'Remove AI brain and data';
+
+  @override
+  String get deleteAIModelQuestion => 'Delete AI Model?';
+
+  @override
+  String get deleteAIModelConfirm =>
+      'This will delete the downloaded AI model brain. You will need to re-download it to use Quex again.';
+
+  @override
   String get noProfileFound => 'No profile found';
 
   @override

@@ -269,6 +269,22 @@
   "@switchProfile": {
     "description": "Button to switch to another profile"
   },
+  "deleteAIModel": "Delete AI Model",
+  "@deleteAIModel": {
+    "description": "Button to delete AI model"
+  },
+  "deleteAIModelSubtitle": "Remove AI brain and data",
+  "@deleteAIModelSubtitle": {
+    "description": "Subtitle for delete AI model action"
+  },
+  "deleteAIModelQuestion": "Delete AI Model?",
+  "@deleteAIModelQuestion": {
+    "description": "Confirmation dialog title for deleting AI model"
+  },
+  "deleteAIModelConfirm": "This will delete the downloaded AI model brain. You will need to re-download it to use Quex again.",
+  "@deleteAIModelConfirm": {
+    "description": "Confirmation message for deleting AI model"
+  },
   "noProfileFound": "No profile found",
   "@noProfileFound": {
     "description": "Error message when no profile exists"

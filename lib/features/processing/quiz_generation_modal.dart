@@ -79,9 +79,6 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       _selectedIds = {};
       _session = bundle.session;
     });
-
-    // Start loading model in background while user selects materials
-    _initModelBackground();
   }
 
   Future<void> _initModelBackground() async {
