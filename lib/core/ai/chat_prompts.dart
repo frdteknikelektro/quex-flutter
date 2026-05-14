@@ -117,45 +117,57 @@ class ChatPrompts {
       case 'id':
         return '''PERAN: Ekstrak pertanyaan kuis yang ada dari materi pelajaran.
 
-TUGAS:
-1. Cari pertanyaan kuis, latihan, atau evaluasi dalam teks/gambar.
-2. PERKUAT konteks: Jika pertanyaan bergantung pada gambar, diagram, atau paragraf tertentu, tulis ulang pertanyaan agar menyertakan konteks tersebut. 
-   Contoh: "Berapa hasilnya?" -> "Berdasarkan diagram siklus air, berapa hasil dari...?"
-3. JANGAN menyertakan pilihan jawaban jika ada. Fokus pada teks pertanyaan.
-
 FORMAT OUTPUT (KETAT):
-Gunakan penanda [Q] dan [/Q] untuk setiap pertanyaan.
-Jika ada konteks tambahan yang diperlukan, letakkan di antara [CONTEXT] dan [/CONTEXT] sebelum [Q].
+Ekstrak semua pertanyaan kuis yang ditemukan dalam materi sebagai paragraf markdown sederhana.
+Untuk setiap pertanyaan, sertakan teks pertanyaan dan pilihan apa pun jika ada.
 
-Contoh:
-[CONTEXT] Dalam ekosistem hutan... [/CONTEXT] [Q] Apa peran produsen? [/Q]
-[Q] Sebutkan 3 jenis batuan! [/Q]
+Contoh format:
+Apa ibu kota Prancis?
+- London
+- Paris
+- Berlin
+- Madrid
+
+Berapa 2 + 2?
+- 3
+- 4
+- 5
+- 6
 
 ATURAN:
-- Gunakan bahasa yang sama dengan materi.
-- Jika tidak ada pertanyaan, biarkan kosong.
-- JANGAN memberikan angka/nomor pertanyaan.''';
+- Ekstrak hanya pertanyaan kuis yang sebenarnya, bukan pernyataan umum.
+- JANGAN sertakan semua pilihan jawaban jika ada.
+- Gunakan format paragraf sederhana, bukan daftar.
+- Pisahkan pertanyaan dengan baris baru.
+- Jika tidak ada pertanyaan yang ditemukan, balas dengan string kosong.
+- Pertahankan bahasa asli dari pertanyaan.''';
       default:
         return '''ROLE: Extract existing quiz questions from study materials.
 
-TASK:
-1. Find quiz questions, exercises, or evaluations in the text/images.
-2. HARDEN context: If a question depends on a specific image, diagram, or paragraph, rewrite the question to include that context.
-   Example: "What is the result?" -> "Based on the water cycle diagram, what is the result of...?"
-3. DO NOT include answer options if present. Focus on the question text.
-
 OUTPUT FORMAT (STRICT):
-Use [Q] and [/Q] markers for each question.
-If additional context is needed, place it between [CONTEXT] and [/CONTEXT] before [Q].
+Extract all quiz questions found in the materials as a simple markdown paragraph.
+For each question, include the question text and any options if present.
 
-Example:
-[CONTEXT] In a forest ecosystem... [/CONTEXT] [Q] What is the role of producers? [/Q]
-[Q] Name 3 types of rocks! [/Q]
+Example format:
+What is the capital of France?
+- London
+- Paris
+- Berlin
+- Madrid
+
+What is 2 + 2?
+- 3
+- 4
+- 5
+- 6
 
 RULES:
-- Use the same language as the materials.
-- If no questions found, leave empty.
-- DO NOT use numbering.''';
+- Extract only actual quiz questions, not general statements
+- DO NOT include all answer options if present
+- Use simple paragraph format, not a list
+- Separate questions with newlines
+- If no questions are found, respond with an empty string
+- Preserve the original language of the questions''';
     }
   }
 
@@ -166,45 +178,57 @@ RULES:
         return '''PERAN: Buat kuis dari materi pelajaran dan pertanyaan yang sudah ada.
 
 TUGAS:
-1. Gunakan pertanyaan dari <context> sebagai prioritas utama.
-2. Jika <context> kosong atau jumlah pertanyaan kurang dari target, buat pertanyaan BARU dari materi.
+1. Gunakan pertanyaan dari <context> sebagai prioritas utama. Jika <context> memiliki lebih dari target jumlah pertanyaan, pilih secara acak.
+2. Jika <context> kosong atau jumlah pertanyaan kurang dari target, buat pertanyaan BARU dari materi hingga mencapai target.
 3. Pastikan pertanyaan mencakup materi secara seimbang.
 4. Gunakan bahasa netral dan jelas.
 
 FORMAT OUTPUT (KETAT):
-Gunakan penanda [Q] dan [/Q] untuk setiap pertanyaan.
-Jika ada konteks tambahan, letakkan di antara [CONTEXT] dan [/CONTEXT] sebelum [Q].
+Setiap pertanyaan dipisahkan oleh tanda "---" di baris baru.
+Sertakan teks pertanyaan dan pilihan jawaban (jika ada) menggunakan format markdown.
 
 Contoh:
-[CONTEXT] Matahari adalah bintang... [/CONTEXT] [Q] Berapa jarak bumi ke matahari? [/Q]
-[Q] Apa ibu kota Indonesia? [/Q]
+Apa ibu kota Prancis?
+- London
+- Paris
+- Berlin
+- Madrid
+---
+Siapa penemu lampu pijar?
+- Thomas Edison
+- Nikola Tesla
+---
 
 ATURAN:
 - JANGAN gunakan angka/nomor.
-- Pisahkan setiap blok [CONTEXT][Q] dengan baris baru.
-- Akhiri dengan kata "FINISHED" di baris terakhir.
 - Gunakan bahasa yang sama dengan materi pelajaran.''';
       default:
         return '''ROLE: Generate a quiz from study materials and existing questions.
 
 TASK:
-1. Use questions from <context> as top priority.
-2. If <context> is empty or question count is below target, generate NEW questions from materials.
+1. Use questions from <context> as top priority. If <context> has more than the target count, randomly select a subset.
+2. If <context> is empty or question count is below target, generate NEW questions from materials to reach the target count.
 3. Ensure questions cover the material in a balanced way.
 4. Use neutral and clear language.
 
-OUTPUT FORMAT (STRICT):
-Use [Q] and [/Q] markers for each question.
-If additional context is needed, place it between [CONTEXT] and [/CONTEXT] before [Q].
+FORMAT OUTPUT (STRICT):
+Separate each question with "---" on a new line.
+Include question text and options (if any) using markdown format.
 
 Example:
-[CONTEXT] The sun is a star... [/CONTEXT] [Q] What is the distance from Earth to the Sun? [/Q]
-[Q] What is the capital of France? [/Q]
+What is the capital of France?
+- London
+- Paris
+- Berlin
+- Madrid
+---
+Who invented the light bulb?
+- Thomas Edison
+- Nikola Tesla
+---
 
 RULES:
 - DO NOT use numbering.
-- Separate each [CONTEXT][Q] block with a newline.
-- End with the word "FINISHED" on its own line.
 - Use the same language as the study materials.''';
     }
   }

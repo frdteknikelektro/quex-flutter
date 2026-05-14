@@ -52,7 +52,7 @@ class QuizGenerationService {
     }
 
     final result = fullText.toString().trim();
-    if (result.isEmpty || !result.contains('[Q]')) {
+    if (result.isEmpty) {
       yield QuizExtractionEmpty();
     } else {
       yield QuizExtractionComplete(result);
@@ -79,7 +79,10 @@ class QuizGenerationService {
     );
 
     final prompt = '''Generate a quiz with exactly $targetCount questions for "${session.title}".
-    
+
+If the <context> below has more than $targetCount questions, randomly pick $targetCount questions from it. 
+If it has fewer than $targetCount, use all of them and generate new ones from the Study Materials until you have exactly $targetCount.
+
 <context>
 $extractedQuestions
 </context>
@@ -103,21 +106,30 @@ $textContext''';
         yield QuizTextToken(event.text!);
         currentBuffer += event.text!;
         
-        // --- Robust Marker Parsing (Option 1) ---
-        // We look for [Q]...[/Q] blocks. If a block is completed, we parse it.
-        // Reason: On-device AI can sometimes drop characters in JSON tool calls, 
-        // but marker-based text is extremely resilient to minor token corruption.
-        while (currentBuffer.contains('[/Q]')) {
-          final qEnd = currentBuffer.indexOf('[/Q]');
-          final block = currentBuffer.substring(0, qEnd + 4);
-          currentBuffer = currentBuffer.substring(qEnd + 4);
+        // --- Robust Separator Parsing ---
+        // We look for "---" separators. If a block is completed, we parse it.
+        while (currentBuffer.contains('---')) {
+          final qEnd = currentBuffer.indexOf('---');
+          final block = currentBuffer.substring(0, qEnd).trim();
+          currentBuffer = currentBuffer.substring(qEnd + 3);
           
-          final question = _parseMarkerBlock(block, questions.length);
-          if (question != null) {
-            questions.add(question);
-            yield QuizQuestionGenerated(question, questions.length, targetCount);
+          if (block.isNotEmpty) {
+            final question = _parseMarkdownBlock(block, questions.length);
+            if (question != null) {
+              questions.add(question);
+              yield QuizQuestionGenerated(question, questions.length, targetCount);
+            }
           }
         }
+      }
+    }
+
+    // Try to parse any remaining content as the last question
+    if (currentBuffer.trim().isNotEmpty) {
+      final question = _parseMarkdownBlock(currentBuffer.trim(), questions.length);
+      if (question != null) {
+        questions.add(question);
+        yield QuizQuestionGenerated(question, questions.length, targetCount);
       }
     }
 
@@ -128,34 +140,32 @@ $textContext''';
     }
   }
 
-  /// Parses a block that may contain [CONTEXT]...[/CONTEXT] and MUST contain [Q]...[/Q]
-  Question? _parseMarkerBlock(String block, int index) {
-    String contextText = '';
-    if (block.contains('[CONTEXT]') && block.contains('[/CONTEXT]')) {
-      final start = block.indexOf('[CONTEXT]') + 9;
-      final end = block.indexOf('[/CONTEXT]');
-      contextText = block.substring(start, end).trim();
-    }
+  /// Parses a block that may contain question text and options in markdown format.
+  Question? _parseMarkdownBlock(String block, int index) {
+    final lines = block.split('\n').map((l) => l.trim()).where((l) => l.isNotEmpty).toList();
+    if (lines.isEmpty) return null;
 
-    if (block.contains('[Q]') && block.contains('[/Q]')) {
-      final start = block.indexOf('[Q]') + 3;
-      final end = block.indexOf('[/Q]');
-      String qText = block.substring(start, end).trim();
-      
-      // "Harden" the question by attaching the context directly
-      if (contextText.isNotEmpty) {
-        qText = '$contextText\n\n$qText';
+    String questionText = '';
+    final options = <String>[];
+
+    for (final line in lines) {
+      if (line.startsWith('- ') || line.startsWith('* ')) {
+        options.add(line.substring(2).trim());
+      } else if (options.isEmpty) {
+        if (questionText.isNotEmpty) questionText += '\n';
+        questionText += line;
       }
-
-      return Question(
-        quizId: -1,
-        source: QuestionSource.generated,
-        type: QuestionType.textAnswer,
-        questionText: qText,
-        options: const [],
-        orderIndex: index,
-      );
     }
-    return null;
+
+    if (questionText.isEmpty) return null;
+
+    return Question(
+      quizId: -1,
+      source: QuestionSource.generated,
+      type: options.isEmpty ? QuestionType.textAnswer : QuestionType.multipleChoice,
+      questionText: questionText,
+      options: options,
+      orderIndex: index,
+    );
   }
 }
