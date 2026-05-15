@@ -2057,6 +2057,8 @@ class ModelLoadingOverlay extends StatelessWidget {
   final ThemeData theme;
   final bool isWaitingForResponse;
   final bool isPreparingTutor;
+  final String? emojiOverride;
+  final String? messageOverride;
 
   const ModelLoadingOverlay({
     super.key,
@@ -2064,17 +2066,21 @@ class ModelLoadingOverlay extends StatelessWidget {
     required this.theme,
     this.isWaitingForResponse = false,
     this.isPreparingTutor = false,
+    this.emojiOverride,
+    this.messageOverride,
   });
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final emoji = isWaitingForResponse && !isPreparingTutor ? '⏳' : '🧠';
-    final text = isPreparingTutor
-        ? l10n.quizGenLoadingBrain
-        : isWaitingForResponse
-            ? l10n.chatWaitingForResponse
-            : l10n.quizGenLoadingBrain;
+    final emoji = emojiOverride ??
+        (isWaitingForResponse && !isPreparingTutor ? '⏳' : '🧠');
+    final text = messageOverride ??
+        (isPreparingTutor
+            ? l10n.quizGenLoadingBrain
+            : isWaitingForResponse
+                ? l10n.chatWaitingForResponse
+                : l10n.quizGenLoadingBrain);
 
     return Container(
       color: scheme.surface,

@@ -13,6 +13,7 @@ import '../../core/state/app_state.dart';
 import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/math_markdown.dart';
 import '../../widgets/quex_ui.dart';
+import '../chat/chat_screen.dart' show ModelLoadingOverlay;
 
 class QuizDetailScreen extends ConsumerStatefulWidget {
   final int sessionId;
@@ -35,6 +36,7 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen>
   bool _prewarmRequested = false;
   bool _awaitingQuestionCleanup = false;
   bool _routeSubscribed = false;
+  bool _modelLoading = false;
 
   @override
   void didChangeDependencies() {
@@ -72,16 +74,36 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen>
     final l10n = AppLocalizations.of(context);
     final locale = l10n?.localeName ?? 'en';
 
-    unawaited(_questionChatService
-        .prewarmSession(
-      materials: materials,
-      locale: locale,
-      isThinking: false,
-    )
-        .catchError((Object e) {
-      debugPrint('Failed to prewarm question tutor session: $e');
-      _prewarmRequested = false;
-    }));
+    unawaited(() async {
+      try {
+        if (!_questionChatService.isInitialized) {
+          if (mounted) {
+            setState(() {
+              _modelLoading = true;
+            });
+          }
+          await _questionChatService.initialize();
+        }
+
+        if (mounted) {
+          setState(() => _modelLoading = false);
+        }
+        await _questionChatService.prewarmSession(
+          materials: materials,
+          locale: locale,
+          isThinking: false,
+        );
+      } catch (e) {
+        debugPrint('Failed to prewarm question tutor session: $e');
+        _prewarmRequested = false;
+      } finally {
+        if (mounted) {
+          setState(() {
+            _modelLoading = false;
+          });
+        }
+      }
+    }());
   }
 
   void _warmAfterQuestionCleanup(List<StudyMaterial> materials) {
@@ -130,65 +152,77 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen>
           onPressed: () => context.pop(),
         ),
       ),
-      body: bundle.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) =>
-            Center(child: Text(l10n.quizDetailError(e.toString()))),
-        data: (b) {
-          if (b == null) {
-            return QuexEmptyState(
-              icon: Icons.quiz_outlined,
-              title: l10n.quizDetailNotFound,
-              message: l10n.quizDetailDeleted,
-            );
-          }
+      body: Stack(
+        children: [
+          bundle.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) =>
+                Center(child: Text(l10n.quizDetailError(e.toString()))),
+            data: (b) {
+              if (b == null) {
+                return QuexEmptyState(
+                  icon: Icons.quiz_outlined,
+                  title: l10n.quizDetailNotFound,
+                  message: l10n.quizDetailDeleted,
+                );
+              }
 
-          final questions = b.questions;
-          final scored = questions.where((q) => q.score != null).toList();
-          final totalScore = scored.isEmpty
-              ? null
-              : scored.fold(0.0, (sum, q) => sum + q.score!) / questions.length;
+              final questions = b.questions;
+              final scored = questions.where((q) => q.score != null).toList();
+              final totalScore = scored.isEmpty
+                  ? null
+                  : scored.fold(0.0, (sum, q) => sum + q.score!) /
+                      questions.length;
 
-          return CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
-                  child: _ScoreHeader(
-                    quiz: b.quiz,
-                    totalScore: totalScore,
-                    answered: scored.length,
-                    total: questions.length,
-                    scheme: scheme,
-                    theme: theme,
-                  ),
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-                sliver: SliverList(
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: _QuestionTile(
-                        question: questions[index],
-                        index: index,
-                        sessionId: widget.sessionId,
-                        quizId: widget.quizId,
+              return CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+                      child: _ScoreHeader(
+                        quiz: b.quiz,
+                        totalScore: totalScore,
+                        answered: scored.length,
+                        total: questions.length,
                         scheme: scheme,
                         theme: theme,
                       ),
                     ),
-                    childCount: questions.length,
                   ),
-                ),
-              ),
-            ],
-          );
-        },
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _QuestionTile(
+                            question: questions[index],
+                            index: index,
+                            sessionId: widget.sessionId,
+                            quizId: widget.quizId,
+                            scheme: scheme,
+                            theme: theme,
+                          ),
+                        ),
+                        childCount: questions.length,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+          if (_modelLoading)
+            ModelLoadingOverlay(
+              scheme: scheme,
+              theme: theme,
+              emojiOverride: '🧠',
+              messageOverride: l10n.quizGenLoadingModel,
+            ),
+        ],
       ),
       floatingActionButton: bundle.maybeWhen(
-        data: (b) => b != null && b.questions.isNotEmpty
+        data: (b) => !_modelLoading && b != null && b.questions.isNotEmpty
             ? FloatingActionButton.extended(
                 onPressed: () => _handleFinishQuiz(b.questions),
                 icon: const Icon(Icons.check_circle),
