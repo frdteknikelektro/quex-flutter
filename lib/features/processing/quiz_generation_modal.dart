@@ -18,10 +18,12 @@ enum _ModalStep { materialSelection, extracting, extractionReview, generating, c
 
 class QuizGenerationModal extends ConsumerStatefulWidget {
   final int sessionId;
+  final QuizGenerationService? quizService;
 
   const QuizGenerationModal({
     super.key,
     required this.sessionId,
+    this.quizService,
   });
 
   @override
@@ -31,7 +33,10 @@ class QuizGenerationModal extends ConsumerStatefulWidget {
 
 class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   final _thinkingBuffer = StringBuffer();
-  final _streamBuffer = StringBuffer();
+  final _extractionBuffer = StringBuffer();
+  final Map<QuizGenerationPhase, StringBuffer> _phaseBuffers = {};
+  final Set<QuizGenerationPhase> _completedPhases = {};
+  final List<QuizGenerationPhase> _phaseOrder = [];
   List<String> _planSteps = [];
   final Set<int> _completedSteps = {};
   final _scrollController = ScrollController();
@@ -47,7 +52,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   bool _isExtracting = false;
   StreamSubscription<QuizGenerationEvent>? _subscription;
   int? _quizId;
-  QuizGenerationService? _quizService;
+  late final QuizGenerationService _quizService;
   Session? _session;
   String? _extractedQuestions;
   List<StudyMaterial> _selectedMaterials = [];
@@ -55,6 +60,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   @override
   void initState() {
     super.initState();
+    _quizService = widget.quizService ?? QuizGenerationService();
     _loadMaterials();
   }
 
@@ -79,18 +85,6 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       _selectedIds = {};
       _session = bundle.session;
     });
-  }
-
-  Future<void> _initModelBackground() async {
-    setState(() => _isLoadingModel = true);
-    try {
-      _quizService ??= QuizGenerationService();
-      await _quizService!.initialize();
-    } catch (_) {
-      // Generation will fall back to rule-based if model fails
-    } finally {
-      if (mounted) setState(() => _isLoadingModel = false);
-    }
   }
 
   Future<void> _onGenerateTapped() async {
@@ -123,10 +117,9 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   Future<void> _startExtraction(
       List<StudyMaterial> selected, Session session) async {
     try {
-      _quizService ??= QuizGenerationService();
-      await _quizService!.initialize();
+      await _quizService.initialize();
 
-      final stream = _quizService!.runExtractionSession(
+      final stream = _quizService.runExtractionSession(
         session: session,
         materials: selected,
         locale: mounted ? Localizations.localeOf(context).languageCode : 'en',
@@ -151,17 +144,12 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     if (qid == null) return;
 
     // Add visual separation before Session 2
-    setState(() {
-      _streamBuffer.write('\n\n');
-    });
-
     setState(() => _step = _ModalStep.generating);
 
     try {
-      _quizService ??= QuizGenerationService();
-      await _quizService!.initialize();
+      await _quizService.initialize();
 
-      final stream = _quizService!.runGenerationSession(
+      final stream = _quizService.runGenerationSession(
         session: session,
         materials: _selectedMaterials,
         extractedQuestions: _extractedQuestions ?? '',
@@ -201,6 +189,119 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     );
   }
 
+  StringBuffer _bufferForPhase(QuizGenerationPhase phase) {
+    return _phaseBuffers.putIfAbsent(phase, StringBuffer.new);
+  }
+
+  String _phaseTitle(QuizGenerationPhase phase) {
+    final locale = Localizations.localeOf(context).languageCode;
+    switch (phase) {
+      case QuizGenerationPhase.generation:
+        return locale == 'id' ? 'Penyusunan' : 'Draft generation';
+      case QuizGenerationPhase.review:
+        return locale == 'id' ? 'Review' : 'Review';
+      case QuizGenerationPhase.regeneration:
+        return locale == 'id' ? 'Perbaikan' : 'Regeneration';
+    }
+  }
+
+  String _phaseEmptyText(QuizGenerationPhase phase) {
+    final locale = Localizations.localeOf(context).languageCode;
+    switch (phase) {
+      case QuizGenerationPhase.generation:
+        return locale == 'id'
+            ? 'Belum ada draf yang keluar.'
+            : 'No draft output yet.';
+      case QuizGenerationPhase.review:
+        return locale == 'id'
+            ? 'Belum ada hasil review yang keluar.'
+            : 'No review output yet.';
+      case QuizGenerationPhase.regeneration:
+        return locale == 'id'
+            ? 'Belum ada hasil perbaikan yang keluar.'
+            : 'No regeneration output yet.';
+    }
+  }
+
+  void _resetGenerationBuffers() {
+    _thinkingBuffer.clear();
+    _phaseBuffers.clear();
+    _completedPhases.clear();
+    _phaseOrder.clear();
+  }
+
+  void _appendPhaseText(QuizGenerationPhase phase, String token) {
+    if (!_phaseBuffers.containsKey(phase)) {
+      _phaseOrder.add(phase);
+    }
+    _bufferForPhase(phase).write(token);
+  }
+
+  List<QuizGenerationPhase> _visibleGenerationPhases() {
+    final ordered = _phaseOrder.isEmpty
+        ? QuizGenerationPhase.values
+        : _phaseOrder;
+    return ordered
+        .where((phase) =>
+            _phaseBuffers.containsKey(phase) || _completedPhases.contains(phase))
+        .toList(growable: false);
+  }
+
+  Widget _buildPhaseTranscript(
+    QuizGenerationPhase phase,
+    ColorScheme scheme,
+    TextTheme textTheme,
+  ) {
+    final buffer = _phaseBuffers[phase];
+    final content = buffer?.toString().trim() ?? '';
+    final isComplete = _completedPhases.contains(phase);
+    final hasContent = content.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isComplete ? Icons.check_circle_rounded : Icons.timelapse,
+                size: 16,
+                color: isComplete ? scheme.primary : scheme.outlineVariant,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _phaseTitle(phase),
+                style: textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: scheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (hasContent)
+            SelectableText(
+              content,
+              style: textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurface,
+                fontFamily: 'monospace',
+                height: 1.35,
+              ),
+            )
+          else
+            Text(
+              _phaseEmptyText(phase),
+              style: textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   void _handleEvent(QuizGenerationEvent event) {
     if (!mounted) return;
     switch (event) {
@@ -220,7 +321,10 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
         // No longer used
         break;
       case QuizExtractionStarted():
-        setState(() => _isExtracting = true);
+        setState(() {
+          _isExtracting = true;
+          _extractionBuffer.clear();
+        });
         _scrollToBottom();
       case QuizExtractionComplete(:final extractedQuestions):
         setState(() {
@@ -244,18 +348,34 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
         _scrollToBottom();
       case QuizTextToken(:final token):
         setState(() {
-          _isGenerating = true;
-          // Clean up markers for a better live preview in the terminal-like view
-          final cleanToken = token
-              .replaceAll('[Q]', '### Question\n')
-              .replaceAll('[/Q]', '\n\n')
-              .replaceAll('[CONTEXT]', '> ')
-              .replaceAll('[/CONTEXT]', '\n\n');
-          _streamBuffer.write(cleanToken);
+          if (_step == _ModalStep.extracting) {
+            _extractionBuffer.write(token);
+          }
         });
         _scrollToBottom();
       case QuizGenerationStarted():
-        setState(() => _isGenerating = true);
+        setState(() {
+          _isGenerating = true;
+          _isThinking = false;
+          _resetGenerationBuffers();
+        });
+        _scrollToBottom();
+      case QuizPhaseStarted(:final phase):
+        setState(() {
+          _isGenerating = true;
+          _isThinking = false;
+          if (!_phaseBuffers.containsKey(phase)) _phaseOrder.add(phase);
+          _bufferForPhase(phase);
+        });
+        _scrollToBottom();
+      case QuizPhaseTextToken(:final phase, :final token):
+        setState(() {
+          _isGenerating = true;
+          _appendPhaseText(phase, token);
+        });
+        _scrollToBottom();
+      case QuizPhaseCompleted(:final phase):
+        setState(() => _completedPhases.add(phase));
         _scrollToBottom();
       case QuizGenerationComplete(:final questions):
         _saveAndNavigate(questions);
@@ -537,10 +657,12 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
 
   Widget _buildGeneratingView(ColorScheme scheme) {
     final theme = Theme.of(context);
+    final visiblePhases = _visibleGenerationPhases();
     final hasStream = _planSteps.isNotEmpty ||
         _thinkingBuffer.isNotEmpty ||
-        _streamBuffer.isNotEmpty ||
-        _isGenerating;
+        _isGenerating ||
+        (_step == _ModalStep.extracting && _extractionBuffer.isNotEmpty) ||
+        visiblePhases.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -646,8 +768,10 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           ),
                         );
                       }),
-                      if (_streamBuffer.isNotEmpty ||
-                          _thinkingBuffer.isNotEmpty)
+                      if (_thinkingBuffer.isNotEmpty ||
+                          (_step == _ModalStep.extracting &&
+                              _extractionBuffer.isNotEmpty) ||
+                          visiblePhases.isNotEmpty)
                         const Divider(height: 16),
                     ],
                     if (_thinkingBuffer.isNotEmpty)
@@ -658,11 +782,14 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           fontStyle: FontStyle.italic,
                         ),
                       ),
-                    if (_thinkingBuffer.isNotEmpty && _streamBuffer.isNotEmpty)
+                    if (_thinkingBuffer.isNotEmpty &&
+                        (_step == _ModalStep.extracting &&
+                            _extractionBuffer.isNotEmpty))
                       const Divider(height: 16),
-                    if (_streamBuffer.isNotEmpty)
+                    if (_step == _ModalStep.extracting &&
+                        _extractionBuffer.isNotEmpty)
                       MathMarkdownBody(
-                        data: _streamBuffer.toString(),
+                        data: _extractionBuffer.toString(),
                         styleSheet: MarkdownStyleSheet(
                           listBullet: theme.textTheme.bodyMedium?.copyWith(
                             color: scheme.onSurface,
@@ -673,6 +800,25 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           color: scheme.onSurface,
                         ),
                       ),
+                    if (_step == _ModalStep.generating) ...[
+                      if (visiblePhases.isEmpty)
+                        Text(
+                          _isGenerating
+                              ? (Localizations.localeOf(context).languageCode ==
+                                      'id'
+                                  ? 'Memulai penyusunan...'
+                                  : 'Starting generation...')
+                              : '',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ...visiblePhases.map(
+                        (phase) =>
+                            _buildPhaseTranscript(phase, scheme, theme.textTheme),
+                      ),
+                    ],
                   ],
                 ),
               ),

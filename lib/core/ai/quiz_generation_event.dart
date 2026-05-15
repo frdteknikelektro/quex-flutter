@@ -2,6 +2,12 @@ import '../models/models.dart';
 
 sealed class QuizGenerationEvent {}
 
+enum QuizGenerationPhase {
+  generation,
+  review,
+  regeneration,
+}
+
 class QuizThinkingToken extends QuizGenerationEvent {
   final String token;
   QuizThinkingToken(this.token);
@@ -15,6 +21,22 @@ class QuizTextToken extends QuizGenerationEvent {
 class QuizGenerationStarted extends QuizGenerationEvent {
   final int total;
   QuizGenerationStarted(this.total);
+}
+
+class QuizPhaseStarted extends QuizGenerationEvent {
+  final QuizGenerationPhase phase;
+  QuizPhaseStarted(this.phase);
+}
+
+class QuizPhaseTextToken extends QuizGenerationEvent {
+  final QuizGenerationPhase phase;
+  final String token;
+  QuizPhaseTextToken(this.phase, this.token);
+}
+
+class QuizPhaseCompleted extends QuizGenerationEvent {
+  final QuizGenerationPhase phase;
+  QuizPhaseCompleted(this.phase);
 }
 
 class QuizQuestionGenerated extends QuizGenerationEvent {

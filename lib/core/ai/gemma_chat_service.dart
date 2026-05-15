@@ -14,10 +14,38 @@ typedef ToolExecutor = Future<Map<String, Object?>> Function(
   Map<String, Object?> args,
 );
 
+abstract class QuizChatService {
+  bool get isInitialized;
+
+  Future<void> initialize({
+    int maxTokens = 8192,
+    gemma.PreferredBackend? preferredBackend,
+    int? maxNumImages,
+    bool? enableSpeculativeDecoding,
+  });
+
+  Future<void> createSession({
+    String? systemInstruction,
+    double temperature = 1.0,
+    double topP = 0.95,
+    int topK = 64,
+    bool isThinking = false,
+    List<gemma.Tool> tools = const [],
+    ToolExecutor? toolExecutor,
+  });
+
+  Stream<({String? text, String? thinking})> sendMessage(String message);
+
+  Stream<({String? text, String? thinking})> sendMessageWithImages(
+    String message,
+    List<Uint8List> images,
+  );
+}
+
 /// Simple chat service wrapping flutter_gemma's InferenceChat.
 ///
 /// Supports text chat with support for images, audio, streaming, and thinking mode.
-class GemmaChatService {
+class GemmaChatService implements QuizChatService {
   static GemmaChatService? _instance;
 
   gemma.InferenceModel? _model;
@@ -39,6 +67,7 @@ class GemmaChatService {
   ) =>
       _processResponseStream(stream);
 
+  @override
   bool get isInitialized => _model != null;
 
   bool get hasActiveSession => _chat != null;
@@ -52,6 +81,7 @@ class GemmaChatService {
   /// Initialize the service by creating the model.
   /// Only needed if no model was provided in the constructor.
   /// [maxTokens] is capped by the calculated upper bound based on device RAM.
+  @override
   Future<void> initialize({
     int maxTokens = 8192,
     gemma.PreferredBackend? preferredBackend = gemma.PreferredBackend.gpu,
@@ -85,6 +115,7 @@ class GemmaChatService {
   /// [isThinking] - Enable thinking mode for reasoning
   /// [tools] - List of available tools for function calling
   /// [toolExecutor] - Callback to execute tool calls
+  @override
   Future<void> createSession({
     String? systemInstruction,
     double temperature = 1.0,
@@ -124,6 +155,7 @@ class GemmaChatService {
   /// Yields events: (text: String?, thinking: String?)
   /// - text: reply token (null if just thinking)
   /// - thinking: thinking token when in thinking mode (null for regular text)
+  @override
   Stream<({String? text, String? thinking})> sendMessage(
       String message) async* {
     if (_chat == null) {
@@ -280,6 +312,7 @@ class GemmaChatService {
   /// Send a message with images and get streaming response.
   ///
   /// Images are sent together with text in a single message chunk.
+  @override
   Stream<({String? text, String? thinking})> sendMessageWithImages(
     String message,
     List<Uint8List> images,

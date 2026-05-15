@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import 'quiz_agent_skill.dart';
+
 /// Localized prompts for the AI chat coach.
 class ChatPrompts {
   /// Returns the opener message for the coach session.
@@ -113,123 +115,12 @@ class ChatPrompts {
 
   /// Returns the system instruction for quiz extraction (Session 1).
   static String getQuizExtractionInstruction(String locale) {
-    switch (locale) {
-      case 'id':
-        return '''PERAN: Ekstrak pertanyaan kuis yang ada dari materi pelajaran.
-
-FORMAT OUTPUT (KETAT):
-Ekstrak semua pertanyaan kuis yang ditemukan dalam materi sebagai paragraf markdown sederhana.
-Untuk setiap pertanyaan, sertakan teks pertanyaan dan pilihan apa pun jika ada.
-
-Contoh format:
-Apa ibu kota Prancis?
-- London
-- Paris
-- Berlin
-- Madrid
-
-Berapa 2 + 2?
-- 3
-- 4
-- 5
-- 6
-
-ATURAN:
-- Ekstrak hanya pertanyaan kuis yang sebenarnya, bukan pernyataan umum.
-- JANGAN sertakan semua pilihan jawaban jika ada.
-- Gunakan format paragraf sederhana, bukan daftar.
-- Pisahkan pertanyaan dengan baris baru.
-- Jika tidak ada pertanyaan yang ditemukan, balas dengan string kosong.
-- Pertahankan bahasa asli dari pertanyaan.''';
-      default:
-        return '''ROLE: Extract existing quiz questions from study materials.
-
-OUTPUT FORMAT (STRICT):
-Extract all quiz questions found in the materials as a simple markdown paragraph.
-For each question, include the question text and any options if present.
-
-Example format:
-What is the capital of France?
-- London
-- Paris
-- Berlin
-- Madrid
-
-What is 2 + 2?
-- 3
-- 4
-- 5
-- 6
-
-RULES:
-- Extract only actual quiz questions, not general statements
-- DO NOT include all answer options if present
-- Use simple paragraph format, not a list
-- Separate questions with newlines
-- If no questions are found, respond with an empty string
-- Preserve the original language of the questions''';
-    }
+    return QuizAgentSkill.extractionInstruction(locale);
   }
 
   /// Returns the system instruction for quiz generation (Session 2).
-  static String getQuizGenerationInstruction(String sessionTitle, String locale) {
-    switch (locale) {
-      case 'id':
-        return '''PERAN: Buat kuis dari materi pelajaran dan pertanyaan yang sudah ada.
-
-TUGAS:
-1. Gunakan pertanyaan dari <context> sebagai prioritas utama. Jika <context> memiliki lebih dari target jumlah pertanyaan, pilih secara acak.
-2. Jika <context> kosong atau jumlah pertanyaan kurang dari target, buat pertanyaan BARU dari materi hingga mencapai target.
-3. Pastikan pertanyaan mencakup materi secara seimbang.
-4. Gunakan bahasa netral dan jelas.
-
-FORMAT OUTPUT (KETAT):
-Setiap pertanyaan dipisahkan oleh tanda "---" di baris baru.
-Sertakan teks pertanyaan dan pilihan jawaban (jika ada) menggunakan format markdown.
-
-Contoh:
-Apa ibu kota Prancis?
-- London
-- Paris
-- Berlin
-- Madrid
----
-Siapa penemu lampu pijar?
-- Thomas Edison
-- Nikola Tesla
----
-
-ATURAN:
-- JANGAN gunakan angka/nomor.
-- Gunakan bahasa yang sama dengan materi pelajaran.''';
-      default:
-        return '''ROLE: Generate a quiz from study materials and existing questions.
-
-TASK:
-1. Use questions from <context> as top priority. If <context> has more than the target count, randomly select a subset.
-2. If <context> is empty or question count is below target, generate NEW questions from materials to reach the target count.
-3. Ensure questions cover the material in a balanced way.
-4. Use neutral and clear language.
-
-FORMAT OUTPUT (STRICT):
-Separate each question with "---" on a new line.
-Include question text and options (if any) using markdown format.
-
-Example:
-What is the capital of France?
-- London
-- Paris
-- Berlin
-- Madrid
----
-Who invented the light bulb?
-- Thomas Edison
-- Nikola Tesla
----
-
-RULES:
-- DO NOT use numbering.
-- Use the same language as the study materials.''';
-    }
+  static String getQuizGenerationInstruction(
+      String sessionTitle, String locale) {
+    return QuizAgentSkill.generationInstruction(locale);
   }
 }
