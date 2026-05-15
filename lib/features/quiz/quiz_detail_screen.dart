@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import '../../app/router.dart';
+import '../../core/ai/question_chat_service.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
@@ -24,17 +28,81 @@ class QuizDetailScreen extends ConsumerStatefulWidget {
   ConsumerState<QuizDetailScreen> createState() => _QuizDetailScreenState();
 }
 
-class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
+class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen>
+    with RouteAware {
+  final QuestionChatService _questionChatService = QuestionChatService();
+  List<StudyMaterial> _lastMaterials = const [];
+  bool _prewarmRequested = false;
+  bool _awaitingQuestionCleanup = false;
+  bool _routeSubscribed = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (!_routeSubscribed && route is PageRoute<dynamic>) {
+      routeObserver.subscribe(this, route);
+      _routeSubscribed = true;
+    }
+  }
+
+  @override
+  void didPushNext() {
+    _awaitingQuestionCleanup = true;
+    _prewarmRequested = false;
+  }
+
+  @override
+  void didPopNext() {
+    debugPrint('[QuizDetailScreen] Returned from question, starting prewarm');
+    _warmAfterQuestionCleanup(_lastMaterials);
+  }
+
+  @override
+  void dispose() {
+    routeObserver.unsubscribe(this);
+    unawaited(_questionChatService.dispose());
+    super.dispose();
+  }
+
+  void _startPrewarm(List<StudyMaterial> materials) {
+    if (_prewarmRequested) return;
+    _prewarmRequested = true;
+
+    final l10n = AppLocalizations.of(context);
+    final locale = l10n?.localeName ?? 'en';
+
+    unawaited(_questionChatService
+        .prewarmSession(
+      materials: materials,
+      locale: locale,
+      isThinking: false,
+    )
+        .catchError((Object e) {
+      debugPrint('Failed to prewarm question tutor session: $e');
+      _prewarmRequested = false;
+    }));
+  }
+
+  void _warmAfterQuestionCleanup(List<StudyMaterial> materials) {
+    unawaited(() async {
+      await _questionChatService.waitForQuestionTurnToEnd();
+      if (!mounted) return;
+      _awaitingQuestionCleanup = false;
+      _startPrewarm(materials);
+    }());
+  }
+
   Future<void> _handleFinishQuiz(List<Question> questions) async {
     final scored = questions.where((q) => q.score != null).toList();
     if (scored.isEmpty) return;
-    
+
     final totalScore = scored.fold(0.0, (sum, q) => sum + q.score!);
     final finalScore = (totalScore / questions.length * 100).round();
-    
+
     await QuizDAO().complete(widget.quizId, finalScore);
     ref.invalidate(sessionBundleProvider(widget.sessionId));
-    
+
     if (!mounted) return;
     context.pop();
   }
@@ -45,6 +113,14 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final bundle = ref.watch(quizBundleProvider(widget.quizId));
+    final materialsAsync = ref.watch(materialsProvider(widget.sessionId));
+    final materials = materialsAsync.valueOrNull ?? const <StudyMaterial>[];
+    _lastMaterials = materials;
+    if (materialsAsync.hasValue && !_awaitingQuestionCleanup) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _startPrewarm(materials);
+      });
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -56,7 +132,8 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
       ),
       body: bundle.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text(l10n.quizDetailError(e.toString()))),
+        error: (e, _) =>
+            Center(child: Text(l10n.quizDetailError(e.toString()))),
         data: (b) {
           if (b == null) {
             return QuexEmptyState(
@@ -70,8 +147,7 @@ class _QuizDetailScreenState extends ConsumerState<QuizDetailScreen> {
           final scored = questions.where((q) => q.score != null).toList();
           final totalScore = scored.isEmpty
               ? null
-              : scored.fold(0.0, (sum, q) => sum + q.score!) /
-                  questions.length;
+              : scored.fold(0.0, (sum, q) => sum + q.score!) / questions.length;
 
           return CustomScrollView(
             slivers: [
@@ -318,10 +394,9 @@ class _QuestionTile extends StatelessWidget {
                 Text(
                   '${index + 1}.',
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                    height: 1.35
-                  ),
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                      height: 1.35),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -330,7 +405,8 @@ class _QuestionTile extends StatelessWidget {
                     children: [
                       MathMarkdownBody(
                         data: question.questionText,
-                        styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                        styleSheet:
+                            MarkdownStyleSheet.fromTheme(theme).copyWith(
                           p: theme.textTheme.bodyMedium?.copyWith(
                             fontWeight: FontWeight.w600,
                             color: scheme.onSurface,

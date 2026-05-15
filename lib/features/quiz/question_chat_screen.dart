@@ -60,12 +60,14 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   // ===========================================================================
   final List<QuestionMessage> _messages = [];
   bool _openerFired = false;
+  bool _openerScheduled = false;
 
   // ===========================================================================
   // AI / Streaming State
   // ===========================================================================
   bool _sending = true;
   bool _modelLoading = false;
+  bool _preparingTutor = false;
   String? _streamingContent;
   String? _thinkingContent;
   bool _thinkingExpanded = false;
@@ -76,6 +78,9 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   bool _isThinkingMode = false;
   bool _thinkingSpeechFired = false;
   int _sendEra = 0;
+  int? _chatSessionGeneration;
+  int? _questionTurnId;
+  Future<void>? _pendingOpenerFuture;
 
   // ===========================================================================
   // Audio Recording State
@@ -133,7 +138,6 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
 
   @override
   void dispose() {
-    _streamSub?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     _cleanupOnDispose();
@@ -141,15 +145,44 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   }
 
   void _cleanupOnDispose() async {
+    final questionTurnId = _questionTurnId;
+    if (questionTurnId != null) {
+      _chatService.cancelQuestionTurn(questionTurnId);
+    }
+    try {
+      await _streamSub?.cancel();
+      _streamSub = null;
+    } catch (e) {
+      debugPrint('Error cancelling stream subscription: $e');
+    }
     try {
       await _ttsService.dispose();
     } catch (e) {
       debugPrint('Error disposing tts service: $e');
     }
     try {
-      await _chatService.dispose();
+      final pendingOpenerFuture = _pendingOpenerFuture;
+      if (pendingOpenerFuture != null) {
+        try {
+          await pendingOpenerFuture;
+        } catch (e) {
+          debugPrint('Error awaiting pending opener cleanup: $e');
+        }
+      }
     } catch (e) {
-      debugPrint('Error disposing chat service: $e');
+      debugPrint('Error waiting for pending opener: $e');
+    }
+    try {
+      final generation = _chatSessionGeneration;
+      if (generation != null) {
+        await _chatService.stopActiveQuestionSession(generation);
+        await _chatService.resetSessionForGeneration(generation);
+      } else {
+        await _chatService.stopGeneration();
+      }
+      _chatSessionGeneration = null;
+    } catch (e) {
+      debugPrint('Error stopping chat service: $e');
     }
     try {
       await _recorder.dispose();
@@ -163,6 +196,10 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
         debugPrint('Error stopping recording on dispose: $e');
       }
     }
+    _chatService.endQuestionTurn(questionTurnId);
+    _questionTurnId = null;
+    _pendingOpenerFuture = null;
+    _openerScheduled = false;
   }
 
   // ---------------------------------------------------------------------------
@@ -174,33 +211,71 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     List<StudyMaterial> materials,
   ) async {
     if (_openerFired) return;
+    final questionTurnId = _chatService.beginQuestionTurn();
+    _questionTurnId = questionTurnId;
+    _openerFired = true;
 
     final l10n = AppLocalizations.of(context);
     final locale = l10n?.localeName ?? 'en';
     unawaited(_ttsService.setLocale(locale));
 
     try {
+      if (mounted) {
+        setState(() {
+          _preparingTutor = true;
+          _sending = true;
+          _streamingContent = null;
+          _thinkingContent = null;
+        });
+      }
       await _chatService.createSession(
         question: question,
         materials: materials,
+        questionTurnId: questionTurnId,
         locale: locale,
         isThinking: _isThinkingMode,
       );
+      _chatSessionGeneration = _chatService.sessionGeneration;
+
+      if (!mounted || _chatService.isQuestionTurnCancelled(questionTurnId)) {
+        final generation = _chatSessionGeneration;
+        if (generation != null || _chatService.hasSession) {
+          await _chatService.resetSessionForGeneration(
+            generation ?? _chatService.sessionGeneration,
+          );
+        }
+        _chatSessionGeneration = null;
+        _openerScheduled = false;
+        if (mounted) {
+          setState(() {
+            _preparingTutor = false;
+            _sending = false;
+          });
+        }
+        return;
+      }
     } catch (e) {
       debugPrint('Failed to create tutor session: $e');
+      final generation = _chatSessionGeneration;
+      if (generation != null || _chatService.hasSession) {
+        await _chatService.resetSessionForGeneration(
+          generation ?? _chatService.sessionGeneration,
+        );
+      }
+      _chatSessionGeneration = null;
+      _openerScheduled = false;
       if (mounted) {
         setState(() {
           _openerFired = false;
+          _preparingTutor = false;
           _sending = false;
         });
       }
       return;
     }
 
-    _openerFired = true;
-
-    if (!mounted) return;
     setState(() {
+      _preparingTutor = false;
       _sending = true;
       _sendEra++;
       _streamingContent = '';
@@ -245,10 +320,16 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     } catch (e) {
       debugPrint('Opener error: $e');
       _tokenCount = 0;
+      final generation = _chatSessionGeneration;
+      if (generation != null) {
+        await _chatService.resetSessionForGeneration(generation);
+        _chatSessionGeneration = null;
+      }
       if (mounted) {
         setState(() {
           _streamingContent = null;
           _thinkingContent = null;
+          _preparingTutor = false;
           _sending = false;
         });
       }
@@ -259,12 +340,29 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     Question question,
     List<StudyMaterial> materials,
   ) async {
+    final questionTurnId = _questionTurnId;
+    if (questionTurnId != null) {
+      _chatService.cancelQuestionTurn(questionTurnId);
+    }
     await _ttsService.stop();
     await _streamSub?.cancel();
     _streamSub = null;
     _clearImages();
     _messageImages.clear();
-    await _chatService.resetSession();
+    final pendingOpenerFuture = _pendingOpenerFuture;
+    if (pendingOpenerFuture != null) {
+      try {
+        await pendingOpenerFuture;
+      } catch (e) {
+        debugPrint('Error awaiting pending opener reset: $e');
+      }
+    }
+    final generation = _chatSessionGeneration ?? _chatService.sessionGeneration;
+    await _chatService.resetSessionForGeneration(generation);
+    _chatSessionGeneration = null;
+    _chatService.endQuestionTurn(questionTurnId);
+    _questionTurnId = null;
+    _openerScheduled = false;
     if (mounted) {
       setState(() {
         _messages.clear();
@@ -362,8 +460,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final accumulatedThinking = StringBuffer();
     final completer = Completer<void>();
     _tokenCount = 0;
-    final thinkingPhrase = AppLocalizations.of(context)?.chatTtsSayThinking
-        ?? 'Let me think for a moment…';
+    final thinkingPhrase = AppLocalizations.of(context)?.chatTtsSayThinking ??
+        'Let me think for a moment…';
 
     await _streamSub?.cancel();
     _streamSub = stream.listen(
@@ -470,7 +568,12 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     if (pickedFile == null) return;
 
-    if (mounted) setState(() { _sending = true; _sendEra++; });
+    if (mounted) {
+      setState(() {
+        _sending = true;
+        _sendEra++;
+      });
+    }
 
     try {
       final originalFile = File(pickedFile.path);
@@ -535,8 +638,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
         final l10n = AppLocalizations.of(context);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                l10n?.chatMicPermissionDenied ?? 'Microphone permission denied'),
+            content: Text(l10n?.chatMicPermissionDenied ??
+                'Microphone permission denied'),
             duration: const Duration(seconds: 4),
           ),
         );
@@ -780,11 +883,22 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
     final currentQuestion = questionAsync.valueOrNull;
 
     if (!_openerFired &&
+        !_openerScheduled &&
+        _pendingOpenerFuture == null &&
         _chatService.isInitialized &&
         currentQuestion != null &&
         materialsReady) {
+      _openerScheduled = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _fireOpener(currentQuestion, materials);
+        if (mounted && !_openerFired && _pendingOpenerFuture == null) {
+          final openerFuture = _fireOpener(currentQuestion, materials);
+          _pendingOpenerFuture = openerFuture;
+          unawaited(openerFuture.whenComplete(() {
+            if (identical(_pendingOpenerFuture, openerFuture)) {
+              _pendingOpenerFuture = null;
+            }
+          }));
+        }
       });
     }
 
@@ -894,8 +1008,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
                       streamingContent: _streamingContent,
                       thinkingContent: _thinkingContent,
                       thinkingExpanded: _thinkingExpanded,
-                      onThinkingToggle: () =>
-                          setState(() => _thinkingExpanded = !_thinkingExpanded),
+                      onThinkingToggle: () => setState(
+                          () => _thinkingExpanded = !_thinkingExpanded),
                       isSending: _sending,
                       scrollController: _scrollController,
                       scheme: scheme,
@@ -943,6 +1057,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
                   scheme: scheme,
                   theme: theme,
                   isWaitingForResponse: !_modelLoading && _sending,
+                  isPreparingTutor: _preparingTutor,
                 ),
             ],
           ),

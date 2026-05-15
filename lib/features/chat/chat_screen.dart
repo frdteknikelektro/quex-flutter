@@ -380,8 +380,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final completer = Completer<void>();
     _tokenCount = 0;
     // Resolve locale-dependent string before entering async callbacks.
-    final thinkingPhrase = AppLocalizations.of(context)?.chatTtsSayThinking
-        ?? 'Let me think for a moment…';
+    final thinkingPhrase = AppLocalizations.of(context)?.chatTtsSayThinking ??
+        'Let me think for a moment…';
 
     await _streamSub?.cancel();
     _streamSub = stream.listen(
@@ -509,7 +509,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (pickedFile == null) return;
 
     if (mounted) {
-      setState(() { _sending = true; _sendEra++; });
+      setState(() {
+        _sending = true;
+        _sendEra++;
+      });
     }
 
     try {
@@ -2053,21 +2056,25 @@ class ModelLoadingOverlay extends StatelessWidget {
   final ColorScheme scheme;
   final ThemeData theme;
   final bool isWaitingForResponse;
+  final bool isPreparingTutor;
 
   const ModelLoadingOverlay({
     super.key,
     required this.scheme,
     required this.theme,
     this.isWaitingForResponse = false,
+    this.isPreparingTutor = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
-    final emoji = isWaitingForResponse ? '⏳' : '🧠';
-    final text = isWaitingForResponse
-        ? l10n.chatWaitingForResponse
-        : l10n.quizGenLoadingBrain;
+    final emoji = isWaitingForResponse && !isPreparingTutor ? '⏳' : '🧠';
+    final text = isPreparingTutor
+        ? l10n.quizGenLoadingBrain
+        : isWaitingForResponse
+            ? l10n.chatWaitingForResponse
+            : l10n.quizGenLoadingBrain;
 
     return Container(
       color: scheme.surface,

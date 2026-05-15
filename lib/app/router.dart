@@ -21,6 +21,8 @@ import '../features/session_detail/session_detail_screen.dart';
 import '../features/splash/splash_screen.dart';
 import '../features/summary/summary_screen.dart';
 
+final routeObserver = RouteObserver<PageRoute<dynamic>>();
+
 class Routes {
   static const splash = '/splash';
   static const profileSelection = '/profile-selection';
@@ -41,6 +43,7 @@ class Routes {
 final appRouter = GoRouter(
   initialLocation: Routes.splash,
   debugLogDiagnostics: false,
+  observers: [routeObserver],
   redirect: (context, state) {
     final container = ProviderScope.containerOf(context);
     final downloadState = container.read(modelDownloadProvider);
