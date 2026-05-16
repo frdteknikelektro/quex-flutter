@@ -79,10 +79,6 @@ C. Berlin
 D. Madrid
 [CORRECT]
 B
-[EXPLANATION]
-Paris is the capital of France.
-[EVIDENCE]
-The material states that the capital of France is Paris.
 [END]
 ''');
 
@@ -117,8 +113,6 @@ Answer: B
       const draft = QuizItemDraft(
         questionText: 'Which planet is known as the Red Planet?',
         options: ['Earth', 'Mars', 'Venus'],
-        explanation: 'Mars is commonly called the Red Planet.',
-        evidence: 'The material says Mars is the Red Planet.',
       );
 
       final validation = service.validateDraft(draft);
@@ -135,8 +129,6 @@ Answer: B
         questionText: 'Which process do plants use to make food?',
         options: ['Photosynthesis', 'Respiration', 'photosynthesis'],
         correctOptionIndex: 0,
-        explanation: 'Plants make food through photosynthesis.',
-        evidence: 'The material explains that plants use photosynthesis.',
       );
 
       final validation = service.validateDraft(draft);
@@ -172,21 +164,13 @@ Answer: B
       ];
     }
 
-    test('emits generation, review, and completion phases in order', () async {
+    test('emits generation and completion phases in order', () async {
       final chat = FakeQuizChatService([
         [
           (text: '[QUESTION]\nWhat is photosynthesis?\n', thinking: null),
           (text: '[OPTIONS]\nA. A type of food\nB. A way plants make food\n', thinking: null),
           (text: '[CORRECT]\nB\n', thinking: null),
-          (text: '[EXPLANATION]\nPlants make food using sunlight.\n', thinking: null),
-          (text: '[EVIDENCE]\nThe material says plants use sunlight to make food.\n[END]\n', thinking: null),
-        ],
-        [
-          (text: '[QUESTION]\nWhat is photosynthesis?\n', thinking: null),
-          (text: '[OPTIONS]\nA. A type of food\nB. A way plants make food\n', thinking: null),
-          (text: '[CORRECT]\nB\n', thinking: null),
-          (text: '[EXPLANATION]\nPlants make food using sunlight.\n', thinking: null),
-          (text: '[EVIDENCE]\nThe material says plants use sunlight to make food.\n[END]\n', thinking: null),
+          (text: '[END]\n', thinking: null),
         ],
       ]);
 
@@ -205,14 +189,12 @@ Answer: B
         events.whereType<QuizPhaseStarted>().map((e) => e.phase).toList(),
         [
           QuizGenerationPhase.generation,
-          QuizGenerationPhase.review,
         ],
       );
       expect(
         events.whereType<QuizPhaseCompleted>().map((e) => e.phase).toList(),
         [
           QuizGenerationPhase.generation,
-          QuizGenerationPhase.review,
         ],
       );
       expect(
@@ -222,39 +204,19 @@ Answer: B
           QuizGenerationPhase.generation,
           QuizGenerationPhase.generation,
           QuizGenerationPhase.generation,
-          QuizGenerationPhase.generation,
-          QuizGenerationPhase.review,
-          QuizGenerationPhase.review,
-          QuizGenerationPhase.review,
-          QuizGenerationPhase.review,
-          QuizGenerationPhase.review,
         ],
       );
       expect(events.whereType<QuizGenerationComplete>(), hasLength(1));
-      expect(events.whereType<QuizPhaseStarted>().map((e) => e.phase), isNot(contains(QuizGenerationPhase.regeneration)));
-      expect(chat.createSessionCount, 2);
+      expect(chat.createSessionCount, 1);
     });
 
-    test('emits regeneration phase when review output is rejected', () async {
+    test('keeps output short when generation output is valid', () async {
       final chat = FakeQuizChatService([
         [
           (text: '[QUESTION]\nWhat is photosynthesis?\n', thinking: null),
           (text: '[OPTIONS]\nA. A type of food\nB. Plants make food with sunlight\n', thinking: null),
-          (text: '[EXPLANATION]\nToo short.\n', thinking: null),
-          (text: '[EVIDENCE]\nPlants use sunlight.\n[END]\n', thinking: null),
-        ],
-        [
-          (text: '[QUESTION]\nWhat is photosynthesis?\n', thinking: null),
-          (text: '[OPTIONS]\nA. A type of food\nB. Plants make food with sunlight\n', thinking: null),
-          (text: '[EXPLANATION]\nToo short.\n', thinking: null),
-          (text: '[EVIDENCE]\nPlants use sunlight.\n[END]\n', thinking: null),
-        ],
-        [
-          (text: '[QUESTION]\nWhat is photosynthesis?\n', thinking: null),
-          (text: '[OPTIONS]\nA. A process plants use to make food\nB. A type of animal behavior\n', thinking: null),
           (text: '[CORRECT]\nA\n', thinking: null),
-          (text: '[EXPLANATION]\nPlants use photosynthesis to make food from sunlight.\n', thinking: null),
-          (text: '[EVIDENCE]\nThe material says plants make food using sunlight.\n[END]\n', thinking: null),
+          (text: '[END]\n', thinking: null),
         ],
       ]);
 
@@ -273,11 +235,9 @@ Answer: B
         events.whereType<QuizPhaseStarted>().map((e) => e.phase).toList(),
         [
           QuizGenerationPhase.generation,
-          QuizGenerationPhase.review,
-          QuizGenerationPhase.regeneration,
         ],
       );
-      expect(chat.createSessionCount, 3);
+      expect(chat.createSessionCount, 1);
       expect(events.whereType<QuizGenerationComplete>(), hasLength(1));
     });
   });
@@ -286,7 +246,7 @@ Answer: B
     test('keeps choices but removes answer keys', () {
       final prompt = ChatPrompts.getQuizExtractionInstruction('en');
 
-      expect(prompt, contains('Include all answer choices/options'));
+      expect(prompt, contains('For each question, include the question text and all answer choices if present'));
       expect(prompt, contains('Do NOT include answer keys'));
       expect(prompt, isNot(contains('DO NOT include all answer options')));
     });
@@ -298,19 +258,19 @@ Answer: B
         QuizAgentSkill.workflowSteps('en'),
         [
           'Extract questions from materials',
-          'Generate question drafts with answer metadata',
-          'Review quiz quality',
-          'Generate or repair replacement questions',
+          'Review questions to generate',
+          'Generate quiz',
         ],
       );
     });
 
-    test('review prompt requires fixed valid draft blocks only', () {
-      final instruction = QuizAgentSkill.reviewInstruction('en');
+    test('generation prompt omits long answer metadata', () {
+      final instruction = QuizAgentSkill.generationInstruction('en');
 
-      expect(instruction, contains('Quiz quality reviewer'));
-      expect(instruction, contains('Return only valid items'));
-      expect(instruction, contains('safely fixed items'));
+      expect(instruction, contains('[CORRECT]'));
+      expect(instruction, contains('[EXPECTED_ANSWER]'));
+      expect(instruction, isNot(contains('[EXPLANATION]')));
+      expect(instruction, isNot(contains('[EVIDENCE]')));
     });
   });
 }

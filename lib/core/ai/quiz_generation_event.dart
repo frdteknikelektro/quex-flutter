@@ -4,8 +4,6 @@ sealed class QuizGenerationEvent {}
 
 enum QuizGenerationPhase {
   generation,
-  review,
-  regeneration,
 }
 
 class QuizThinkingToken extends QuizGenerationEvent {

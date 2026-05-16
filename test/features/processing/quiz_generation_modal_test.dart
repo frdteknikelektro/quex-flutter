@@ -56,21 +56,7 @@ class ControlledQuizGenerationService extends QuizGenerationService {
         '[QUESTION]\nWhat is photosynthesis?\n[OPTIONS]\nA. Food\nB. Process\n',
       ),
       QuizPhaseCompleted(QuizGenerationPhase.generation),
-      QuizStepCompleted(1),
-      QuizPhaseStarted(QuizGenerationPhase.review),
-      QuizPhaseTextToken(
-        QuizGenerationPhase.review,
-        '[QUESTION]\nWhat is photosynthesis?\n[OPTIONS]\nA. Food\nB. Process\n',
-      ),
-      QuizPhaseCompleted(QuizGenerationPhase.review),
       QuizStepCompleted(2),
-      QuizPhaseStarted(QuizGenerationPhase.regeneration),
-      QuizPhaseTextToken(
-        QuizGenerationPhase.regeneration,
-        '[QUESTION]\nHow do plants make food?\n',
-      ),
-      QuizPhaseCompleted(QuizGenerationPhase.regeneration),
-      QuizStepCompleted(3),
     ]);
   }
 }
@@ -184,5 +170,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Generate quiz (1)'), findsOneWidget);
+  });
+
+  test('censors answer metadata in the visible transcript', () {
+    final sanitized = sanitizeQuizTranscript('''
+[QUESTION]
+What is photosynthesis?
+[OPTIONS]
+A. Food
+B. Process
+[CORRECT]
+B
+[END]
+
+[QUESTION]
+What is the expected answer?
+[EXPECTED_ANSWER]
+Sunlight
+[END]
+''');
+
+    expect(sanitized, contains('[QUESTION]'));
+    expect(sanitized, contains('[OPTIONS]'));
+    expect(sanitized, isNot(contains('[CORRECT]')));
+    expect(sanitized, isNot(contains('[EXPECTED_ANSWER]')));
+    expect(sanitized, isNot(contains('Sunlight')));
+    expect(sanitized, isNot(contains('B\n')));
   });
 }

@@ -14,7 +14,46 @@ import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/math_markdown.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
-enum _ModalStep { materialSelection, extracting, extractionReview, generating, complete }
+enum _ModalStep {
+  materialSelection,
+  extracting,
+  extractionReview,
+  generating,
+  complete
+}
+
+@visibleForTesting
+String sanitizeQuizTranscript(String content) {
+  var sanitized = content;
+  sanitized = sanitized.replaceAll(
+    RegExp(
+      r'\[CORRECT\]\s*[\s\S]*?(?=\n\[[A-Z_]+\]|\s*$)',
+      caseSensitive: false,
+    ),
+    '',
+  );
+  sanitized = sanitized.replaceAll(
+    RegExp(
+      r'\[EXPECTED_ANSWER\]\s*[\s\S]*?(?=\n\[[A-Z_]+\]|\s*$)',
+      caseSensitive: false,
+    ),
+    '',
+  );
+  sanitized = sanitized.replaceAll(
+    RegExp(
+      r'^\s*(answer|correct answer|expected answer|jawaban|kunci jawaban)\s*[:：].*$',
+      caseSensitive: false,
+      multiLine: true,
+    ),
+    '',
+  );
+  sanitized = sanitized.replaceAll(
+    RegExp(r'^\s*\[END\]\s*$', multiLine: true),
+    '',
+  );
+  sanitized = sanitized.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+  return sanitized.trim();
+}
 
 class QuizGenerationModal extends ConsumerStatefulWidget {
   final int sessionId;
@@ -144,7 +183,10 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     if (qid == null) return;
 
     // Add visual separation before Session 2
-    setState(() => _step = _ModalStep.generating);
+    setState(() {
+      _step = _ModalStep.generating;
+      _completedSteps.add(1);
+    });
 
     try {
       await _quizService.initialize();
@@ -193,34 +235,16 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     return _phaseBuffers.putIfAbsent(phase, StringBuffer.new);
   }
 
-  String _phaseTitle(QuizGenerationPhase phase) {
+  String _phaseTitle() {
     final locale = Localizations.localeOf(context).languageCode;
-    switch (phase) {
-      case QuizGenerationPhase.generation:
-        return locale == 'id' ? 'Penyusunan' : 'Draft generation';
-      case QuizGenerationPhase.review:
-        return locale == 'id' ? 'Review' : 'Review';
-      case QuizGenerationPhase.regeneration:
-        return locale == 'id' ? 'Perbaikan' : 'Regeneration';
-    }
+    return locale == 'id' ? 'Penyusunan' : 'Generation';
   }
 
-  String _phaseEmptyText(QuizGenerationPhase phase) {
+  String _phaseEmptyText() {
     final locale = Localizations.localeOf(context).languageCode;
-    switch (phase) {
-      case QuizGenerationPhase.generation:
-        return locale == 'id'
-            ? 'Belum ada draf yang keluar.'
-            : 'No draft output yet.';
-      case QuizGenerationPhase.review:
-        return locale == 'id'
-            ? 'Belum ada hasil review yang keluar.'
-            : 'No review output yet.';
-      case QuizGenerationPhase.regeneration:
-        return locale == 'id'
-            ? 'Belum ada hasil perbaikan yang keluar.'
-            : 'No regeneration output yet.';
-    }
+    return locale == 'id'
+        ? 'Belum ada draf yang keluar.'
+        : 'No draft output yet.';
   }
 
   void _resetGenerationBuffers() {
@@ -238,12 +262,12 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   }
 
   List<QuizGenerationPhase> _visibleGenerationPhases() {
-    final ordered = _phaseOrder.isEmpty
-        ? QuizGenerationPhase.values
-        : _phaseOrder;
+    final ordered =
+        _phaseOrder.isEmpty ? QuizGenerationPhase.values : _phaseOrder;
     return ordered
         .where((phase) =>
-            _phaseBuffers.containsKey(phase) || _completedPhases.contains(phase))
+            _phaseBuffers.containsKey(phase) ||
+            _completedPhases.contains(phase))
         .toList(growable: false);
   }
 
@@ -253,7 +277,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     TextTheme textTheme,
   ) {
     final buffer = _phaseBuffers[phase];
-    final content = buffer?.toString().trim() ?? '';
+    final content = sanitizeQuizTranscript(buffer?.toString() ?? '');
     final isComplete = _completedPhases.contains(phase);
     final hasContent = content.isNotEmpty;
 
@@ -271,7 +295,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
               ),
               const SizedBox(width: 8),
               Text(
-                _phaseTitle(phase),
+                _phaseTitle(),
                 style: textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: scheme.onSurface,
@@ -291,7 +315,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
             )
           else
             Text(
-              _phaseEmptyText(phase),
+              _phaseEmptyText(),
               style: textTheme.bodySmall?.copyWith(
                 color: scheme.onSurfaceVariant,
                 fontStyle: FontStyle.italic,
@@ -608,23 +632,26 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                   ),
                   const SizedBox(height: 16),
                   Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: scheme.surfaceContainerHighest,
-                        borderRadius: Br.md,
-                      ),
-                      padding: const EdgeInsets.all(12),
-                      child: SingleChildScrollView(
-                        child: MathMarkdownBody(
-                          data: _extractedQuestions!,
-                          styleSheet: MarkdownStyleSheet(
-                            listBullet: theme.textTheme.bodyMedium?.copyWith(
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: scheme.surfaceContainerHighest,
+                          borderRadius: Br.md,
+                        ),
+                        padding: const EdgeInsets.all(12),
+                        child: SingleChildScrollView(
+                          child: MathMarkdownBody(
+                            data: sanitizeQuizTranscript(_extractedQuestions!),
+                            styleSheet: MarkdownStyleSheet(
+                              listBullet: theme.textTheme.bodyMedium?.copyWith(
+                                color: scheme.onSurface,
+                              ),
+                              listIndent: 32,
+                            ),
+                            textStyle: theme.textTheme.bodyMedium?.copyWith(
                               color: scheme.onSurface,
                             ),
-                            listIndent: 32,
-                          ),
-                          textStyle: theme.textTheme.bodyMedium?.copyWith(
-                            color: scheme.onSurface,
                           ),
                         ),
                       ),
@@ -815,8 +842,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           ),
                         ),
                       ...visiblePhases.map(
-                        (phase) =>
-                            _buildPhaseTranscript(phase, scheme, theme.textTheme),
+                        (phase) => _buildPhaseTranscript(
+                            phase, scheme, theme.textTheme),
                       ),
                     ],
                   ],

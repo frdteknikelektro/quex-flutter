@@ -1,124 +1,179 @@
-# 🦆 Quex
+# Quex
 
-An on-device AI study companion I built for my two kids - because sometimes my wife and I are both working, and they have an exam tomorrow we don't know how to help with.
+Quex is a local-first AI study companion for kids. It turns a photo of a worksheet, textbook page, or notes into a quiz, then explains mistakes in plain language without needing WiFi or a cloud API.
 
-*The name? My kids came up with it: **Quex** = **Qu**ick **Ex**am.*
+Built for the Gemma 4 Good Hackathon.
 
-## The Problem I Faced
+## Demo video
 
-My wife and I both work. Sometimes she does shift work, sometimes I'm racing a deadline. When exam time comes, we want to help our kids - but we're exhausted, or we simply don't understand the material ourselves. We've felt that guilt: our kids stressing about tomorrow's test while we're stuck in a meeting.
+[Placeholder](#)
 
-I wanted a solution that would let my children focus specifically on the material that will be tested tomorrow - not random practice, not generic lessons, but *their actual worksheets and textbook pages*. NotebookLM can do something like this, but it's built for adults doing research, not kids cramming for an exam. Too many steps, too many buttons, too much complexity.
+## Why this project exists
 
-So I built what I wish existed: a patient tutor that lives on the phone, knows exactly what my kids are studying, and explains it as many times as needed - no WiFi required, no monthly fees, no complicated setup. Snap a photo, get a quiz, start studying.
+Parents are often unavailable when homework turns into exam prep. They are busy, tired, or may not remember the topic well enough to help right away.
 
-## What Quex Does
+Quex fills that gap:
 
-**For elementary-age kids who need to study their own materials:**
+- A child studies from the exact material they already have.
+- The app creates practice questions from that material.
+- The child gets explanations, hints, and retries on device.
+- Everything stays local, so it still works offline.
 
-- Create a study session for "Science Chapter 3" or "Math Fractions"
-- Take a photo of the textbook page or worksheet
-- Quex generates a quiz from that specific material
-- Get a question wrong? Ask "Why?" and the AI explains
-- Works on the car ride to school, at grandma's house with no WiFi, anywhere
+Two numbers show why the project matters:
 
-Each kid has their own profile. They pick their avatar, their grade level, their study sessions. No mixing up little brother's multiplication with big sister's science project.
+- 28% of Indonesian students can't find anyone to help them with schoolwork at home.
+- 53.8% of Indonesian parents couldn't accompany their children's study time because of work.
 
-## ✨ Features
+## Proof points
 
-| What parents/kids see | What's under the hood |
-|---|---|
-| Netflix-style profile selection for multiple kids | Riverpod state management with persistent session tracking |
-| Take photos of worksheets, textbooks, notes | Multimodal Gemma 4 E4B processes images + text together |
-| AI generates custom quizzes from uploaded materials | LiteRT-LM inference running locally, no cloud API calls |
-| Ask "Why?" and get patient explanations | Persistent Gemma session with conversation context |
-| Works on a 5-year-old Android phone without WiFi | 4-bit quantized Gemma 4 (~2.58–3.65GB), SQLite storage |
-| No ads, no subscriptions, no data collection | Apache 2.0 open source, on-device only |
+- Runs on-device with Gemma 4 E4B or E2B in LiteRT-LM format.
+- Selects the model variant based on available device memory.
+- Persists study data locally with SQLite.
+- Uses persistent tutoring sessions instead of one-shot prompts.
+- Keeps the core study flow usable when connectivity is poor or unavailable.
 
-## 🧠 How We Use Gemma 4
+## What Quex does
 
-**Model:** Gemma 4 E4B (~3.65GB) or E2B (~2.58GB) depending on device capabilities  
-**Inference:** LiteRT-LM for on-device execution via `flutter_gemma`  
-**Quantization:** 4-bit for edge deployment on consumer phones  
-**Capabilities leveraged:**
-- Multimodal understanding (vision + text) — kids photograph worksheets, AI reads them
-- Long context window — maintains conversation history for tutoring continuity
-- Native function calling — enables structured quiz generation and answer validation
-- Apache 2.0 license — matching our open-source approach
+- Create a study session for a subject, chapter, or worksheet.
+- Take a photo of a textbook page or worksheet.
+- Generate a quiz from that material.
+- Ask follow-up questions like "Why?" or "Help me understand."
+- Keep a separate profile for each child.
+- Store study history locally in SQLite.
 
-**Why this matters for our use case:** Gemma 4 runs on a mid-range Android phone from 2019 without internet. A family in a rural area with spotty connectivity can download once and have a permanent tutor. A parent working double shifts doesn't need to pay for a subscription their kids outgrow.
+## Why it is a strong Gemma 4 fit
 
-## 🚀 Quick Start
+Quex is built around capabilities that map directly to Gemma 4:
 
-```bash
-# 1. Clone and enter directory
-cd quex-flutter
+- Multimodal input: children can photograph real pages instead of typing everything out.
+- On-device inference: quizzes and explanations run locally.
+- Persistent tutoring: the app keeps session context across turns.
+- Function calling: the tutor flow can produce structured quiz and evaluation behavior.
+- Offline-first design: useful in homes with poor connectivity or shared devices.
 
-# 2. Install Flutter dependencies (uses FVM for version pinning)
-fvm flutter pub get
+## Demo flow
 
-# 3. Run on device or emulator
-# No API keys needed — models are publicly accessible
-fvm flutter run
-```
+The current product story is intentionally simple:
 
-**Requirements:**
-- Flutter 3.41.6 (via FVM)
-- Android 6.0+ / iOS 14.0+
-- ~4GB free storage for E4B model variant
+1. A parent or child opens Quex.
+2. A study session is created for the subject or chapter.
+3. The child photographs the page.
+4. Quex generates a quiz from the uploaded material.
+5. The child answers a question.
+6. If they are wrong, Quex explains the concept again.
+7. The child retries until it clicks.
 
-**Optional:** Configure HuggingFace token for higher rate limits during model download:
-```bash
-cp config.json.example config.json
-# Edit config.json with your token
-fvm flutter run --dart-define-from-file=config.json
-```
+That flow is the core submission. It is more convincing than adding many unrelated features.
 
-## 📁 Repository Structure
+## Key features
+
+- Profile-based study sessions for multiple kids
+- Text, image, and file material support
+- Quiz generation from the exact source material
+- Streaming chat for tutoring and explanations
+- Local persistence with SQLite
+- Adaptive navigation for mobile and larger screens
+- On-device Gemma 4 model download and selection
+
+## Visuals
+
+These are the existing repo images available right now. Replace them with real app screenshots once you capture them from the current build.
+
+![Quex duck mascot](assets/images/splash/duck_mascot.png)
+![Quex splash accents](assets/images/splash/sky_accents.png)
+![Profile selection art](assets/images/profile_selection/profile_selection_top_accents.png)
+
+## How it works
+
+### AI layer
+
+- Gemma 4 E4B or E2B is downloaded from Hugging Face in LiteRT-LM format.
+- The app selects the best variant based on available device memory.
+- `flutter_gemma` provides on-device inference.
+- The tutor and coach flows use persistent sessions rather than one-shot prompts.
+
+### Storage layer
+
+- Study sessions, profiles, materials, and quiz state are stored locally in SQLite.
+- Shared preferences keep lightweight app state such as the active profile and model status.
+
+### App structure
 
 ```
 lib/
 ├── app/                    # Theme, router, responsive shell
 ├── core/
-│   ├── ai/                 # ModelManager, GemmaInferenceService
-│   │   ├── model_manager.dart          # HuggingFace download
-│   │   ├── gemma_inference_service.dart # Persistent session handling
-│   │   └── download_state.dart         # Download progress state machine
-│   ├── db/                 # SQLite with DAO pattern
-│   │   ├── database.dart     # 6-table schema
-│   │   └── daos.dart         # Data access objects
+│   ├── ai/                 # ModelManager, chat services, prompts, download state
+│   ├── db/                 # SQLite schema and DAOs
 │   └── state/              # Riverpod providers
-├── features/               # Feature-first screen organization
-│   ├── chat/               # AI coaching chat
+├── features/
+│   ├── chat/               # Study coach chat
 │   ├── home/               # Study sessions list
-│   ├── material/           # Upload/view materials
+│   ├── material/           # Upload and view materials
 │   ├── profile/            # Active profile management
-│   ├── profile_selection/  # Netflix-style profile grid
-│   ├── quiz/               # Quiz generation and taking
-│   ├── session_detail/     # Session with materials/quizzes
+│   ├── profile_selection/  # Kid profile picker
+│   ├── quiz/               # Quiz generation and quiz flow
+│   ├── session_detail/     # Session view with materials and quizzes
 │   └── splash/             # Model download flow
-└── widgets/              # Shared UI components
+└── widgets/                # Shared UI components
 ```
 
-**Key architectural patterns:**
-- **Persistent Gemma sessions:** Screens acquire service ownership via tokens; sessions persist across messages within a screen
-- **Offline-first:** SQLite with WAL mode; all data local, sync optional
-- **Responsive:** Navigation adapts from mobile (bottom bar) to tablet/desktop (rail) via `QuexBreakpoints`
-- **State management:** `FutureProvider.family` for async data, `NotifierProvider` for complex UI state
+## Technology
 
-## 💡 Why This Matters
+- Flutter 3.41.6 via FVM
+- Riverpod for state management
+- go_router for navigation
+- sqflite for local persistence
+- flutter_gemma for on-device Gemma 4 inference
+- Material 3 with a custom theme
 
-It's for my kids, who need help with fractions when I'm in a meeting. It's for my wife, who works shift work and shouldn't feel guilty about not being there for homework time. It's for families who can't afford tutoring subscriptions that cost more than their phone.
+## Requirements
 
-Gemma 4 makes this possible because it runs on the hardware people already have. No cloud means no data bills, no privacy concerns, no "service unavailable" when you need it most. Just a quiet, patient tutor that explains things as many times as your kid needs.
+- Flutter 3.41.6
+- Android 6.0+ or iOS 14.0+
+- Enough free storage for the selected model variant
 
-Not replacing parents. Just filling the gaps when we can't be there.
+Model sizes:
 
----
+- Gemma 4 E4B: about 3.65 GB
+- Gemma 4 E2B: about 2.58 GB
 
-**Built for the Gemma 4 Good Hackathon** — Kaggle × Google DeepMind  
-*Competition: [kaggle.com/competitions/gemma-4-good-hackathon](https://www.kaggle.com/competitions/gemma-4-good-hackathon)*
+## Quick start
 
-## 📄 License
+```bash
+# Clone and enter the repo
+cd quex-flutter
 
-Apache 2.0 — See [LICENSE](LICENSE)
+# Install dependencies
+fvm flutter pub get
+
+# Run the app
+fvm flutter run
+```
+
+Optional Hugging Face token setup:
+
+```bash
+cp config.json.example config.json
+# Add your token to config.json
+fvm flutter run --dart-define-from-file=config.json
+```
+
+## Design notes
+
+The product is designed for elementary-age kids:
+
+- Simple profile selection
+- Short prompts and simple explanations
+- Kid-friendly interaction patterns
+- No ads, no subscription, no cloud dependency
+
+The pitch is not "an AI chatbot for education." It is "a quiet tutor that helps a child study the exact page they already have, even when the internet is unavailable."
+
+## Repository structure
+
+For implementation guidance and build notes, see [TECHNICAL.md](TECHNICAL.md). For the Kaggle submission draft, see [WRITEUP.md](WRITEUP.md).
+
+## License
+
+Apache 2.0. See [LICENSE](LICENSE).

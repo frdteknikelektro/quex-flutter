@@ -54,7 +54,7 @@ class QuizGenerationService {
     await for (final event in stream) {
       if (event.thinking != null) yield QuizThinkingToken(event.thinking!);
       if (event.text != null) {
-        fullText.write(event.text);
+        fullText.write(event.text!);
         yield QuizTextToken(event.text!);
       }
     }
@@ -81,8 +81,8 @@ class QuizGenerationService {
     final prepared = await MaterialPreprocessor.prepare(materials);
     final textContext = prepared.map((p) => p.textChunk).join('\n\n');
     final images = prepared.expand((p) => p.images).toList();
-
     final generatedText = StringBuffer();
+
     yield QuizPhaseStarted(QuizGenerationPhase.generation);
     await _chatService.createSession(
       systemInstruction:
@@ -111,87 +111,13 @@ class QuizGenerationService {
       }
     }
     yield QuizPhaseCompleted(QuizGenerationPhase.generation);
-    yield QuizStepCompleted(1);
-
-    final reviewedText = StringBuffer();
-    yield QuizPhaseStarted(QuizGenerationPhase.review);
-    await _chatService.createSession(
-      systemInstruction: QuizAgentSkill.reviewInstruction(locale),
-      temperature: 0.2,
-      topP: 0.8,
-      topK: 32,
-    );
-    final reviewPrompt = QuizAgentSkill.reviewPrompt(
-      textContext: textContext,
-      draftText: generatedText.toString(),
-      targetCount: targetCount,
-    );
-    final reviewStream = images.isNotEmpty
-        ? _chatService.sendMessageWithImages(reviewPrompt, images)
-        : _chatService.sendMessage(reviewPrompt);
-    await for (final event in reviewStream) {
-      if (event.thinking != null) yield QuizThinkingToken(event.thinking!);
-      if (event.text != null) {
-        reviewedText.write(event.text!);
-        yield QuizPhaseTextToken(
-          QuizGenerationPhase.review,
-          event.text!,
-        );
-      }
-    }
-    yield QuizPhaseCompleted(QuizGenerationPhase.review);
     yield QuizStepCompleted(2);
 
-    final candidates = <QuizItemDraft>[
-      ...parseStructuredDrafts(reviewedText.toString()),
-      ...parseStructuredDrafts(generatedText.toString()),
-    ];
-    final parsedQuestions = _validQuestionsFromDrafts(candidates, targetCount);
-
-    if (parsedQuestions.length < targetCount) {
-      final missing = targetCount - parsedQuestions.length;
-      final replacementText = StringBuffer();
-      yield QuizPhaseStarted(QuizGenerationPhase.regeneration);
-      await _chatService.createSession(
-        systemInstruction:
-            ChatPrompts.getQuizGenerationInstruction(session.title, locale),
-        temperature: 0.3,
-        topP: 0.8,
-        topK: 40,
-      );
-      final replacementPrompt = QuizAgentSkill.generationPrompt(
-        sessionTitle: session.title,
-        targetCount: missing,
-        extractedQuestions: extractedQuestions,
-        textContext: textContext,
-        reviewFeedback: _validationFeedback(candidates),
-      );
-      final replacementStream = images.isNotEmpty
-          ? _chatService.sendMessageWithImages(replacementPrompt, images)
-          : _chatService.sendMessage(replacementPrompt);
-      await for (final event in replacementStream) {
-        if (event.thinking != null) yield QuizThinkingToken(event.thinking!);
-        if (event.text != null) {
-          replacementText.write(event.text!);
-          yield QuizPhaseTextToken(
-            QuizGenerationPhase.regeneration,
-            event.text!,
-          );
-        }
-      }
-      yield QuizPhaseCompleted(QuizGenerationPhase.regeneration);
-
-      final replacementDrafts =
-          parseStructuredDrafts(replacementText.toString());
-      final replacementQuestions = _validQuestionsFromDrafts(
-        replacementDrafts,
-        missing,
-        startIndex: parsedQuestions.length,
-        existingQuestions: parsedQuestions,
-      );
-      parsedQuestions.addAll(replacementQuestions);
-    }
-    yield QuizStepCompleted(3);
+    final candidates = parseStructuredDrafts(generatedText.toString());
+    final parsedQuestions = _validQuestionsFromDrafts(
+      candidates,
+      targetCount,
+    );
 
     final questions = <Question>[];
     questions.addAll(parsedQuestions.take(targetCount));
@@ -224,20 +150,6 @@ class QuizGenerationService {
       if (questions.length == limit) break;
     }
     return questions;
-  }
-
-  String _validationFeedback(List<QuizItemDraft> drafts) {
-    final issues = <String>[];
-    for (final draft in drafts) {
-      final validation = validateDraft(draft);
-      if (validation.isValid) continue;
-      issues.add('- "${draft.questionText}": ${validation.issues.join('; ')}');
-      if (issues.length >= 8) break;
-    }
-    if (issues.isEmpty) {
-      return '- Some previous drafts were rejected because they duplicated earlier questions or failed review.';
-    }
-    return issues.join('\n');
   }
 
   static String _normalizedQuestion(String text) {
@@ -294,12 +206,6 @@ class QuizGenerationService {
         issues.add('Text-answer question is missing an expected answer.');
       }
     }
-    if (draft.explanation.trim().length < 8) {
-      issues.add('Explanation is missing or too short.');
-    }
-    if (draft.evidence.trim().length < 8) {
-      issues.add('Evidence is missing or too short.');
-    }
 
     return QuizDraftValidation(issues);
   }
@@ -334,8 +240,6 @@ class QuizGenerationService {
       options: options,
       correctOptionIndex: correctOptionIndex,
       expectedAnswer: _section(block, 'EXPECTED_ANSWER')?.trim(),
-      explanation: _section(block, 'EXPLANATION')?.trim() ?? '',
-      evidence: _section(block, 'EVIDENCE')?.trim() ?? '',
     );
   }
 
@@ -404,8 +308,6 @@ class QuizGenerationService {
     return QuizItemDraft(
       questionText: questionText,
       options: options,
-      explanation: 'Extracted from study material.',
-      evidence: questionText,
     );
   }
 
@@ -464,16 +366,12 @@ class QuizItemDraft {
   final List<String> options;
   final int? correctOptionIndex;
   final String? expectedAnswer;
-  final String explanation;
-  final String evidence;
 
   const QuizItemDraft({
     required this.questionText,
     this.options = const [],
     this.correctOptionIndex,
     this.expectedAnswer,
-    required this.explanation,
-    required this.evidence,
   });
 
   Question toQuestion(int index) {

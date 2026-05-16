@@ -1,7 +1,7 @@
 /// Runtime quiz-agent skill for the in-app Gemma workflow.
 ///
 /// This is not a Codex skill file. It is the app-side skill contract used to
-/// steer the local model through extraction, generation, review, and repair.
+/// steer the local model through extraction, review, and generation.
 class QuizAgentSkill {
   const QuizAgentSkill._();
 
@@ -10,16 +10,14 @@ class QuizAgentSkill {
       case 'id':
         return const [
           'Ekstrak pertanyaan dari materi',
-          'Buat draf pertanyaan dengan metadata jawaban',
-          'Tinjau kualitas kuis',
-          'Buat/perbaiki pertanyaan pengganti',
+          'Tinjau pertanyaan yang akan dibuat',
+          'Buat kuis',
         ];
       default:
         return const [
           'Extract questions from materials',
-          'Generate question drafts with answer metadata',
-          'Review quiz quality',
-          'Generate or repair replacement questions',
+          'Review questions to generate',
+          'Generate quiz',
         ];
     }
   }
@@ -99,11 +97,12 @@ TUGAS:
 2. Jika jumlah pertanyaan kurang dari target, buat pertanyaan BARU dari materi.
 3. Pastikan pertanyaan mencakup materi secara seimbang.
 4. Gunakan bahasa netral dan jelas.
-5. Setiap pertanyaan harus dapat dijawab dari materi dan memiliki tepat satu jawaban benar jika berupa pilihan ganda.
+5. Setiap pertanyaan harus dapat dijawab dari materi.
 
 FORMAT OUTPUT (KETAT):
 Gunakan format blok berikut untuk setiap item. Jangan gunakan markdown bebas.
 
+Untuk pilihan ganda:
 [QUESTION]
 Pertanyaan yang ditampilkan ke siswa.
 [OPTIONS]
@@ -111,16 +110,20 @@ A. Pilihan pertama
 B. Pilihan kedua
 [CORRECT]
 B
-[EXPLANATION]
-Mengapa jawaban benar.
-[EVIDENCE]
-Dukungan singkat dari materi.
+[END]
+
+Untuk pertanyaan isian singkat:
+[QUESTION]
+Pertanyaan yang ditampilkan ke siswa.
+[EXPECTED_ANSWER]
+Jawaban singkat.
 [END]
 
 ATURAN:
 - Gunakan bahasa yang sama dengan materi pelajaran.
 - Jangan tampilkan kunci jawaban di bagian [QUESTION] atau [OPTIONS].
-- [CORRECT], [EXPLANATION], dan [EVIDENCE] adalah metadata internal untuk pemeriksaan kualitas.
+- [CORRECT] dipakai untuk pilihan ganda.
+- [EXPECTED_ANSWER] hanya dipakai jika pertanyaan bukan pilihan ganda.
 - Tolak secara diam-diam ide pertanyaan yang tidak didukung materi, ambigu, atau memiliki lebih dari satu jawaban benar.''';
       default:
         return '''ROLE: Generate quiz drafts from study materials and existing questions.
@@ -130,11 +133,12 @@ TASK:
 2. If the question count is below target, generate NEW questions from the material.
 3. Ensure questions cover the material in a balanced way.
 4. Use neutral and clear language.
-5. Every question must be answerable from the material and must have exactly one correct answer if it is multiple choice.
+5. Every question must be answerable from the material.
 
 FORMAT OUTPUT (STRICT):
 Use the following block format for every item. Do not use free-form markdown.
 
+For multiple-choice questions:
 [QUESTION]
 Question shown to the student.
 [OPTIONS]
@@ -142,16 +146,20 @@ A. First option
 B. Second option
 [CORRECT]
 B
-[EXPLANATION]
-Why the answer is correct.
-[EVIDENCE]
-Short support from the study material.
+[END]
+
+For short-answer questions:
+[QUESTION]
+Question shown to the student.
+[EXPECTED_ANSWER]
+Short answer.
 [END]
 
 RULES:
 - Use the same language as the study materials.
 - Do not reveal the answer in [QUESTION] or [OPTIONS].
-- [CORRECT], [EXPLANATION], and [EVIDENCE] are internal quality metadata.
+- [CORRECT] is for multiple-choice questions.
+- [EXPECTED_ANSWER] is only for non-multiple-choice questions.
 - Silently reject question ideas that are unsupported by the material, ambiguous, or have more than one correct answer.''';
     }
   }
@@ -170,7 +178,7 @@ KRITERIA:
 - Distraktor harus masuk akal tetapi salah.
 - Pertanyaan tidak boleh membocorkan jawaban.
 - Jangan sertakan kunci jawaban di [QUESTION] atau [OPTIONS].
-- [EXPLANATION] dan [EVIDENCE] wajib ada.
+- [EXPECTED_ANSWER] boleh dipakai untuk pertanyaan isian singkat.
 
 Jika item tidak dapat diperbaiki dengan aman dari materi, hilangkan item tersebut.''';
       default:
@@ -185,7 +193,7 @@ CRITERIA:
 - Distractors must be plausible but wrong.
 - The question must not leak the answer.
 - Do not include answer keys in [QUESTION] or [OPTIONS].
-- [EXPLANATION] and [EVIDENCE] are required.
+- [EXPECTED_ANSWER] can be used for short-answer questions.
 
 If an item cannot be safely fixed from the material, omit it.''';
     }
@@ -196,19 +204,10 @@ If an item cannot be safely fixed from the material, omit it.''';
     required int targetCount,
     required String extractedQuestions,
     required String textContext,
-    String? reviewFeedback,
   }) {
-    final feedbackBlock =
-        reviewFeedback == null || reviewFeedback.trim().isEmpty
-            ? ''
-            : '''
-
-Avoid these previous quality failures:
-$reviewFeedback''';
-
     return '''Generate exactly $targetCount quiz draft items for "$sessionTitle".
 
-If <context> has enough questions, use a balanced subset. If it has fewer, use all good questions and generate the rest from Study Materials.$feedbackBlock
+If <context> has enough questions, use a balanced subset. If it has fewer, use all good questions and generate the rest from Study Materials.
 
 <context>
 $extractedQuestions

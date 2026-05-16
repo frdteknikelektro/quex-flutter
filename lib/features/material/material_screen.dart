@@ -60,6 +60,7 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
   late AnimationController _staggerController;
   List<Animation<double>> _staggerAnimations = [];
   int _lastKnownCount = -1;
+  final Set<int> _deletedMaterialIds = {};
 
   @override
   void initState() {
@@ -192,10 +193,14 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
                 child: Text(l10n.materialCouldNotLoadFiles(e.toString()))),
           ),
           data: (materials) {
-            if (_lastKnownCount != materials.length) {
-              _buildStaggerAnimations(materials.length);
-              _lastKnownCount = materials.length;
-              if (materials.isNotEmpty) {
+            final visibleMaterials = materials
+                .where((material) => !_deletedMaterialIds.contains(material.id))
+                .toList();
+
+            if (_lastKnownCount != visibleMaterials.length) {
+              _buildStaggerAnimations(visibleMaterials.length);
+              _lastKnownCount = visibleMaterials.length;
+              if (visibleMaterials.isNotEmpty) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   if (mounted) _staggerController.forward(from: 0);
                 });
@@ -204,7 +209,7 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
               }
             }
 
-            final hasMaterials = materials.isNotEmpty;
+            final hasMaterials = visibleMaterials.isNotEmpty;
 
             return _buildScaffold(
               session: session,
@@ -212,9 +217,9 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
               body: hasMaterials
                   ? ListView.builder(
                       padding: const EdgeInsets.only(bottom: Sp.xl),
-                      itemCount: materials.length,
+                      itemCount: visibleMaterials.length,
                       itemBuilder: (context, index) {
-                        final material = materials[index];
+                        final material = visibleMaterials[index];
                         return _staggerWrap(
                           index,
                           Dismissible(
@@ -222,12 +227,33 @@ class _MaterialScreenState extends ConsumerState<MaterialScreen>
                             direction: DismissDirection.endToStart,
                             background: const _DismissBackground(),
                             confirmDismiss: (_) => _confirmDelete(context),
-                            onDismissed: (_) => deleteMaterial(
-                              context,
-                              ref,
-                              material,
-                              skipConfirm: true,
-                            ),
+                            onDismissed: (_) async {
+                              final messenger = ScaffoldMessenger.of(context);
+                              setState(
+                                () => _deletedMaterialIds.add(material.id!),
+                              );
+                              try {
+                                await deleteMaterial(
+                                  context,
+                                  ref,
+                                  material,
+                                  skipConfirm: true,
+                                );
+                              } catch (error) {
+                                if (!mounted) return;
+                                setState(
+                                  () =>
+                                      _deletedMaterialIds.remove(material.id!),
+                                );
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Could not delete material: $error',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
                             child: _MaterialFileTile(
                               material: material,
                               sessionId: widget.sessionId,
@@ -922,7 +948,6 @@ class _KindSelector extends StatelessWidget {
     required this.scheme,
   });
 
-  
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context)!;
@@ -942,7 +967,7 @@ class _KindSelector extends StatelessWidget {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 curve: Curves.easeOutCubic,
-                height: 56,
+                height: 60,
                 decoration: BoxDecoration(
                   color: isSelected
                       ? scheme.primaryContainer
@@ -957,17 +982,20 @@ class _KindSelector extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(entry.emoji, style: const TextStyle(fontSize: 18)),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
                       entry.label,
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 10.5,
+                        height: 1,
                         fontWeight:
                             isSelected ? FontWeight.w700 : FontWeight.w500,
                         color: isSelected
                             ? scheme.primary
                             : scheme.onSurfaceVariant,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),

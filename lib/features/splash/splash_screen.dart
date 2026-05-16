@@ -138,6 +138,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           final floraHeight = size.height * 0.6;
           final statusBottom = _statusBottom(size, bottomInset, isLandscape);
           final duckBottom = _duckBottom(size, isTablet, isLandscape);
+          final statusWidth = downloadState.isActive
+              ? math.min(size.width - (sidePadding * 2), 480.0)
+              : contentWidth;
 
           return Stack(
             clipBehavior: Clip.none,
@@ -325,7 +328,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                 right: sidePadding,
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: contentWidth),
+                    constraints: BoxConstraints(maxWidth: statusWidth),
                     child: AnimatedSwitcher(
                       duration: const Duration(milliseconds: 300),
                       transitionBuilder: (child, animation) {
@@ -342,7 +345,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                           ),
                         );
                       },
-                      child: _buildStateIndicator(downloadState, scheme),
+                      child: _buildStateIndicator(
+                        downloadState,
+                        scheme,
+                        statusWidth,
+                      ),
                     ),
                   ),
                 ),
@@ -378,6 +385,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   Widget _buildStateIndicator(
     ModelDownloadState downloadState,
     ColorScheme scheme,
+    double maxWidth,
   ) {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context)!;
@@ -444,9 +452,13 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     final variant = downloadState.modelVariant ?? 'e4b';
     final variantName = variant == 'e2b' ? 'E2B' : 'E4B';
     final size = variant == 'e2b' ? '2.58 GB' : '3.65 GB';
+    final downloadingWidth = math.min(maxWidth, 480.0);
 
     return ConstrainedBox(
-      constraints: const BoxConstraints(minWidth: 184, maxWidth: 192),
+      constraints: BoxConstraints(
+        minWidth: math.min(downloadingWidth, 460.0),
+        maxWidth: downloadingWidth,
+      ),
       child: _StatusPanel(
         key: const ValueKey('downloading'),
         child: Column(
