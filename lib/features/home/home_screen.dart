@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../../app/breakpoints.dart';
 import '../../app/router.dart';
 import '../../app/theme.dart';
+import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
 import '../../generated/l10n/app_localizations.dart';
@@ -138,6 +139,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
                   : _RecentSessionsSection(
                       animation: _contentController,
                       sessions: sessions,
+                      onDeleteSession: (session) async {
+                        await SessionDAO().delete(session.id!);
+                      },
+                      onSessionsChanged: () {
+                        ref.invalidate(
+                            recentSessionsProvider(activeProfile.id!));
+                      },
                     ),
             );
           },
@@ -326,10 +334,14 @@ class _ProfileEmojiBadge extends StatelessWidget {
 class _RecentSessionsSection extends StatefulWidget {
   final Animation<double> animation;
   final List<Session> sessions;
+  final Future<void> Function(Session session) onDeleteSession;
+  final VoidCallback onSessionsChanged;
 
   const _RecentSessionsSection({
     required this.animation,
     required this.sessions,
+    required this.onDeleteSession,
+    required this.onSessionsChanged,
   });
 
   @override
@@ -340,9 +352,17 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
   static const int _initialCount = 5;
 
   bool _isExpanded = false;
+  final Set<int> _deletedIds = {};
 
   void _toggleExpanded() {
     setState(() => _isExpanded = !_isExpanded);
+  }
+
+  @override
+  void didUpdateWidget(covariant _RecentSessionsSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final currentIds = widget.sessions.map((session) => session.id!).toSet();
+    _deletedIds.removeWhere((id) => !currentIds.contains(id));
   }
 
   @override
@@ -350,9 +370,12 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final l10n = AppLocalizations.of(context)!;
-    final displayCount = _isExpanded ? widget.sessions.length : _initialCount;
-    final visibleSessions = widget.sessions.take(displayCount).toList();
-    final hasMore = widget.sessions.length > _initialCount;
+    final filteredSessions = widget.sessions
+        .where((session) => !_deletedIds.contains(session.id))
+        .toList();
+    final displayCount = _isExpanded ? filteredSessions.length : _initialCount;
+    final visibleSessions = filteredSessions.take(displayCount).toList();
+    final hasMore = filteredSessions.length > _initialCount;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -386,14 +409,50 @@ class _RecentSessionsSectionState extends State<_RecentSessionsSection> {
         ),
         const SizedBox(height: Sp.sm + Sp.xs),
         ...visibleSessions.asMap().entries.map((entry) {
+          final session = entry.value;
           return _AnimatedDashboardEntry(
             animation: widget.animation,
             delay: (entry.key + 1) * 0.06,
             child: Padding(
               padding: const EdgeInsets.only(bottom: Sp.md - Sp.xs),
-              child: _SessionTile(
-                session: entry.value,
-                toneIndex: entry.key,
+              child: Dismissible(
+                key: ValueKey('session-${session.id}'),
+                direction: DismissDirection.endToStart,
+                background: const SizedBox.shrink(),
+                secondaryBackground: Container(
+                  decoration: BoxDecoration(
+                    color: scheme.errorContainer,
+                    borderRadius: Br.lg,
+                  ),
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: Sp.lg),
+                  child: Icon(
+                    Icons.delete_outline_rounded,
+                    color: scheme.onErrorContainer,
+                  ),
+                ),
+                onDismissed: (_) async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  setState(() => _deletedIds.add(session.id!));
+                  try {
+                    await widget.onDeleteSession(session);
+                    widget.onSessionsChanged();
+                  } catch (error) {
+                    if (!mounted) return;
+                    setState(() => _deletedIds.remove(session.id!));
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Could not delete "${session.title}": $error',
+                        ),
+                      ),
+                    );
+                  }
+                },
+                child: _SessionTile(
+                  session: session,
+                  toneIndex: entry.key,
+                ),
               ),
             ),
           );

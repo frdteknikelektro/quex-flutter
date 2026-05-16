@@ -237,7 +237,7 @@ class _AppShellState extends ConsumerState<_AppShell> {
     }
 
     Widget? getFloatingActionButton() {
-      if (compact && _currentIndex == 0 && hasSessions) {
+      if (_currentIndex == 0 && hasSessions) {
         return FloatingActionButton(
           onPressed: () => context.push(Routes.newSession),
           tooltip: l10n.newSession,
@@ -336,6 +336,7 @@ class _AppShellState extends ConsumerState<_AppShell> {
                         ),
                     ],
                   ),
+                  floatingActionButton: getFloatingActionButton(),
                 ),
               ),
             ],
