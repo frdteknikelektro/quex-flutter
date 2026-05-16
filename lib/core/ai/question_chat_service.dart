@@ -29,6 +29,7 @@ class QuestionChatService {
   double? _pendingScore;
   final List<Uint8List> _materialImages = [];
   String? _activeQuestionContext;
+  bool _questionContextInjected = false;
   Future<void>? _prewarmFuture;
   Completer<void>? _questionTurnCompleter;
   int _questionTurnId = 0;
@@ -176,9 +177,11 @@ class QuestionChatService {
         if (!isQuestionTurnActive(questionTurnId) ||
             isQuestionTurnCancelled(questionTurnId)) {
           _activeQuestionContext = null;
+          _questionContextInjected = false;
           return;
         }
         _activeQuestionContext = _buildQuestionContext(question);
+        _questionContextInjected = false;
 
         if (_sessionCreated && !_sessionConsumed && _sessionWarmupComplete) {
           _sessionConsumed = true;
@@ -339,6 +342,7 @@ class QuestionChatService {
   Stream<TutorEvent> sendMessage(String message,
       {List<Uint8List> images = const []}) async* {
     _pendingScore = null;
+    await _injectQuestionContextIfNeeded();
 
     final Stream<({String? text, String? thinking})> stream;
     if (_materialImages.isNotEmpty || images.isNotEmpty) {
@@ -361,11 +365,24 @@ class QuestionChatService {
 
   Stream<TutorEvent> sendUserAudio(Uint8List audioBytes) async* {
     _pendingScore = null;
+    await _injectQuestionContextIfNeeded();
     await for (final event in _chatService.sendAudioMessage(audioBytes)) {
       if (event.thinking != null) yield TutorThinking(event.thinking!);
       if (event.text != null) yield TutorReply(event.text!);
     }
     if (_pendingScore != null) yield TutorEvaluation(score: _pendingScore!);
+  }
+
+  Future<void> _injectQuestionContextIfNeeded() async {
+    if (!_chatService.hasActiveSession || _questionContextInjected) {
+      return;
+    }
+    final context = _activeQuestionContext;
+    if (context == null || context.isEmpty) return;
+
+    await _chatService.addAssistantContext(context);
+    _questionContextInjected = true;
+    _activeQuestionContext = null;
   }
 
   dynamic getSessionMetrics() => _chatService.getSessionMetrics();
@@ -386,6 +403,7 @@ class QuestionChatService {
     _pendingScore = null;
     _materialImages.clear();
     _prewarmFuture = null;
+    _questionContextInjected = false;
     _sessionGeneration++;
   }
 
@@ -406,6 +424,7 @@ class QuestionChatService {
         _pendingScore = null;
         _materialImages.clear();
         _prewarmFuture = null;
+        _questionContextInjected = false;
         _sessionGeneration++;
       });
 
@@ -421,6 +440,7 @@ class QuestionChatService {
     _activeQuestionContext = null;
     _pendingScore = null;
     _materialImages.clear();
+    _questionContextInjected = false;
     _sessionGeneration++;
   }
 

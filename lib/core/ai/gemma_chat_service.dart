@@ -134,20 +134,19 @@ class GemmaChatService implements QuizChatService {
     _toolExecutor = toolExecutor;
 
     _chat = await _model!.createChat(
-      systemInstruction: systemInstruction,
-      temperature: temperature,
-      topP: topP,
-      topK: topK,
-      supportImage: true,
-      supportAudio: true,
-      isThinking: isThinking,
-      toolChoice:
-          tools.isNotEmpty ? gemma.ToolChoice.auto : gemma.ToolChoice.none,
-      tools: tools,
-      supportsFunctionCalls: tools.isNotEmpty,
-      maxFunctionBufferLength: 2048,
-      randomSeed: Random().nextInt(1000000)
-    );
+        systemInstruction: systemInstruction,
+        temperature: temperature,
+        topP: topP,
+        topK: topK,
+        supportImage: true,
+        supportAudio: true,
+        isThinking: isThinking,
+        toolChoice:
+            tools.isNotEmpty ? gemma.ToolChoice.auto : gemma.ToolChoice.none,
+        tools: tools,
+        supportsFunctionCalls: tools.isNotEmpty,
+        maxFunctionBufferLength: 2048,
+        randomSeed: Random().nextInt(1000000));
   }
 
   /// Send a text message and get streaming response.
@@ -170,6 +169,17 @@ class GemmaChatService implements QuizChatService {
         in _processResponseStream(_chat!.generateChatResponseAsync())) {
       yield response;
     }
+  }
+
+  /// Append an assistant/context turn without requesting a model reply.
+  Future<void> addAssistantContext(String message) async {
+    if (_chat == null) {
+      throw StateError('No active session. Call createSession() first.');
+    }
+
+    await _chat!.addQueryChunk(
+      gemma.Message.text(text: message, isUser: false),
+    );
   }
 
   /// Process response stream handling tool calls in a multi-turn loop.

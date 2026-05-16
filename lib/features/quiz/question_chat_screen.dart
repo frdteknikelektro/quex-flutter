@@ -117,7 +117,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   }
 
   Future<void> _initialize() async {
-    unawaited(_ttsService.initialize());
+    await _ttsService.initialize();
 
     if (_chatService.isInitialized) {
       final effectiveMaxTokens = _chatService.effectiveMaxTokens ?? 8192;
@@ -254,6 +254,10 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
         }
         return;
       }
+
+      if (mounted) {
+        setState(() => _preparingTutor = false);
+      }
     } catch (e) {
       debugPrint('Failed to create tutor session: $e');
       final generation = _chatSessionGeneration;
@@ -274,66 +278,33 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       return;
     }
 
-    setState(() {
-      _preparingTutor = false;
-      _sending = true;
-      _sendEra++;
-      _streamingContent = '';
-      _thinkingContent = null;
-    });
-
     try {
-      final imageBytes = <Uint8List>[];
-      for (final image in _attachedImages) {
-        try {
-          final bytes = await image.readAsBytes();
-          imageBytes.add(bytes);
-        } catch (e) {
-          debugPrint('Failed to read opener image bytes: $e');
-        }
-      }
-
-      final stream = _chatService.sendOpener(locale, images: imageBytes);
-      final result = await _handleTutorStream(stream);
-      _thinkingSpeechFired = false;
-      unawaited(_ttsService.speak(result.reply));
-
-      _clearImages();
-
-      if (mounted) {
-        setState(() {
-          if (result.reply.isNotEmpty) {
-            _messages.add(QuestionMessage(
-              questionId: widget.questionId,
-              role: QuestionMessageRole.assistant,
-              content: result.reply,
-              createdAt: DateTime.now(),
-            ));
-          }
-          _streamingContent = null;
-          _sending = false;
-          _thinkingContent = result.thinking.isEmpty ? null : result.thinking;
-          _thinkingExpanded = false;
-        });
-      }
-      _scrollToBottom();
+      final spokenQuestion = _buildQuestionSpeech(question, locale);
+      await _ttsService.speak(spokenQuestion);
     } catch (e) {
-      debugPrint('Opener error: $e');
-      _tokenCount = 0;
-      final generation = _chatSessionGeneration;
-      if (generation != null) {
-        await _chatService.resetSessionForGeneration(generation);
-        _chatSessionGeneration = null;
-      }
       if (mounted) {
         setState(() {
-          _streamingContent = null;
-          _thinkingContent = null;
           _preparingTutor = false;
           _sending = false;
         });
       }
+      debugPrint('Question speech error: $e');
+      return;
     }
+
+    if (mounted) {
+      setState(() {
+        _sending = false;
+      });
+    }
+  }
+
+  String _buildQuestionSpeech(Question question, String locale) {
+    final number = question.orderIndex + 1;
+    final prefix = locale == 'id'
+        ? 'Pertanyaan nomor $number.'
+        : 'Question number $number.';
+    return '$prefix ${question.questionText}';
   }
 
   Future<void> _resetChat(
