@@ -481,9 +481,9 @@ class QuestionChatService {
 
   static const _evaluateTool = gemma.Tool(
     name: 'evaluate_understanding',
-    description: 'Rate student understanding of the question (0.0-1.0). '
-        'Call it first when the student answers correctly, gives the correct '
-        'option letter, or demonstrates clear comprehension.',
+    description: 'Rate the student\'s attempted answer to the active quiz '
+        'question from 0.0 to 1.0. Call this whenever the student gives a '
+        'clear answer attempt, including correct, partial, or wrong answers.',
     parameters: {
       'type': 'object',
       'properties': {
