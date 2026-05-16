@@ -45,9 +45,7 @@ dependencies:
   shared_preferences: ^2.3.2
 
   # ── AI & ML ────────────────────────────────────────────────
-  flutter_gemma:
-    git:
-      url: https://github.com/frdteknikelektro/flutter_gemma
+  flutter_gemma: 0.15.1
   background_downloader: ^9.5.4
 
   # ── Notifications ──────────────────────────────────────────

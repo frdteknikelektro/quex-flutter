@@ -180,7 +180,6 @@
 				331C807D294A63A400263BE5 /* Sources */,
 				331C807F294A63A400263BE5 /* Resources */,
 				CA3096AD96ABC7167EB214E8 /* Frameworks */,
-				6F85853C0A5C906C32A99E2B /* [flutter_gemma] Setup LiteRT-LM iOS */,
 			);
 			buildRules = (
 			);
@@ -204,7 +203,6 @@
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				688526F2E1097F0B2164209A /* [CP] Copy Pods Resources */,
-				32B2C2F9DED80F3273BA1EAF /* [flutter_gemma] Setup LiteRT-LM iOS */,
 			);
 			buildRules = (
 			);
@@ -276,24 +274,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		32B2C2F9DED80F3273BA1EAF /* [flutter_gemma] Setup LiteRT-LM iOS */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "[flutter_gemma] Setup LiteRT-LM iOS";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -e\nFRAMEWORKS=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Frameworks\"\nif [ ! -d \"${FRAMEWORKS}\" ]; then\n  echo \"[flutter_gemma] no Frameworks/ in ${PRODUCT_NAME}.app — skipping\"\n  exit 0\nfi\nfor base in LiteRtMetalAccelerator GemmaModelConstraintProvider; do\n  src=\"${base}.framework/${base}\"\n  if [ ! -e \"${FRAMEWORKS}/${src}\" ]; then\n    echo \"[flutter_gemma] ${FRAMEWORKS}/${src} missing — Native Assets did not bundle it\"\n    continue\n  fi\n  dst=\"${FRAMEWORKS}/lib${base}.dylib\"\n  if [ ! -e \"${dst}\" ]; then\n    ln -sf \"${src}\" \"${dst}\"\n    echo \"[flutter_gemma] symlinked lib${base}.dylib -> ${src}\"\n  fi\ndone\n";
-		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -326,24 +306,6 @@
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources.sh\"\n";
 			showEnvVarsInLog = 0;
-		};
-		6F85853C0A5C906C32A99E2B /* [flutter_gemma] Setup LiteRT-LM iOS */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "[flutter_gemma] Setup LiteRT-LM iOS";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -e\nFRAMEWORKS=\"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/Frameworks\"\nif [ ! -d \"${FRAMEWORKS}\" ]; then\n  echo \"[flutter_gemma] no Frameworks/ in ${PRODUCT_NAME}.app — skipping\"\n  exit 0\nfi\nfor base in LiteRtMetalAccelerator GemmaModelConstraintProvider; do\n  src=\"${base}.framework/${base}\"\n  if [ ! -e \"${FRAMEWORKS}/${src}\" ]; then\n    echo \"[flutter_gemma] ${FRAMEWORKS}/${src} missing — Native Assets did not bundle it\"\n    continue\n  fi\n  dst=\"${FRAMEWORKS}/lib${base}.dylib\"\n  if [ ! -e \"${dst}\" ]; then\n    ln -sf \"${src}\" \"${dst}\"\n    echo \"[flutter_gemma] symlinked lib${base}.dylib -> ${src}\"\n  fi\ndone\n";
 		};
 		9740EEB61CF901F6004384FC /* Run Script */ = {
 			isa = PBXShellScriptBuildPhase;

@@ -125,7 +125,7 @@ void main() {
 
     expect(factory.builders, hasLength(1));
     final builder = factory.builders.single;
-    expect(builder.recordedModelType, gemma.ModelType.gemmaIt);
+    expect(builder.recordedModelType, gemma.ModelType.gemma4);
     expect(builder.recordedFileType, gemma.ModelFileType.litertlm);
     expect(builder.networkUrl, ModelManager.gemmaE2BModelUrl);
     expect(builder.installCalls, 1);

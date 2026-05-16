@@ -38,7 +38,7 @@ PODS:
     - DKImagePickerController/PhotoGallery
     - Flutter
   - Flutter (1.0.0)
-  - flutter_gemma (0.15.0):
+  - flutter_gemma (0.15.1):
     - Flutter
     - MediaPipeTasksGenAI (= 0.10.33)
     - MediaPipeTasksGenAIC (= 0.10.33)
@@ -171,7 +171,7 @@ SPEC CHECKSUMS:
   DKPhotoGallery: b3834fecb755ee09a593d7c9e389d8b5d6deed60
   file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_gemma: 68d5423ddc75e003043fb2cefe3c4b0498a0a440
+  flutter_gemma: e16d16aa30f6cc26dbe3b554e660f7e54822d0d5
   flutter_image_compress_common: 1697a328fd72bfb335507c6bca1a65fa5ad87df1
   flutter_local_notifications: 395056b3175ba4f08480a7c5de30cd36d69827e4
   flutter_tts: 35ac3c7d42412733e795ea96ad2d7e05d0a75113
@@ -192,6 +192,6 @@ SPEC CHECKSUMS:
   system_info_plus: 555ce7047fbbf29154726db942ae785c29211740
   TensorFlowLiteC: 215ef57653dd0fa09a474e7d94d79ae64a870b28
 
-PODFILE CHECKSUM: 97fdb4ac9d6e44fc5d4719117a8f85807cb8af74
+PODFILE CHECKSUM: c0915517eae1a513480956f02c7781054ca94770
 
 COCOAPODS: 1.16.2

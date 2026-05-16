@@ -3,22 +3,23 @@ import 'package:quex/core/ai/chat_prompts.dart';
 
 void main() {
   group('ChatPrompts tutor system instruction', () {
-    test('English prompt asks for explanation-first answers', () {
+    test('English prompt stays compact and answer-focused', () {
       final prompt = ChatPrompts.getTutorSystemInstruction('en');
 
-      expect(prompt, contains('give a short explanation first'));
       expect(prompt, contains('--- QUIZ QUESTION ---'));
-      expect(prompt, contains('ambiguous or could refer to more than one thing'));
-      expect(prompt, contains('answer related follow-up conversation naturally'));
+      expect(prompt, contains('default 1-3 short sentences'));
+      expect(prompt, contains('Direct answer request: give the answer first'));
+      expect(prompt, contains('call evaluate_understanding before replying'));
     });
 
-    test('Indonesian prompt asks for explanation-first answers', () {
+    test('Indonesian prompt stays compact and answer-focused', () {
       final prompt = ChatPrompts.getTutorSystemInstruction('id');
 
-      expect(prompt, contains('penjelasan singkat terlebih dahulu'));
       expect(prompt, contains('--- QUIZ QUESTION ---'));
-      expect(prompt, contains('pesan siswa ambigu'));
-      expect(prompt, contains('percakapan lanjutan yang masih terkait secara natural'));
+      expect(prompt, contains('default 1-3 kalimat pendek'));
+      expect(prompt, contains('beri jawaban dulu'));
+      expect(
+          prompt, contains('panggil evaluate_understanding sebelum membalas'));
     });
   });
 }
