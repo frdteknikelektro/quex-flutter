@@ -4,7 +4,7 @@ import 'package:sqflite/sqflite.dart';
 class QuexDatabase {
   static Database? _db;
   static const String _dbName = 'quex.db';
-  static const int _version = 4;
+  static const int _version = 5;
 
   static Future<Database> get instance async {
     if (_db != null) return _db!;
@@ -82,6 +82,7 @@ class QuexDatabase {
         type TEXT NOT NULL DEFAULT 'multipleChoice',
         question_text TEXT NOT NULL,
         options TEXT NOT NULL DEFAULT '[]',
+        correct_answer TEXT,
         user_answer TEXT,
         order_index INTEGER NOT NULL DEFAULT 0,
         score REAL
@@ -108,13 +109,20 @@ class QuexDatabase {
       )
     ''');
 
-    await db.execute('CREATE INDEX idx_sessions_profile ON sessions(profile_id)');
-    await db.execute('CREATE INDEX idx_sessions_created ON sessions(created_at DESC)');
-    await db.execute('CREATE INDEX idx_materials_session ON materials(session_id, page_index)');
-    await db.execute('CREATE INDEX idx_quizzes_session ON quizzes(session_id, created_at DESC)');
-    await db.execute('CREATE INDEX idx_questions_quiz_order ON questions(quiz_id, order_index)');
-    await db.execute('CREATE INDEX idx_question_messages_question ON question_messages(question_id, created_at)');
-    await db.execute('CREATE INDEX idx_chat_session ON chat_messages(session_id, created_at)');
+    await db
+        .execute('CREATE INDEX idx_sessions_profile ON sessions(profile_id)');
+    await db.execute(
+        'CREATE INDEX idx_sessions_created ON sessions(created_at DESC)');
+    await db.execute(
+        'CREATE INDEX idx_materials_session ON materials(session_id, page_index)');
+    await db.execute(
+        'CREATE INDEX idx_quizzes_session ON quizzes(session_id, created_at DESC)');
+    await db.execute(
+        'CREATE INDEX idx_questions_quiz_order ON questions(quiz_id, order_index)');
+    await db.execute(
+        'CREATE INDEX idx_question_messages_question ON question_messages(question_id, created_at)');
+    await db.execute(
+        'CREATE INDEX idx_chat_session ON chat_messages(session_id, created_at)');
 
     final now = DateTime.now().millisecondsSinceEpoch;
     await db.insert('profiles', {
@@ -133,7 +141,8 @@ class QuexDatabase {
     });
   }
 
-  static Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+  static Future<void> _onUpgrade(
+      Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('''
         CREATE TABLE questions_v2 (
@@ -160,7 +169,8 @@ class QuexDatabase {
       ''');
       await db.execute('DROP TABLE questions');
       await db.execute('ALTER TABLE questions_v2 RENAME TO questions');
-      await db.execute('CREATE INDEX idx_questions_quiz_order ON questions(quiz_id, order_index)');
+      await db.execute(
+          'CREATE INDEX idx_questions_quiz_order ON questions(quiz_id, order_index)');
     }
     if (oldVersion < 3) {
       await db.execute('ALTER TABLE questions ADD COLUMN score REAL');
@@ -173,7 +183,8 @@ class QuexDatabase {
           created_at INTEGER NOT NULL
         )
       ''');
-      await db.execute('CREATE INDEX idx_question_messages_question ON question_messages(question_id, created_at)');
+      await db.execute(
+          'CREATE INDEX idx_question_messages_question ON question_messages(question_id, created_at)');
     }
     if (oldVersion < 4) {
       // Remove question_count from sessions
@@ -193,8 +204,10 @@ class QuexDatabase {
       ''');
       await db.execute('DROP TABLE sessions');
       await db.execute('ALTER TABLE sessions_v4 RENAME TO sessions');
-      await db.execute('CREATE INDEX idx_sessions_profile ON sessions(profile_id)');
-      await db.execute('CREATE INDEX idx_sessions_created ON sessions(created_at DESC)');
+      await db
+          .execute('CREATE INDEX idx_sessions_profile ON sessions(profile_id)');
+      await db.execute(
+          'CREATE INDEX idx_sessions_created ON sessions(created_at DESC)');
 
       // Remove correct_answer + explanation from questions
       await db.execute('''
@@ -216,7 +229,11 @@ class QuexDatabase {
       ''');
       await db.execute('DROP TABLE questions');
       await db.execute('ALTER TABLE questions_v4 RENAME TO questions');
-      await db.execute('CREATE INDEX idx_questions_quiz_order ON questions(quiz_id, order_index)');
+      await db.execute(
+          'CREATE INDEX idx_questions_quiz_order ON questions(quiz_id, order_index)');
+    }
+    if (oldVersion < 5) {
+      await db.execute('ALTER TABLE questions ADD COLUMN correct_answer TEXT');
     }
   }
 

@@ -44,7 +44,7 @@ class ControlledQuizGenerationService extends QuizGenerationService {
   Stream<QuizGenerationEvent> runGenerationSession({
     required Session session,
     required List<StudyMaterial> materials,
-    required String extractedQuestions,
+    required String reviewText,
     int targetCount = 10,
     String locale = 'en',
   }) {
@@ -57,6 +57,27 @@ class ControlledQuizGenerationService extends QuizGenerationService {
       ),
       QuizPhaseCompleted(QuizGenerationPhase.generation),
       QuizStepCompleted(2),
+    ]);
+  }
+
+  @override
+  Stream<QuizGenerationEvent> runReviewSession({
+    required Session session,
+    required List<StudyMaterial> materials,
+    required String extractedQuestions,
+    String locale = 'en',
+  }) {
+    return Stream.fromIterable([
+      QuizPhaseStarted(QuizGenerationPhase.review),
+      QuizPhaseTextToken(
+        QuizGenerationPhase.review,
+        '[QUESTION_REVIEW]\n- USABLE: What is photosynthesis?\n',
+      ),
+      QuizPhaseCompleted(QuizGenerationPhase.review),
+      QuizStepCompleted(1),
+      QuizReviewComplete(
+        '[QUESTION_REVIEW]\n- USABLE: What is photosynthesis?\n',
+      ),
     ]);
   }
 }

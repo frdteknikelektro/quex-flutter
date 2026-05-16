@@ -3,6 +3,7 @@ import '../models/models.dart';
 sealed class QuizGenerationEvent {}
 
 enum QuizGenerationPhase {
+  review,
   generation,
 }
 
@@ -88,4 +89,9 @@ class QuizExtractionComplete extends QuizGenerationEvent {
 
 class QuizExtractionEmpty extends QuizGenerationEvent {
   QuizExtractionEmpty();
+}
+
+class QuizReviewComplete extends QuizGenerationEvent {
+  final String reviewText;
+  QuizReviewComplete(this.reviewText);
 }

@@ -32,6 +32,7 @@ class QuexAi {
 
       final options = <String>[correct, ...distractors.take(3)];
       options.shuffle(rng);
+      final correctIndex = options.indexOf(correct);
 
       questions.add(
         Question(
@@ -40,6 +41,7 @@ class QuexAi {
           type: QuestionType.multipleChoice,
           questionText: templates[index % templates.length],
           options: options,
+          correctAnswer: String.fromCharCode('A'.codeUnitAt(0) + correctIndex),
           orderIndex: index,
         ),
       );

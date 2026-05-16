@@ -179,7 +179,8 @@ class StudyMaterial {
     return StudyMaterial(
       id: map['id'] as int?,
       sessionId: map['session_id'] as int,
-      kind: MaterialKind.values.firstWhere((value) => value.name == map['kind']),
+      kind:
+          MaterialKind.values.firstWhere((value) => value.name == map['kind']),
       title: map['title'] as String,
       content: map['content'] as String,
       pageIndex: map['page_index'] as int,
@@ -261,6 +262,7 @@ class Question {
   final QuestionType type;
   final String questionText;
   final List<String> options;
+  final String? correctAnswer;
   final String? userAnswer;
   final int orderIndex;
   final double? score;
@@ -272,6 +274,7 @@ class Question {
     this.type = QuestionType.multipleChoice,
     required this.questionText,
     required this.options,
+    this.correctAnswer,
     this.userAnswer,
     required this.orderIndex,
     this.score,
@@ -291,6 +294,7 @@ class Question {
     QuestionType? type,
     String? questionText,
     List<String>? options,
+    String? correctAnswer,
     String? userAnswer,
     int? orderIndex,
     double? score,
@@ -302,6 +306,7 @@ class Question {
       type: type ?? this.type,
       questionText: questionText ?? this.questionText,
       options: options ?? this.options,
+      correctAnswer: correctAnswer ?? this.correctAnswer,
       userAnswer: userAnswer ?? this.userAnswer,
       orderIndex: orderIndex ?? this.orderIndex,
       score: score ?? this.score,
@@ -315,6 +320,7 @@ class Question {
         'type': type.name,
         'question_text': questionText,
         'options': jsonEncode(options),
+        'correct_answer': correctAnswer,
         'user_answer': userAnswer,
         'order_index': orderIndex,
         'score': score,
@@ -322,7 +328,8 @@ class Question {
 
   factory Question.fromMap(Map<String, dynamic> map) {
     final rawOptions = map['options'] as String? ?? '[]';
-    final optionsList = (jsonDecode(rawOptions) as List<dynamic>).cast<String>();
+    final optionsList =
+        (jsonDecode(rawOptions) as List<dynamic>).cast<String>();
     return Question(
       id: map['id'] as int?,
       quizId: map['quiz_id'] as int,
@@ -336,6 +343,7 @@ class Question {
       ),
       questionText: map['question_text'] as String,
       options: optionsList,
+      correctAnswer: map['correct_answer'] as String?,
       userAnswer: map['user_answer'] as String?,
       orderIndex: map['order_index'] as int,
       score: map['score'] as double?,

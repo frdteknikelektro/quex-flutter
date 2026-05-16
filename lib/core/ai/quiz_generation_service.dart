@@ -68,11 +68,59 @@ class QuizGenerationService {
     yield QuizStepCompleted(0);
   }
 
-  /// Session 2: Generation of a full quiz using extracted questions as context.
-  Stream<QuizGenerationEvent> runGenerationSession({
+  /// Session 2: AI review of extracted questions and material coverage.
+  Stream<QuizGenerationEvent> runReviewSession({
     required Session session,
     required List<StudyMaterial> materials,
     required String extractedQuestions,
+    String locale = 'en',
+  }) async* {
+    final prepared = await MaterialPreprocessor.prepare(materials);
+    final textContext = prepared.map((p) => p.textChunk).join('\n\n');
+    final images = prepared.expand((p) => p.images).toList();
+    final reviewText = StringBuffer();
+
+    yield QuizPhaseStarted(QuizGenerationPhase.review);
+    await _chatService.createSession(
+      systemInstruction: ChatPrompts.getQuizReviewInstruction(locale),
+      temperature: 0.2,
+      topP: 0.8,
+      topK: 40,
+    );
+    final reviewPrompt = QuizAgentSkill.reviewPrompt(
+      textContext: textContext,
+      extractedQuestions: extractedQuestions,
+    );
+    final reviewStream = images.isNotEmpty
+        ? _chatService.sendMessageWithImages(reviewPrompt, images)
+        : _chatService.sendMessage(reviewPrompt);
+
+    await for (final event in reviewStream) {
+      if (event.thinking != null) yield QuizThinkingToken(event.thinking!);
+      if (event.text != null) {
+        reviewText.write(event.text!);
+        yield QuizPhaseTextToken(
+          QuizGenerationPhase.review,
+          event.text!,
+        );
+      }
+    }
+
+    yield QuizPhaseCompleted(QuizGenerationPhase.review);
+    final result = reviewText.toString().trim();
+    if (result.isEmpty) {
+      yield QuizGenerationError('Failed to review quiz materials.');
+      return;
+    }
+    yield QuizStepCompleted(1);
+    yield QuizReviewComplete(result);
+  }
+
+  /// Session 3: Generation of a full quiz using AI review as context.
+  Stream<QuizGenerationEvent> runGenerationSession({
+    required Session session,
+    required List<StudyMaterial> materials,
+    required String reviewText,
     int targetCount = 10,
     String locale = 'en',
   }) async* {
@@ -94,7 +142,7 @@ class QuizGenerationService {
     final generationPrompt = QuizAgentSkill.generationPrompt(
       sessionTitle: session.title,
       targetCount: targetCount,
-      extractedQuestions: extractedQuestions,
+      reviewText: reviewText,
       textContext: textContext,
     );
     final generationStream = images.isNotEmpty
@@ -180,16 +228,16 @@ class QuizGenerationService {
     if (_containsAnswerLeak(questionText, options)) {
       issues.add('Question text appears to reveal an option.');
     }
+    if (options.length != 4) {
+      issues.add('Multiple-choice question needs exactly four options.');
+    }
+    if (draft.correctOptionIndex == null) {
+      issues.add('Multiple-choice question is missing a correct option.');
+    } else if (draft.correctOptionIndex! < 0 ||
+        draft.correctOptionIndex! >= options.length) {
+      issues.add('Correct option is outside the option list.');
+    }
     if (options.isNotEmpty) {
-      if (options.length < 2) {
-        issues.add('Multiple-choice question needs at least two options.');
-      }
-      if (draft.correctOptionIndex == null) {
-        issues.add('Multiple-choice question is missing a correct option.');
-      } else if (draft.correctOptionIndex! < 0 ||
-          draft.correctOptionIndex! >= options.length) {
-        issues.add('Correct option is outside the option list.');
-      }
       if (_hasDuplicateOptions(options)) {
         issues.add('Options contain duplicates.');
       }
@@ -199,11 +247,6 @@ class QuizGenerationService {
       if (options.any(_isWeakOption)) {
         issues
             .add('Options contain weak choices such as all/none of the above.');
-      }
-    } else {
-      final expectedAnswer = draft.expectedAnswer?.trim();
-      if (expectedAnswer == null || expectedAnswer.isEmpty) {
-        issues.add('Text-answer question is missing an expected answer.');
       }
     }
 
@@ -375,14 +418,16 @@ class QuizItemDraft {
   });
 
   Question toQuestion(int index) {
+    final correctAnswer = correctOptionIndex == null
+        ? null
+        : String.fromCharCode('A'.codeUnitAt(0) + correctOptionIndex!);
     return Question(
       quizId: -1,
       source: QuestionSource.generated,
-      type: options.isEmpty
-          ? QuestionType.textAnswer
-          : QuestionType.multipleChoice,
+      type: QuestionType.multipleChoice,
       questionText: questionText,
       options: options,
+      correctAnswer: correctAnswer,
       orderIndex: index,
     );
   }

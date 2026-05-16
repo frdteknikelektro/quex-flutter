@@ -17,6 +17,7 @@ import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 enum _ModalStep {
   materialSelection,
   extracting,
+  reviewing,
   extractionReview,
   generating,
   complete
@@ -89,11 +90,13 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
   bool _isLoadingModel = false;
   bool _isGenerating = false;
   bool _isExtracting = false;
+  bool _isReviewing = false;
   StreamSubscription<QuizGenerationEvent>? _subscription;
   int? _quizId;
   late final QuizGenerationService _quizService;
   Session? _session;
   String? _extractedQuestions;
+  String? _reviewText;
   List<StudyMaterial> _selectedMaterials = [];
 
   @override
@@ -175,14 +178,45 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     }
   }
 
+  Future<void> _startReview() async {
+    final session = _session;
+    if (session == null) return;
+
+    try {
+      await _quizService.initialize();
+      if (!mounted) return;
+
+      final stream = _quizService.runReviewSession(
+        session: session,
+        materials: _selectedMaterials,
+        extractedQuestions: _extractedQuestions ?? '',
+        locale: mounted ? Localizations.localeOf(context).languageCode : 'en',
+      );
+
+      _subscription = stream.listen(
+        _handleEvent,
+        onError: (Object e) => _showErrorAndPop(e.toString()),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoadingModel = false);
+      _showErrorAndPop(e.toString());
+    }
+  }
+
   Future<void> _continueToGeneration() async {
     final session = _session;
     if (session == null) return;
 
     final qid = _quizId;
     if (qid == null) return;
+    final reviewText = _reviewText?.trim();
+    if (reviewText == null || reviewText.isEmpty) {
+      _showErrorAndPop('AI review is empty.');
+      return;
+    }
 
-    // Add visual separation before Session 2
+    // Add visual separation before Session 3.
     setState(() {
       _step = _ModalStep.generating;
       _completedSteps.add(1);
@@ -190,11 +224,12 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
 
     try {
       await _quizService.initialize();
+      if (!mounted) return;
 
       final stream = _quizService.runGenerationSession(
         session: session,
         materials: _selectedMaterials,
-        extractedQuestions: _extractedQuestions ?? '',
+        reviewText: reviewText,
         targetCount: 10,
         locale: mounted ? Localizations.localeOf(context).languageCode : 'en',
       );
@@ -235,9 +270,14 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     return _phaseBuffers.putIfAbsent(phase, StringBuffer.new);
   }
 
-  String _phaseTitle() {
+  String _phaseTitle(QuizGenerationPhase phase) {
     final locale = Localizations.localeOf(context).languageCode;
-    return locale == 'id' ? 'Penyusunan' : 'Generation';
+    return switch (phase) {
+      QuizGenerationPhase.review =>
+        locale == 'id' ? 'Tinjauan AI' : 'AI Review',
+      QuizGenerationPhase.generation =>
+        locale == 'id' ? 'Penyusunan' : 'Generation',
+    };
   }
 
   String _phaseEmptyText() {
@@ -245,6 +285,21 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     return locale == 'id'
         ? 'Belum ada draf yang keluar.'
         : 'No draft output yet.';
+  }
+
+  String _startingPhaseText() {
+    final locale = Localizations.localeOf(context).languageCode;
+    if (_isReviewing) {
+      return locale == 'id'
+          ? 'Memulai tinjauan AI...'
+          : 'Starting AI review...';
+    }
+    if (_isGenerating) {
+      return locale == 'id'
+          ? 'Memulai penyusunan...'
+          : 'Starting generation...';
+    }
+    return '';
   }
 
   void _resetGenerationBuffers() {
@@ -295,7 +350,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
               ),
               const SizedBox(width: 8),
               Text(
-                _phaseTitle(),
+                _phaseTitle(phase),
                 style: textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: scheme.onSurface,
@@ -347,23 +402,31 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       case QuizExtractionStarted():
         setState(() {
           _isExtracting = true;
+          _isReviewing = false;
+          _isGenerating = false;
+          _reviewText = null;
           _extractionBuffer.clear();
+          _resetGenerationBuffers();
         });
         _scrollToBottom();
       case QuizExtractionComplete(:final extractedQuestions):
         setState(() {
           _extractedQuestions = extractedQuestions;
           _isExtracting = false;
-          _step = _ModalStep.extractionReview;
+          _isReviewing = true;
+          _step = _ModalStep.reviewing;
         });
         _scrollToBottom();
+        unawaited(_startReview());
       case QuizExtractionEmpty():
         setState(() {
           _extractedQuestions = null;
           _isExtracting = false;
-          _step = _ModalStep.extractionReview;
+          _isReviewing = true;
+          _step = _ModalStep.reviewing;
         });
         _scrollToBottom();
+        unawaited(_startReview());
       case QuizThinkingToken(:final token):
         setState(() {
           _isThinking = true;
@@ -380,13 +443,15 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       case QuizGenerationStarted():
         setState(() {
           _isGenerating = true;
+          _isReviewing = false;
           _isThinking = false;
           _resetGenerationBuffers();
         });
         _scrollToBottom();
       case QuizPhaseStarted(:final phase):
         setState(() {
-          _isGenerating = true;
+          _isGenerating = phase == QuizGenerationPhase.generation;
+          _isReviewing = phase == QuizGenerationPhase.review;
           _isThinking = false;
           if (!_phaseBuffers.containsKey(phase)) _phaseOrder.add(phase);
           _bufferForPhase(phase);
@@ -394,12 +459,20 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
         _scrollToBottom();
       case QuizPhaseTextToken(:final phase, :final token):
         setState(() {
-          _isGenerating = true;
+          _isGenerating = phase == QuizGenerationPhase.generation;
+          _isReviewing = phase == QuizGenerationPhase.review;
           _appendPhaseText(phase, token);
         });
         _scrollToBottom();
       case QuizPhaseCompleted(:final phase):
         setState(() => _completedPhases.add(phase));
+        _scrollToBottom();
+      case QuizReviewComplete(:final reviewText):
+        setState(() {
+          _reviewText = reviewText.trim();
+          _isReviewing = false;
+          _step = _ModalStep.extractionReview;
+        });
         _scrollToBottom();
       case QuizGenerationComplete(:final questions):
         _saveAndNavigate(questions);
@@ -444,6 +517,11 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
     if (_isLoadingModel) return l10n.quizGenLoadingBrain;
     if (_isComplete) return l10n.quizGenReady;
     if (_isExtracting) return l10n.quizGenExtracting;
+    if (_isReviewing) {
+      return Localizations.localeOf(context).languageCode == 'id'
+          ? 'Meninjau pertanyaan dan materi'
+          : 'Reviewing questions and materials';
+    }
     if (_isGenerating) return l10n.quizGenGenerating;
     if (_isThinking) return l10n.quizGenThinking;
     if (_step == _ModalStep.extractionReview) {
@@ -625,34 +703,35 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                 const SizedBox(height: 16),
                 if (_extractedQuestions != null) ...[
                   Text(
+                    Localizations.localeOf(context).languageCode == 'id'
+                        ? 'Pertanyaan hasil ekstraksi'
+                        : 'Extracted questions',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
                     l10n.quizGenFoundDescription,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Expanded(
-                    child: SizedBox(
-                      width: double.infinity,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: scheme.surfaceContainerHighest,
-                          borderRadius: Br.md,
-                        ),
-                        padding: const EdgeInsets.all(12),
-                        child: SingleChildScrollView(
-                          child: MathMarkdownBody(
-                            data: sanitizeQuizTranscript(_extractedQuestions!),
-                            styleSheet: MarkdownStyleSheet(
-                              listBullet: theme.textTheme.bodyMedium?.copyWith(
-                                color: scheme.onSurface,
-                              ),
-                              listIndent: 32,
-                            ),
-                            textStyle: theme.textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurface,
-                            ),
+                  SizedBox(
+                    height: 150,
+                    child: _ReviewPanel(
+                      child: MathMarkdownBody(
+                        data: sanitizeQuizTranscript(_extractedQuestions!),
+                        styleSheet: MarkdownStyleSheet(
+                          listBullet: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurface,
                           ),
+                          listIndent: 32,
+                        ),
+                        textStyle: theme.textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurface,
                         ),
                       ),
                     ),
@@ -665,6 +744,33 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                     ),
                   ),
                 ],
+                const SizedBox(height: 16),
+                Text(
+                  Localizations.localeOf(context).languageCode == 'id'
+                      ? 'Tinjauan AI & rencana'
+                      : 'AI review & plan',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: _ReviewPanel(
+                    child: MathMarkdownBody(
+                      data: sanitizeQuizTranscript(_reviewText ?? ''),
+                      styleSheet: MarkdownStyleSheet(
+                        listBullet: theme.textTheme.bodyMedium?.copyWith(
+                          color: scheme.onSurface,
+                        ),
+                        listIndent: 32,
+                      ),
+                      textStyle: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -674,7 +780,9 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
         Padding(
           padding: const EdgeInsets.all(Sp.md),
           child: FilledButton(
-            onPressed: _continueToGeneration,
+            onPressed: (_reviewText?.trim().isEmpty ?? true)
+                ? null
+                : _continueToGeneration,
             child: Text(l10n.quizGenContinue),
           ),
         ),
@@ -689,6 +797,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
         _thinkingBuffer.isNotEmpty ||
         _isGenerating ||
         (_step == _ModalStep.extracting && _extractionBuffer.isNotEmpty) ||
+        (_step == _ModalStep.reviewing && visiblePhases.isNotEmpty) ||
         visiblePhases.isNotEmpty;
 
     return Column(
@@ -827,15 +936,11 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                           color: scheme.onSurface,
                         ),
                       ),
-                    if (_step == _ModalStep.generating) ...[
+                    if (_step == _ModalStep.reviewing ||
+                        _step == _ModalStep.generating) ...[
                       if (visiblePhases.isEmpty)
                         Text(
-                          _isGenerating
-                              ? (Localizations.localeOf(context).languageCode ==
-                                      'id'
-                                  ? 'Memulai penyusunan...'
-                                  : 'Starting generation...')
-                              : '',
+                          _startingPhaseText(),
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                             fontStyle: FontStyle.italic,
@@ -855,6 +960,28 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
         const SizedBox(height: 20),
         const Spacer(flex: 1),
       ],
+    );
+  }
+}
+
+class _ReviewPanel extends StatelessWidget {
+  final Widget child;
+
+  const _ReviewPanel({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: double.infinity,
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: Br.md,
+        ),
+        padding: const EdgeInsets.all(12),
+        child: SingleChildScrollView(child: child),
+      ),
     );
   }
 }

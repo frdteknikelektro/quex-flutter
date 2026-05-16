@@ -142,7 +142,12 @@ class ChatPrompts {
     return QuizAgentSkill.extractionInstruction(locale);
   }
 
-  /// Returns the system instruction for quiz generation (Session 2).
+  /// Returns the system instruction for quiz review (Session 2).
+  static String getQuizReviewInstruction(String locale) {
+    return QuizAgentSkill.reviewInstruction(locale);
+  }
+
+  /// Returns the system instruction for quiz generation (Session 3).
   static String getQuizGenerationInstruction(
       String sessionTitle, String locale) {
     return QuizAgentSkill.generationInstruction(locale);

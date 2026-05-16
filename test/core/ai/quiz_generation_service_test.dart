@@ -61,6 +61,28 @@ class FakeQuizChatService implements QuizChatService {
 }
 
 void main() {
+  group('Question model', () {
+    test('persists correct answer metadata in maps', () {
+      const question = Question(
+        quizId: 1,
+        source: QuestionSource.generated,
+        questionText: 'Which option is correct?',
+        options: ['One', 'Two', 'Three', 'Four'],
+        correctAnswer: 'B',
+        orderIndex: 0,
+      );
+
+      final map = question.toMap();
+      final restored = Question.fromMap({
+        ...map,
+        'id': 10,
+      });
+
+      expect(map['correct_answer'], 'B');
+      expect(restored.correctAnswer, 'B');
+    });
+  });
+
   group('QuizGenerationService draft parsing', () {
     late QuizGenerationService service;
 
@@ -87,6 +109,7 @@ B
       expect(drafts.single.options, ['London', 'Paris', 'Berlin', 'Madrid']);
       expect(drafts.single.correctOptionIndex, 1);
       expect(service.validateDraft(drafts.single).isValid, isTrue);
+      expect(drafts.single.toQuestion(0).correctAnswer, 'B');
     });
 
     test('removes answer-key lines from legacy extracted markdown fallback',
@@ -112,7 +135,7 @@ Answer: B
     test('rejects multiple-choice draft without correct option metadata', () {
       const draft = QuizItemDraft(
         questionText: 'Which planet is known as the Red Planet?',
-        options: ['Earth', 'Mars', 'Venus'],
+        options: ['Earth', 'Mars', 'Venus', 'Jupiter'],
       );
 
       final validation = service.validateDraft(draft);
@@ -127,7 +150,7 @@ Answer: B
     test('rejects duplicate options', () {
       const draft = QuizItemDraft(
         questionText: 'Which process do plants use to make food?',
-        options: ['Photosynthesis', 'Respiration', 'photosynthesis'],
+        options: ['Photosynthesis', 'Respiration', 'photosynthesis', 'Growth'],
         correctOptionIndex: 0,
       );
 
@@ -135,6 +158,22 @@ Answer: B
 
       expect(validation.isValid, isFalse);
       expect(validation.issues, contains('Options contain duplicates.'));
+    });
+
+    test('rejects drafts without exactly four options', () {
+      const draft = QuizItemDraft(
+        questionText: 'Which process do plants use to make food?',
+        options: ['Photosynthesis', 'Respiration', 'Growth'],
+        correctOptionIndex: 0,
+      );
+
+      final validation = service.validateDraft(draft);
+
+      expect(validation.isValid, isFalse);
+      expect(
+        validation.issues,
+        contains('Multiple-choice question needs exactly four options.'),
+      );
     });
   });
 
@@ -164,11 +203,76 @@ Answer: B
       ];
     }
 
+    test('emits review phase with material guidance', () async {
+      final chat = FakeQuizChatService([
+        [
+          (
+            text: '[QUESTION_REVIEW]\n- USABLE: What is photosynthesis?\n',
+            thinking: null
+          ),
+          (
+            text: '[MATERIAL_ANALYSIS]\n- Important topics: sunlight\n',
+            thinking: null
+          ),
+          (
+            text: '[GENERATION_GUIDANCE]\n- Use: photosynthesis\n',
+            thinking: null
+          ),
+        ],
+      ]);
+
+      final service = QuizGenerationService(chatService: chat);
+      final events = await service
+          .runReviewSession(
+            session: buildSession(),
+            materials: buildMaterials(),
+            extractedQuestions: 'What is photosynthesis?',
+            locale: 'en',
+          )
+          .toList();
+
+      expect(
+        events.whereType<QuizPhaseStarted>().map((e) => e.phase).toList(),
+        [
+          QuizGenerationPhase.review,
+        ],
+      );
+      expect(events.whereType<QuizReviewComplete>(), hasLength(1));
+      expect(chat.createSessionCount, 1);
+      expect(chat.prompts.single, contains('Extracted Questions:'));
+      expect(chat.prompts.single, contains('Study Materials:'));
+    });
+
+    test('emits error when review output is empty', () async {
+      final chat = FakeQuizChatService([
+        [
+          (text: '', thinking: null),
+        ],
+      ]);
+
+      final service = QuizGenerationService(chatService: chat);
+      final events = await service
+          .runReviewSession(
+            session: buildSession(),
+            materials: buildMaterials(),
+            extractedQuestions: '',
+            locale: 'en',
+          )
+          .toList();
+
+      expect(events.whereType<QuizReviewComplete>(), isEmpty);
+      expect(events.whereType<QuizGenerationError>(), hasLength(1));
+    });
+
     test('emits generation and completion phases in order', () async {
       final chat = FakeQuizChatService([
         [
           (text: '[QUESTION]\nWhat is photosynthesis?\n', thinking: null),
-          (text: '[OPTIONS]\nA. A type of food\nB. A way plants make food\n', thinking: null),
+          (
+            text:
+                '[OPTIONS]\nA. A type of food\nB. A way plants make food\nC. An animal movement\nD. A rock type\n',
+            thinking: null
+          ),
           (text: '[CORRECT]\nB\n', thinking: null),
           (text: '[END]\n', thinking: null),
         ],
@@ -179,7 +283,7 @@ Answer: B
           .runGenerationSession(
             session: buildSession(),
             materials: buildMaterials(),
-            extractedQuestions: 'What is photosynthesis?',
+            reviewText: '[QUESTION_REVIEW]\n- USABLE: What is photosynthesis?',
             targetCount: 1,
             locale: 'en',
           )
@@ -207,6 +311,8 @@ Answer: B
         ],
       );
       expect(events.whereType<QuizGenerationComplete>(), hasLength(1));
+      final complete = events.whereType<QuizGenerationComplete>().single;
+      expect(complete.questions.single.correctAnswer, 'B');
       expect(chat.createSessionCount, 1);
     });
 
@@ -214,8 +320,12 @@ Answer: B
       final chat = FakeQuizChatService([
         [
           (text: '[QUESTION]\nWhat is photosynthesis?\n', thinking: null),
-          (text: '[OPTIONS]\nA. A type of food\nB. Plants make food with sunlight\n', thinking: null),
-          (text: '[CORRECT]\nA\n', thinking: null),
+          (
+            text:
+                '[OPTIONS]\nA. A type of food\nB. Plants make food with sunlight\nC. A moon phase\nD. A weather tool\n',
+            thinking: null
+          ),
+          (text: '[CORRECT]\nB\n', thinking: null),
           (text: '[END]\n', thinking: null),
         ],
       ]);
@@ -225,7 +335,7 @@ Answer: B
           .runGenerationSession(
             session: buildSession(),
             materials: buildMaterials(),
-            extractedQuestions: 'What is photosynthesis?',
+            reviewText: '[GENERATION_GUIDANCE]\n- Create new: photosynthesis',
             targetCount: 1,
             locale: 'en',
           )
@@ -246,7 +356,10 @@ Answer: B
     test('keeps choices but removes answer keys', () {
       final prompt = ChatPrompts.getQuizExtractionInstruction('en');
 
-      expect(prompt, contains('For each question, include the question text and all answer choices if present'));
+      expect(
+          prompt,
+          contains(
+              'For each question, include the question text and all answer choices if present'));
       expect(prompt, contains('Do NOT include answer keys'));
       expect(prompt, isNot(contains('DO NOT include all answer options')));
     });
@@ -264,11 +377,12 @@ Answer: B
       );
     });
 
-    test('generation prompt omits long answer metadata', () {
+    test('generation prompt requires four-option multiple choice', () {
       final instruction = QuizAgentSkill.generationInstruction('en');
 
       expect(instruction, contains('[CORRECT]'));
-      expect(instruction, contains('[EXPECTED_ANSWER]'));
+      expect(instruction, contains('exactly 4 options'));
+      expect(instruction, isNot(contains('[EXPECTED_ANSWER]')));
       expect(instruction, isNot(contains('[EXPLANATION]')));
       expect(instruction, isNot(contains('[EVIDENCE]')));
     });

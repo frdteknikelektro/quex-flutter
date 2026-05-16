@@ -475,6 +475,18 @@ class QuestionChatService {
         buffer
             .writeln('${String.fromCharCode(65 + i)}) ${question.options[i]}');
       }
+      final correctAnswer = question.correctAnswer;
+      if (correctAnswer != null && correctAnswer.isNotEmpty) {
+        final index = correctAnswer.codeUnitAt(0) - 'A'.codeUnitAt(0);
+        final text = index >= 0 && index < question.options.length
+            ? question.options[index]
+            : null;
+        buffer.writeln(
+          text == null
+              ? 'Tutor-only correct answer: $correctAnswer'
+              : 'Tutor-only correct answer: $correctAnswer) $text',
+        );
+      }
     }
     return buffer.toString().trim();
   }
