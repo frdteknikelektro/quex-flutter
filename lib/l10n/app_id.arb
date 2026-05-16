@@ -3,7 +3,7 @@
   "appTitle": "Quex",
   "appSubtitle": "Quick Exam",
   "appTagline": "Latihan hingga Sempurna",
-  "ready": "Siap! 🎉",
+  "poweredByDownloadedModel": "Powered by {model}",
   "warmingUp": "Memanaskan...",
   "downloadingBrain": "Mengunduh otak… {percent}% 🧠",
   "downloadingModelVariant": "Gemma 4 {variant} ({size})",

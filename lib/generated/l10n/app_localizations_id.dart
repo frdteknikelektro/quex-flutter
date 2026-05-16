@@ -18,7 +18,9 @@ class AppLocalizationsId extends AppLocalizations {
   String get appTagline => 'Latihan hingga Sempurna';
 
   @override
-  String get ready => 'Siap! 🎉';
+  String poweredByDownloadedModel(String model) {
+    return 'Powered by $model';
+  }
 
   @override
   String get warmingUp => 'Memanaskan...';

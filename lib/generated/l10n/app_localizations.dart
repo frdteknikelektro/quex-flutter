@@ -116,11 +116,11 @@ abstract class AppLocalizations {
   /// **'Practice makes Perfect'**
   String get appTagline;
 
-  /// Success message when model download is complete
+  /// Label shown on splash once the model download is complete
   ///
   /// In en, this message translates to:
-  /// **'Ready! 🎉'**
-  String get ready;
+  /// **'Powered by {model}'**
+  String poweredByDownloadedModel(String model);
 
   /// Message shown while model is being warmed up after download
   ///

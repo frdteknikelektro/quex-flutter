@@ -139,7 +139,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
           final statusBottom = _statusBottom(size, bottomInset, isLandscape);
           final duckBottom = _duckBottom(size, isTablet, isLandscape);
           final statusWidth = downloadState.isActive
-              ? math.min(size.width - (sidePadding * 2), 480.0)
+              ? math.min(size.width - (sidePadding * 2), 360.0)
               : contentWidth;
 
           return Stack(
@@ -185,8 +185,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                     child: Opacity(
                       opacity: 0.86,
                       child: Image.asset(
-                        theme.brightness == Brightness.dark 
-                            ? _skyAccentsLeftDarkAsset 
+                        theme.brightness == Brightness.dark
+                            ? _skyAccentsLeftDarkAsset
                             : _skyAccentsLeftAsset,
                         fit: BoxFit.contain,
                         filterQuality: FilterQuality.high,
@@ -203,13 +203,14 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
                       maxWidth: size.width / 2,
-                      maxHeight: size.height * 0.3, // Limit to 30% of screen height
+                      maxHeight:
+                          size.height * 0.3, // Limit to 30% of screen height
                     ),
                     child: Opacity(
                       opacity: 0.86,
                       child: Image.asset(
-                        theme.brightness == Brightness.dark 
-                            ? _skyAccentsRightDarkAsset 
+                        theme.brightness == Brightness.dark
+                            ? _skyAccentsRightDarkAsset
                             : _skyAccentsRightAsset,
                         fit: BoxFit.contain,
                         filterQuality: FilterQuality.high,
@@ -229,8 +230,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                       maxHeight: floraHeight,
                     ),
                     child: Image.asset(
-                      theme.brightness == Brightness.dark 
-                          ? _foregroundFloraLeftDarkAsset 
+                      theme.brightness == Brightness.dark
+                          ? _foregroundFloraLeftDarkAsset
                           : _foregroundFloraLeftAsset,
                       fit: BoxFit.contain,
                       filterQuality: FilterQuality.high,
@@ -249,8 +250,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                       maxHeight: floraHeight,
                     ),
                     child: Image.asset(
-                      theme.brightness == Brightness.dark 
-                          ? _foregroundFloraRightDarkAsset 
+                      theme.brightness == Brightness.dark
+                          ? _foregroundFloraRightDarkAsset
                           : _foregroundFloraRightAsset,
                       fit: BoxFit.contain,
                       filterQuality: FilterQuality.high,
@@ -391,12 +392,18 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     final l10n = AppLocalizations.of(context)!;
 
     if (downloadState.isCompleted) {
+      final modelName =
+          'Gemma 4 ${(downloadState.modelVariant ?? 'e4b') == 'e2b' ? 'E2B' : 'E4B'}';
+      final completedWidth = math.min(maxWidth, 280.0);
       return ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 152, maxWidth: 176),
+        constraints: BoxConstraints(
+          minWidth: math.min(completedWidth, 220.0),
+          maxWidth: completedWidth,
+        ),
         child: _StatusPanel(
           key: const ValueKey('ready'),
           child: Text(
-            l10n.ready,
+            l10n.poweredByDownloadedModel(modelName),
             textAlign: TextAlign.center,
             style: theme.textTheme.titleMedium?.copyWith(
               color: theme.colorScheme.primary,
@@ -452,11 +459,11 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     final variant = downloadState.modelVariant ?? 'e4b';
     final variantName = variant == 'e2b' ? 'E2B' : 'E4B';
     final size = variant == 'e2b' ? '2.58 GB' : '3.65 GB';
-    final downloadingWidth = math.min(maxWidth, 480.0);
+    final downloadingWidth = math.min(maxWidth, 360.0);
 
     return ConstrainedBox(
       constraints: BoxConstraints(
-        minWidth: math.min(downloadingWidth, 460.0),
+        minWidth: math.min(downloadingWidth, 320.0),
         maxWidth: downloadingWidth,
       ),
       child: _StatusPanel(
@@ -464,13 +471,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ClipRRect(
-              borderRadius: Br.full,
-              child: LinearProgressIndicator(
-                minHeight: Sp.sm - 1,
-                value: downloadState.progress.clamp(0.0, 1.0),
-                backgroundColor: scheme.primaryContainer,
-                color: scheme.primary,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: Sp.sm),
+              child: ClipRRect(
+                borderRadius: Br.full,
+                child: LinearProgressIndicator(
+                  minHeight: Sp.sm - 1,
+                  value: downloadState.progress.clamp(0.0, 1.0),
+                  backgroundColor: scheme.primaryContainer,
+                  color: scheme.primary,
+                ),
               ),
             ),
             const SizedBox(height: Sp.sm + Sp.xs / 2),
@@ -513,10 +523,10 @@ class _QuexWordmark extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final baseStyle = theme.textTheme.displayLarge?.copyWith(
-          height: 0.88,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0,
-        );
+      height: 0.88,
+      fontWeight: FontWeight.w900,
+      letterSpacing: 0,
+    );
 
     return Stack(
       clipBehavior: Clip.none,
@@ -582,19 +592,19 @@ class _StatusPanel extends StatelessWidget {
 
 class _SplashLandscapePainter extends CustomPainter {
   final bool isDark;
-  
+
   const _SplashLandscapePainter({this.isDark = false});
-  
+
   @override
   void paint(Canvas canvas, Size size) {
     // Cloud colors
-    final cloudColor = isDark 
+    final cloudColor = isDark
         ? Colors.black.withValues(alpha: 0.3)
         : Colors.white.withValues(alpha: 0.5);
     final cloudColorHighlight = isDark
         ? Colors.black.withValues(alpha: 0.4)
         : Colors.white.withValues(alpha: 0.62);
-    
+
     final cloudPaint = Paint()..color = cloudColor;
     _drawCloud(
       canvas,
@@ -604,9 +614,12 @@ class _SplashLandscapePainter extends CustomPainter {
     );
 
     // Hill colors - day vs night
-    final farHillColor = isDark ? const Color(0xFF2D4A2B) : const Color(0xFFC7ED62);
-    final nearHillColor = isDark ? const Color(0xFF1F3A1F) : const Color(0xFF9BDD32);
-    final foregroundColor = isDark ? const Color(0xFF152F15) : const Color(0xFF79C92D);
+    final farHillColor =
+        isDark ? const Color(0xFF2D4A2B) : const Color(0xFFC7ED62);
+    final nearHillColor =
+        isDark ? const Color(0xFF1F3A1F) : const Color(0xFF9BDD32);
+    final foregroundColor =
+        isDark ? const Color(0xFF152F15) : const Color(0xFF79C92D);
 
     final farHill = Path()
       ..moveTo(0, size.height)
@@ -693,6 +706,6 @@ class _SplashLandscapePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _SplashLandscapePainter oldDelegate) => 
+  bool shouldRepaint(covariant _SplashLandscapePainter oldDelegate) =>
       oldDelegate.isDark != isDark;
 }

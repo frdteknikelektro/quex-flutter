@@ -12,9 +12,14 @@
   "@appTagline": {
     "description": "Slogan on splash screen"
   },
-  "ready": "Ready! 🎉",
-  "@ready": {
-    "description": "Success message when model download is complete"
+  "poweredByDownloadedModel": "Powered by {model}",
+  "@poweredByDownloadedModel": {
+    "description": "Label shown on splash once the model download is complete",
+    "placeholders": {
+      "model": {
+        "type": "String"
+      }
+    }
   },
   "warmingUp": "Warming up...",
   "@warmingUp": {

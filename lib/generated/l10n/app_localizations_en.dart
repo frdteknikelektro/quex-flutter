@@ -18,7 +18,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appTagline => 'Practice makes Perfect';
 
   @override
-  String get ready => 'Ready! 🎉';
+  String poweredByDownloadedModel(String model) {
+    return 'Powered by $model';
+  }
 
   @override
   String get warmingUp => 'Warming up...';
