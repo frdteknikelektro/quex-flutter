@@ -1015,7 +1015,7 @@
       }
     }
   },
-  "questionChatScoreCorrect": "Correct! 🎉 No explanation needed.",
+  "questionChatScoreCorrect": "Correct! 🎉",
   "@questionChatScoreCorrect": {
     "description": "Score message for correct answer"
   },
@@ -1030,6 +1030,14 @@
   "questionChatQuestionLabel": "Question",
   "@questionChatQuestionLabel": {
     "description": "Label for question card"
+  },
+  "questionChatTapAnswer": "Tap an answer",
+  "@questionChatTapAnswer": {
+    "description": "Prompt shown above multiple-choice options when the answer can be scored"
+  },
+  "questionChatChooseAnswer": "Choose an answer",
+  "@questionChatChooseAnswer": {
+    "description": "Prompt shown above multiple-choice options when the answer cannot be scored"
   },
   "questionChatTalkToQuex": "Talk to Quex…",
   "@questionChatTalkToQuex": {

@@ -704,7 +704,7 @@ class AppLocalizationsId extends AppLocalizations {
   }
 
   @override
-  String get questionChatScoreCorrect => 'Benar! 🎉 Tidak perlu penjelasan.';
+  String get questionChatScoreCorrect => 'Benar! 🎉';
 
   @override
   String get questionChatScorePartial => 'Nilai sebagian — teruslah!';
@@ -714,6 +714,12 @@ class AppLocalizationsId extends AppLocalizations {
 
   @override
   String get questionChatQuestionLabel => 'Pertanyaan';
+
+  @override
+  String get questionChatTapAnswer => 'Ketuk jawaban';
+
+  @override
+  String get questionChatChooseAnswer => 'Pilih jawaban';
 
   @override
   String get questionChatTalkToQuex => 'Bicara dengan Quex…';

@@ -251,6 +251,22 @@ class QuestionDAO {
     );
   }
 
+  Future<void> saveAnswerAndScore(
+    int questionId, {
+    required String answer,
+    required double score,
+  }) async {
+    await (await _db).update(
+      'questions',
+      {
+        'user_answer': answer,
+        'score': score,
+      },
+      where: 'id = ?',
+      whereArgs: [questionId],
+    );
+  }
+
   Future<Question?> getById(int id) async {
     final rows = await (await _db).query(
       'questions',
@@ -271,7 +287,8 @@ class QuestionDAO {
   }
 
   Future<void> deleteByQuiz(int quizId) async {
-    await (await _db).delete('questions', where: 'quiz_id = ?', whereArgs: [quizId]);
+    await (await _db)
+        .delete('questions', where: 'quiz_id = ?', whereArgs: [quizId]);
   }
 }
 
@@ -319,7 +336,7 @@ class ChatDAO {
   }
 
   Future<void> deleteBySession(int sessionId) async {
-    await (await _db)
-        .delete('chat_messages', where: 'session_id = ?', whereArgs: [sessionId]);
+    await (await _db).delete('chat_messages',
+        where: 'session_id = ?', whereArgs: [sessionId]);
   }
 }

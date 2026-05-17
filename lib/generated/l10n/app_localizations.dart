@@ -1319,7 +1319,7 @@ abstract class AppLocalizations {
   /// Score message for correct answer
   ///
   /// In en, this message translates to:
-  /// **'Correct! 🎉 No explanation needed.'**
+  /// **'Correct! 🎉'**
   String get questionChatScoreCorrect;
 
   /// Score message for partial credit
@@ -1339,6 +1339,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Question'**
   String get questionChatQuestionLabel;
+
+  /// Prompt shown above multiple-choice options when the answer can be scored
+  ///
+  /// In en, this message translates to:
+  /// **'Tap an answer'**
+  String get questionChatTapAnswer;
+
+  /// Prompt shown above multiple-choice options when the answer cannot be scored
+  ///
+  /// In en, this message translates to:
+  /// **'Choose an answer'**
+  String get questionChatChooseAnswer;
 
   /// Hint text for question chat input field
   ///

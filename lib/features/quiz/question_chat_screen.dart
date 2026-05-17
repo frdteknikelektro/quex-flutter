@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +24,88 @@ import '../../widgets/math_markdown.dart';
 import '../chat/chat_screen.dart';
 
 const String _kVoiceSentinel = '__voice__';
+
+@visibleForTesting
+String? normalizeQuestionOptionLetter(String? answer) {
+  final normalized = answer?.trim().toUpperCase();
+  if (normalized == null || normalized.isEmpty) return null;
+
+  final first = normalized[0];
+  final codeUnit = first.codeUnitAt(0);
+  if (codeUnit >= 65 && codeUnit <= 90) return first;
+
+  return normalized;
+}
+
+@visibleForTesting
+String questionOptionLetterForIndex(int optionIndex) =>
+    String.fromCharCode(65 + optionIndex);
+
+@visibleForTesting
+double? scoreQuestionOptionSelection(Question question, int optionIndex) {
+  final answer = questionOptionLetterForIndex(optionIndex);
+  final correctAnswer = normalizeQuestionOptionLetter(question.correctAnswer);
+  if (correctAnswer == null || correctAnswer.isEmpty) return null;
+
+  return answer == correctAnswer ? 1.0 : 0.0;
+}
+
+@visibleForTesting
+String buildAnswerExplanationPrompt({
+  required String selectedAnswer,
+  required bool? isCorrect,
+  String? correctAnswer,
+}) {
+  final normalizedSelected =
+      normalizeQuestionOptionLetter(selectedAnswer) ?? selectedAnswer;
+  final normalizedCorrect = normalizeQuestionOptionLetter(correctAnswer);
+  if (isCorrect == false &&
+      normalizedCorrect != null &&
+      normalizedCorrect.isNotEmpty) {
+    return 'User menjawab: $normalizedSelected, dan jawabannya salah. '
+        'Jawaban yang benar adalah $normalizedCorrect. Tolong bantu jelaskan';
+  }
+  final resultText = isCorrect == false ? 'salah' : 'benar';
+  return 'User menjawab: $normalizedSelected, dan jawabannya $resultText. '
+      'Tolong bantu jelaskan';
+}
+
+@visibleForTesting
+class AnswerOptionFeedback {
+  final bool isSelected;
+  final bool isCorrect;
+  final bool isIncorrect;
+
+  const AnswerOptionFeedback({
+    required this.isSelected,
+    required this.isCorrect,
+    required this.isIncorrect,
+  });
+}
+
+@visibleForTesting
+AnswerOptionFeedback questionAnswerOptionFeedback({
+  required String letter,
+  required String? selectedAnswer,
+  required String? correctAnswer,
+}) {
+  final normalizedSelected = normalizeQuestionOptionLetter(selectedAnswer);
+  final normalizedCorrect = normalizeQuestionOptionLetter(correctAnswer);
+  final hasScorableAnswer =
+      normalizedCorrect != null && normalizedCorrect.isNotEmpty;
+  final isSelected = normalizedSelected == letter;
+
+  return AnswerOptionFeedback(
+    isSelected: isSelected,
+    isCorrect: normalizedSelected != null &&
+        hasScorableAnswer &&
+        normalizedCorrect == letter,
+    isIncorrect: normalizedSelected != null &&
+        hasScorableAnswer &&
+        isSelected &&
+        normalizedCorrect != letter,
+  );
+}
 
 class QuestionChatScreen extends ConsumerStatefulWidget {
   final int sessionId;
@@ -61,6 +143,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   final List<QuestionMessage> _messages = [];
   bool _openerFired = false;
   bool _openerScheduled = false;
+  bool _autoAnsweredExplanationSent = false;
+  bool _answerExplanationPromptSent = false;
 
   // ===========================================================================
   // AI / Streaming State
@@ -109,6 +193,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   // Score State
   // ===========================================================================
   double? _currentScore;
+  String? _currentUserAnswer;
 
   @override
   void initState() {
@@ -278,24 +363,31 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
       return;
     }
 
-    try {
-      final spokenQuestion = _buildQuestionSpeech(question, locale);
-      await _ttsService.speak(spokenQuestion);
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _preparingTutor = false;
-          _sending = false;
-        });
+    final answeredQuestion =
+        normalizeQuestionOptionLetter(question.userAnswer) != null;
+    if (!answeredQuestion) {
+      try {
+        final spokenQuestion = _buildQuestionSpeech(question, locale);
+        await _ttsService.speak(spokenQuestion);
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _preparingTutor = false;
+            _sending = false;
+          });
+        }
+        debugPrint('Question speech error: $e');
+        return;
       }
-      debugPrint('Question speech error: $e');
-      return;
     }
 
     if (mounted) {
       setState(() {
         _sending = false;
       });
+    }
+    if (answeredQuestion) {
+      unawaited(_sendAutoAnsweredExplanationIfNeeded(question, materials));
     }
   }
 
@@ -342,6 +434,8 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
         _thinkingContent = null;
         _thinkingSpeechFired = false;
         _openerFired = false;
+        _autoAnsweredExplanationSent = false;
+        _answerExplanationPromptSent = false;
       });
     }
   }
@@ -396,12 +490,50 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   // Score Handling
   // ---------------------------------------------------------------------------
 
-  Future<void> _handleScore(double score) async {
+  Future<void> _handleAnswerSelection(
+    Question question,
+    List<StudyMaterial> materials,
+    int optionIndex,
+  ) async {
+    final existingAnswer = normalizeQuestionOptionLetter(
+        _currentUserAnswer ?? question.userAnswer);
+    if (existingAnswer != null || _sending) return;
+
+    final answer = questionOptionLetterForIndex(optionIndex);
+    final score = scoreQuestionOptionSelection(question, optionIndex);
+    final isCorrect = score == null ? null : score >= 1.0;
+
     if (!mounted) return;
-    setState(() => _currentScore = score);
-    await QuestionDAO().saveScore(widget.questionId, score);
+    setState(() {
+      _currentUserAnswer = answer;
+      if (score != null) _currentScore = score;
+    });
+
+    if (score == null) {
+      await QuestionDAO().saveAnswer(widget.questionId, answer);
+    } else {
+      await QuestionDAO().saveAnswerAndScore(
+        widget.questionId,
+        answer: answer,
+        score: score,
+      );
+    }
     ref.invalidate(questionProvider(widget.questionId));
     ref.invalidate(quizBundleProvider(widget.quizId));
+
+    final explanationPrompt = buildAnswerExplanationPrompt(
+      selectedAnswer: answer,
+      isCorrect: isCorrect,
+      correctAnswer: question.correctAnswer,
+    );
+    if (mounted) {
+      setState(() => _answerExplanationPromptSent = true);
+    }
+    unawaited(_sendHiddenTutorPrompt(
+      explanationPrompt,
+      question,
+      materials,
+    ));
   }
 
   // ---------------------------------------------------------------------------
@@ -454,8 +586,6 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
           }
           _tokenCount++;
           if (_tokenCount % _scrollThrottleTokens == 0) _scrollToBottom();
-        } else if (event is TutorEvaluation) {
-          unawaited(_handleScore(event.score));
         }
       },
       onDone: () {
@@ -681,6 +811,7 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
         }
         return;
       }
+      if (!_chatService.hasSession) return;
     }
 
     setState(() {
@@ -744,6 +875,111 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
   // ---------------------------------------------------------------------------
   // Message Sending
   // ---------------------------------------------------------------------------
+
+  Future<void> _sendHiddenTutorPrompt(
+    String prompt,
+    Question question,
+    List<StudyMaterial> materials,
+  ) async {
+    if (_sending) return;
+
+    if (!_chatService.hasSession) {
+      try {
+        await _fireOpener(question, materials);
+      } catch (e) {
+        if (mounted) {
+          final l10n = AppLocalizations.of(context)!;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(l10n.chatFailedToStartSession)),
+          );
+        }
+        return;
+      }
+      if (!_chatService.hasSession) return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _sending = true;
+      _sendEra++;
+      _streamingContent = '';
+      _thinkingContent = null;
+      _thinkingExpanded = false;
+    });
+    _scrollToBottom();
+
+    try {
+      final stream = _chatService.sendMessage(prompt);
+      final result = await _handleTutorStream(stream);
+      _thinkingSpeechFired = false;
+      unawaited(_ttsService.speak(result.reply));
+
+      if (mounted) {
+        setState(() {
+          if (result.reply.isNotEmpty) {
+            _messages.add(QuestionMessage(
+              questionId: widget.questionId,
+              role: QuestionMessageRole.assistant,
+              content: result.reply,
+              createdAt: DateTime.now(),
+            ));
+          }
+          _streamingContent = null;
+          _sending = false;
+          _thinkingContent = result.thinking.isEmpty ? null : result.thinking;
+          _thinkingExpanded = false;
+        });
+      }
+      _scrollToBottom();
+    } catch (e) {
+      debugPrint('Hidden tutor stream error: $e');
+      _tokenCount = 0;
+      if (mounted) {
+        final l10n = AppLocalizations.of(context)!;
+        setState(() {
+          _streamingContent = null;
+          _thinkingContent = null;
+          _sending = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(l10n.chatSessionInterrupted),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _sendAutoAnsweredExplanationIfNeeded(
+    Question question,
+    List<StudyMaterial> materials,
+  ) async {
+    if (_autoAnsweredExplanationSent || _messages.isNotEmpty) return;
+    final answer = normalizeQuestionOptionLetter(question.userAnswer);
+    if (answer == null || answer.isEmpty) return;
+
+    _autoAnsweredExplanationSent = true;
+    final correctAnswer = normalizeQuestionOptionLetter(question.correctAnswer);
+    final bool? isCorrect;
+    if (question.score != null) {
+      isCorrect = question.score! >= 1.0;
+    } else if (correctAnswer != null && correctAnswer.isNotEmpty) {
+      isCorrect = answer == correctAnswer;
+    } else {
+      isCorrect = null;
+    }
+
+    final explanationPrompt = buildAnswerExplanationPrompt(
+      selectedAnswer: answer,
+      isCorrect: isCorrect,
+      correctAnswer: question.correctAnswer,
+    );
+    if (mounted) {
+      setState(() => _answerExplanationPromptSent = true);
+    }
+    await _sendHiddenTutorPrompt(explanationPrompt, question, materials);
+  }
 
   Future<void> _sendMessage(
     Question question,
@@ -886,9 +1122,17 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
           );
         }
 
+        final selectedAnswer = normalizeQuestionOptionLetter(
+            _currentUserAnswer ?? question.userAnswer);
         final hasThinking = _thinkingContent != null;
         final hasStreaming = _streamingContent != null;
         final isEmpty = _messages.isEmpty && !hasThinking && !hasStreaming;
+        final requiresAnswerBeforeChat =
+            question.type == QuestionType.multipleChoice &&
+                question.options.isNotEmpty;
+        final showComposeSection = !requiresAnswerBeforeChat ||
+            (selectedAnswer != null &&
+                (_answerExplanationPromptSent || _messages.isNotEmpty));
 
         return Scaffold(
           appBar: AppBar(
@@ -975,6 +1219,9 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
                   Expanded(
                     child: _ThreadList(
                       question: question,
+                      selectedAnswer: selectedAnswer,
+                      onOptionSelected: (index) =>
+                          _handleAnswerSelection(question, materials, index),
                       messages: _messages,
                       streamingContent: _streamingContent,
                       thinkingContent: _thinkingContent,
@@ -988,35 +1235,37 @@ class _QuestionChatScreenState extends ConsumerState<QuestionChatScreen> {
                       messageImages: _messageImages,
                     ),
                   ),
-                  ImageAttachmentRow(
-                    images: _attachedImages,
-                    isRecording: _isRecording,
-                    onAddImage: _addImage,
-                    onRemoveImage: _removeImage,
-                    scheme: scheme,
-                    theme: theme,
-                  ),
-                  ChatInputBar(
-                    controller: _textController,
-                    sending: _sending,
-                    sendEra: _sendEra,
-                    modelLoading: _modelLoading,
-                    onSend: () => _sendMessage(question, materials),
-                    onStop: _stopGeneration,
-                    isRecording: _isRecording,
-                    onMicStart: _startRecording,
-                    onMicStop: () => _stopAndSendAudio(question, materials),
-                    scheme: scheme,
-                    theme: theme,
-                  ),
-                  ThinkingModeToggle(
-                    isThinkingMode: _isThinkingMode,
-                    totalTokens: _totalTokens,
-                    maxTokens: _maxTokens,
-                    onToggle: () => _toggleThinkingMode(question, materials),
-                    scheme: scheme,
-                    theme: theme,
-                  ),
+                  if (showComposeSection) ...[
+                    ImageAttachmentRow(
+                      images: _attachedImages,
+                      isRecording: _isRecording,
+                      onAddImage: _addImage,
+                      onRemoveImage: _removeImage,
+                      scheme: scheme,
+                      theme: theme,
+                    ),
+                    ChatInputBar(
+                      controller: _textController,
+                      sending: _sending,
+                      sendEra: _sendEra,
+                      modelLoading: _modelLoading,
+                      onSend: () => _sendMessage(question, materials),
+                      onStop: _stopGeneration,
+                      isRecording: _isRecording,
+                      onMicStart: _startRecording,
+                      onMicStop: () => _stopAndSendAudio(question, materials),
+                      scheme: scheme,
+                      theme: theme,
+                    ),
+                    ThinkingModeToggle(
+                      isThinkingMode: _isThinkingMode,
+                      totalTokens: _totalTokens,
+                      maxTokens: _maxTokens,
+                      onToggle: () => _toggleThinkingMode(question, materials),
+                      scheme: scheme,
+                      theme: theme,
+                    ),
+                  ],
                 ],
               ),
               if (_modelLoading ||
@@ -1111,11 +1360,15 @@ class _ScoreBadgeRow extends StatelessWidget {
 
 class _QuestionCard extends StatelessWidget {
   final Question question;
+  final String? selectedAnswer;
+  final ValueChanged<int> onOptionSelected;
   final ColorScheme scheme;
   final ThemeData theme;
 
   const _QuestionCard({
     required this.question,
+    required this.selectedAnswer,
+    required this.onOptionSelected,
     required this.scheme,
     required this.theme,
   });
@@ -1125,26 +1378,23 @@ class _QuestionCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context)!;
     final hasOptions = question.type == QuestionType.multipleChoice &&
         question.options.isNotEmpty;
+    final correctAnswer = normalizeQuestionOptionLetter(question.correctAnswer);
+    final hasScorableAnswer = correctAnswer != null && correctAnswer.isNotEmpty;
+    final hasSelection = selectedAnswer != null && selectedAnswer!.isNotEmpty;
+    final answerPrompt = hasScorableAnswer
+        ? l10n.questionChatTapAnswer
+        : l10n.questionChatChooseAnswer;
 
-    return Align(
-      alignment: Alignment.centerLeft,
+    return SizedBox(
+      width: double.infinity,
       child: Container(
-        width: double.infinity,
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.sizeOf(context).width * 0.78,
-        ),
         decoration: BoxDecoration(
           color: scheme.surfaceContainerHighest,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(18),
-            topRight: Radius.circular(18),
-            bottomLeft: Radius.circular(4),
-            bottomRight: Radius.circular(18),
-          ),
+          borderRadius: Br.lg,
           border: Border.all(color: scheme.outlineVariant),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1174,41 +1424,43 @@ class _QuestionCard extends StatelessWidget {
               ),
               if (hasOptions) ...[
                 const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.touch_app_rounded,
+                      size: 16,
+                      color: scheme.primary,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      answerPrompt,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: scheme.primary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
                 ...question.options.asMap().entries.map((entry) {
                   final letter = String.fromCharCode(65 + entry.key);
                   final isLast = entry.key == question.options.length - 1;
+                  final feedback = questionAnswerOptionFeedback(
+                    letter: letter,
+                    selectedAnswer: selectedAnswer,
+                    correctAnswer: correctAnswer,
+                  );
                   return Padding(
-                    padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: 24,
-                          child: Text(
-                            '$letter.',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: scheme.primary,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: MathMarkdownBody(
-                            data: entry.value,
-                            styleSheet:
-                                MarkdownStyleSheet.fromTheme(theme).copyWith(
-                              p: theme.textTheme.bodyMedium?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                                height: 1.35,
-                              ),
-                            ),
-                            textStyle: theme.textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                      ],
+                    padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
+                    child: _AnswerOptionCard(
+                      text: entry.value,
+                      isSelected: feedback.isSelected,
+                      isCorrect: feedback.isCorrect,
+                      isIncorrect: feedback.isIncorrect,
+                      enabled: !hasSelection,
+                      onTap: () => onOptionSelected(entry.key),
+                      scheme: scheme,
+                      theme: theme,
                     ),
                   );
                 }),
@@ -1221,10 +1473,131 @@ class _QuestionCard extends StatelessWidget {
   }
 }
 
+class _AnswerOptionCard extends StatelessWidget {
+  final String text;
+  final bool isSelected;
+  final bool isCorrect;
+  final bool isIncorrect;
+  final bool enabled;
+  final VoidCallback onTap;
+  final ColorScheme scheme;
+  final ThemeData theme;
+
+  const _AnswerOptionCard({
+    required this.text,
+    required this.isSelected,
+    required this.isCorrect,
+    required this.isIncorrect,
+    required this.enabled,
+    required this.onTap,
+    required this.scheme,
+    required this.theme,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const correctColor = Color(0xFF35A853);
+    const incorrectColor = Color(0xFFE04F5F);
+
+    final Color accent;
+    final Color background;
+    final Color foreground;
+    final IconData? trailingIcon;
+
+    if (isCorrect) {
+      accent = correctColor;
+      background = correctColor.withValues(alpha: 0.14);
+      foreground = correctColor;
+      trailingIcon = Icons.check_circle_rounded;
+    } else if (isIncorrect) {
+      accent = incorrectColor;
+      background = incorrectColor.withValues(alpha: 0.13);
+      foreground = incorrectColor;
+      trailingIcon = Icons.cancel_rounded;
+    } else if (isSelected) {
+      accent = scheme.primary;
+      background = scheme.primaryContainer;
+      foreground = scheme.onPrimaryContainer;
+      trailingIcon = Icons.radio_button_checked_rounded;
+    } else {
+      accent = scheme.outlineVariant;
+      background = scheme.surface;
+      foreground = scheme.onSurface;
+      trailingIcon = Icons.radio_button_unchecked_rounded;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: Br.lg,
+        onTap: enabled ? onTap : null,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: Br.lg,
+            border: Border.all(
+              color: accent,
+              width: isSelected || isCorrect || isIncorrect ? 2 : 1.25,
+            ),
+            boxShadow: isSelected || isCorrect || isIncorrect
+                ? [
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.16),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: scheme.shadow.withValues(alpha: 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: MathMarkdownBody(
+                  data: text,
+                  styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
+                    p: theme.textTheme.bodyMedium?.copyWith(
+                      color: foreground,
+                      fontWeight: isSelected || isCorrect || isIncorrect
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      height: 1.35,
+                    ),
+                  ),
+                  textStyle: theme.textTheme.bodyMedium?.copyWith(
+                    color: foreground,
+                    fontWeight: isSelected || isCorrect || isIncorrect
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Icon(trailingIcon, color: accent, size: 22),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Conversation thread ─────────────────────────────────────────────────────
 
 class _ThreadList extends StatelessWidget {
   final Question question;
+  final String? selectedAnswer;
+  final ValueChanged<int> onOptionSelected;
   final List<QuestionMessage> messages;
   final String? streamingContent;
   final String? thinkingContent;
@@ -1238,6 +1611,8 @@ class _ThreadList extends StatelessWidget {
 
   const _ThreadList({
     required this.question,
+    required this.selectedAnswer,
+    required this.onOptionSelected,
     required this.messages,
     required this.streamingContent,
     required this.thinkingContent,
@@ -1275,6 +1650,8 @@ class _ThreadList extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 10),
             child: _QuestionCard(
               question: question,
+              selectedAnswer: selectedAnswer,
+              onOptionSelected: onOptionSelected,
               scheme: scheme,
               theme: theme,
             ),

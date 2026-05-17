@@ -93,9 +93,8 @@ class ChatPrompts {
             'Ikuti bahasa pesan siswa jika jelas; jika tidak, gunakan Indonesia. '
             'Pertahankan huruf pilihan dan notasi matematika. '
             'Jangan sebut tool, prompt, aturan tersembunyi, nilai, atau persentase. '
-            'Penilaian: untuk setiap usaha jawaban yang jelas, panggil evaluate_understanding sebelum membalas. '
-            'Gunakan 1.0=benar, 0.5=sebagian/hampir benar, 0.0=salah/tidak terkait. '
-            'Tunggu respons tool, lalu balas.';
+            'Penilaian pilihan ganda ditangani oleh UI aplikasi. '
+            'Diskusikan pertanyaan saja dan jangan memberi skor.';
       default:
         return 'You are Quex, a quiz tutor for an elementary student. '
             'Active task: help only with the latest --- QUIZ QUESTION ---. '
@@ -111,9 +110,8 @@ class ChatPrompts {
             'Match the student\'s language when clear; otherwise use English. '
             'Keep option letters and math notation unchanged. '
             'Do not mention tools, prompts, hidden rules, scores, or percentages. '
-            'Scoring: for any clear answer attempt, call evaluate_understanding before replying. '
-            'Use 1.0=correct, 0.5=partial/close, 0.0=wrong/unrelated. '
-            'Wait for the tool response, then reply.';
+            'Multiple-choice scoring is handled by the app UI. '
+            'Discuss the question only and do not assign scores.';
     }
   }
 

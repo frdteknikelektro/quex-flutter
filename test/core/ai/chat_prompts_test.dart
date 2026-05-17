@@ -9,7 +9,8 @@ void main() {
       expect(prompt, contains('--- QUIZ QUESTION ---'));
       expect(prompt, contains('default 1-3 short sentences'));
       expect(prompt, contains('Direct answer request: give the answer first'));
-      expect(prompt, contains('call evaluate_understanding before replying'));
+      expect(prompt, contains('scoring is handled by the app UI'));
+      expect(prompt, isNot(contains('evaluate_understanding')));
     });
 
     test('Indonesian prompt stays compact and answer-focused', () {
@@ -18,8 +19,8 @@ void main() {
       expect(prompt, contains('--- QUIZ QUESTION ---'));
       expect(prompt, contains('default 1-3 kalimat pendek'));
       expect(prompt, contains('beri jawaban dulu'));
-      expect(
-          prompt, contains('panggil evaluate_understanding sebelum membalas'));
+      expect(prompt, contains('Penilaian pilihan ganda ditangani oleh UI'));
+      expect(prompt, isNot(contains('evaluate_understanding')));
     });
   });
 }

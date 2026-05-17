@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 
 import '../models/models.dart';
 import 'chat_prompts.dart';
@@ -12,7 +11,6 @@ import 'tutor_event.dart';
 ///
 /// Wraps [GemmaChatService] with tutor-specific logic:
 /// - Tutor system prompt + question context
-/// - evaluate_understanding tool for scoring answers
 /// - Material image injection on first message
 class QuestionChatService {
   static QuestionChatService? _instance;
@@ -26,7 +24,6 @@ class QuestionChatService {
   bool _sessionCreated = false;
   bool _sessionConsumed = false;
   bool _sessionWarmupComplete = false;
-  double? _pendingScore;
   final List<Uint8List> _materialImages = [];
   String? _activeQuestionContext;
   bool _questionContextInjected = false;
@@ -259,14 +256,6 @@ class QuestionChatService {
       topP: 0.95,
       topK: 64,
       isThinking: isThinking,
-      tools: [_evaluateTool],
-      toolExecutor: (name, args) async {
-        if (name == 'evaluate_understanding') {
-          _pendingScore = (args['score'] as num?)?.toDouble();
-          debugPrint('[QuestionChatService] tool called: score=$_pendingScore');
-        }
-        return {'status': 'score_recorded', 'score': _pendingScore ?? 0.0};
-      },
     );
     _sessionCreated = true;
     _sessionWarmupComplete = false;
@@ -280,31 +269,25 @@ class QuestionChatService {
         'Do not explain. Reply exactly READY.';
     final warmupImages = List<Uint8List>.from(images);
     final responseBuffer = StringBuffer();
-    final previousPendingScore = _pendingScore;
-    _pendingScore = null;
     _materialImages.clear();
 
-    try {
-      final Stream<({String? text, String? thinking})> stream;
-      if (warmupImages.isNotEmpty) {
-        stream = _chatService.sendMessageWithImages(prompt, warmupImages);
-      } else {
-        stream = _chatService.sendMessage(prompt);
-      }
+    final Stream<({String? text, String? thinking})> stream;
+    if (warmupImages.isNotEmpty) {
+      stream = _chatService.sendMessageWithImages(prompt, warmupImages);
+    } else {
+      stream = _chatService.sendMessage(prompt);
+    }
 
-      await for (final event in stream) {
-        if (event.text != null) responseBuffer.write(event.text);
-        if (event.thinking != null) {
-          debugPrint('[QuestionChatService] hidden warmup thinking discarded');
-        }
+    await for (final event in stream) {
+      if (event.text != null) responseBuffer.write(event.text);
+      if (event.thinking != null) {
+        debugPrint('[QuestionChatService] hidden warmup thinking discarded');
       }
+    }
 
-      if (!responseBuffer.toString().contains('READY')) {
-        debugPrint(
-            '[QuestionChatService] Warmup completed without READY sentinel: ${responseBuffer.toString()}');
-      }
-    } finally {
-      _pendingScore = previousPendingScore;
+    if (!responseBuffer.toString().contains('READY')) {
+      debugPrint(
+          '[QuestionChatService] Warmup completed without READY sentinel: ${responseBuffer.toString()}');
     }
   }
 
@@ -313,7 +296,6 @@ class QuestionChatService {
     String locale, {
     List<Uint8List> images = const [],
   }) async* {
-    _pendingScore = null;
     final allImages = <Uint8List>[..._materialImages, ...images];
     _materialImages.clear();
 
@@ -334,14 +316,12 @@ class QuestionChatService {
     }
   }
 
-  /// Stream TutorThinking, TutorReply, and optionally TutorEvaluation events.
+  /// Stream TutorThinking and TutorReply events.
   ///
   /// Material images are sent with the first message, then cleared.
   /// [images] are user-attached images sent with this message.
-  /// TutorEvaluation is appended at end of stream if evaluate_understanding was called.
   Stream<TutorEvent> sendMessage(String message,
       {List<Uint8List> images = const []}) async* {
-    _pendingScore = null;
     await _injectQuestionContextIfNeeded();
 
     final Stream<({String? text, String? thinking})> stream;
@@ -359,18 +339,14 @@ class QuestionChatService {
       if (event.thinking != null) yield TutorThinking(event.thinking!);
       if (event.text != null) yield TutorReply(event.text!);
     }
-
-    if (_pendingScore != null) yield TutorEvaluation(score: _pendingScore!);
   }
 
   Stream<TutorEvent> sendUserAudio(Uint8List audioBytes) async* {
-    _pendingScore = null;
     await _injectQuestionContextIfNeeded();
     await for (final event in _chatService.sendAudioMessage(audioBytes)) {
       if (event.thinking != null) yield TutorThinking(event.thinking!);
       if (event.text != null) yield TutorReply(event.text!);
     }
-    if (_pendingScore != null) yield TutorEvaluation(score: _pendingScore!);
   }
 
   Future<void> _injectQuestionContextIfNeeded() async {
@@ -400,7 +376,6 @@ class QuestionChatService {
     _sessionConsumed = false;
     _sessionWarmupComplete = false;
     _activeQuestionContext = null;
-    _pendingScore = null;
     _materialImages.clear();
     _prewarmFuture = null;
     _questionContextInjected = false;
@@ -421,7 +396,6 @@ class QuestionChatService {
         _sessionConsumed = false;
         _sessionWarmupComplete = false;
         _activeQuestionContext = null;
-        _pendingScore = null;
         _materialImages.clear();
         _prewarmFuture = null;
         _questionContextInjected = false;
@@ -438,7 +412,6 @@ class QuestionChatService {
     _sessionConsumed = false;
     _sessionWarmupComplete = false;
     _activeQuestionContext = null;
-    _pendingScore = null;
     _materialImages.clear();
     _questionContextInjected = false;
     _sessionGeneration++;
@@ -490,25 +463,6 @@ class QuestionChatService {
     }
     return buffer.toString().trim();
   }
-
-  static const _evaluateTool = gemma.Tool(
-    name: 'evaluate_understanding',
-    description: 'Rate the student\'s attempted answer to the active quiz '
-        'question from 0.0 to 1.0. Call this whenever the student gives a '
-        'clear answer attempt, including correct, partial, or wrong answers.',
-    parameters: {
-      'type': 'object',
-      'properties': {
-        'score': {
-          'type': 'number',
-          'minimum': 0.0,
-          'maximum': 1.0,
-          'description': '0.0=wrong, 0.5=partial, 1.0=correct',
-        },
-      },
-      'required': ['score'],
-    },
-  );
 }
 
 class _TutorSessionContext {
