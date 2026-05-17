@@ -5,7 +5,6 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../device/device_info.dart';
 import 'auth_token_service.dart';
@@ -20,11 +19,6 @@ import 'llm_memory_calculator.dart';
 /// Both use ModelType.gemma4 and .litertlm format for LiteRT-LM framework.
 /// Capabilities: Text, Image, Audio, Function Calling, Thinking Mode
 class ModelManager {
-  static const modelReadyKey = 'model_ready';
-  static const modelProgressKey = 'model_progress';
-  static const modelVersionKey = 'model_version';
-  static const modelVariantKey = 'model_variant';
-
   static const String variantE4B = 'e4b';
   static const String variantE2B = 'e2b';
 
@@ -44,6 +38,9 @@ class ModelManager {
   static const String gemmaE2BSize = '2.58 GB';
 
   static String? _selectedVariant;
+  static bool _isReady = false;
+  static double _progress = 0.0;
+  static String? _version;
 
   static InferenceModel? _model;
   static int? _lastMaxTokens;
@@ -78,24 +75,15 @@ class ModelManager {
   }
 
   /// Get the currently selected model variant.
-  /// Returns saved variant from SharedPreferences, or selects based on RAM if not set.
+  /// Returns the cached variant, or selects based on RAM if not set.
   static Future<String> getSelectedVariant() async {
     if (_selectedVariant != null) {
       return _selectedVariant!;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    final savedVariant = prefs.getString(modelVariantKey);
-
-    if (savedVariant != null) {
-      _selectedVariant = savedVariant;
-      return savedVariant;
-    }
-
     // No saved variant, select based on exact RAM and maxTokens calculation
     final ramMB = await DeviceInfo.getPhysicalRamMB();
     _selectedVariant = selectModelVariant(ramMB);
-    await prefs.setString(modelVariantKey, _selectedVariant!);
     return _selectedVariant!;
   }
 
@@ -118,53 +106,34 @@ class ModelManager {
   }
 
   static Future<bool> isReady() async {
-    final prefs = await SharedPreferences.getInstance();
     final fileName = await getModelFileName();
     final isInstalled = await FlutterGemma.isModelInstalled(fileName);
-    return prefs.getBool(modelReadyKey) ?? false || isInstalled;
+    return _isReady || isInstalled;
   }
 
   static Future<double> progress() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getDouble(modelProgressKey) ?? 0.0;
+    return _progress;
   }
 
   static Future<String> version() async {
-    final prefs = await SharedPreferences.getInstance();
     final variant = await getSelectedVariant();
-    return prefs.getString(modelVersionKey) ?? 'gemma-4-$variant-litert';
+    return _version ?? 'gemma-4-$variant-litert';
   }
 
   static Future<void> markReady({
     String? version,
     double progress = 1.0,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(modelReadyKey, true);
-    await prefs.setDouble(modelProgressKey, progress);
-    if (version != null) {
-      await prefs.setString(modelVersionKey, version);
-    }
+    _isReady = true;
+    _progress = progress;
+    _version = version;
   }
 
   static Future<void> reset() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(modelReadyKey, false);
-    await prefs.setDouble(modelProgressKey, 0.0);
-    await prefs.remove(modelVersionKey);
-    await prefs.remove(modelVariantKey);
     _selectedVariant = null;
-
-    // Clear any FlutterGemma-specific keys
-    final keys = prefs.getKeys();
-    for (final key in keys) {
-      if (key.contains('gemma') ||
-          key.contains('model') ||
-          key.contains('install')) {
-        debugPrint('🗑️ Removing FlutterGemma key: $key');
-        await prefs.remove(key);
-      }
-    }
+    _isReady = false;
+    _progress = 0.0;
+    _version = null;
   }
 
   /// Delete the downloaded model file from storage.
@@ -192,8 +161,7 @@ class ModelManager {
 
   /// Persist partial progress so it can be restored after a cancel/restart.
   static Future<void> saveProgress(double progress) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(modelProgressKey, progress);
+    _progress = progress;
   }
 
   /// Cancel all background download tasks spawned by SmartDownloader.

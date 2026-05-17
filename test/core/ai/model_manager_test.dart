@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_gemma/flutter_gemma.dart' as gemma;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:quex/core/ai/model_manager.dart';
+import 'package:quex/core/device/device_info.dart';
 
 class _RecordingInstallFactory {
   _RecordingInstallFactory({this.onInstall});
@@ -99,21 +101,28 @@ class _RecordingInferenceInstallationBuilder
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  const systemInfoChannel = MethodChannel('dev/system_info_plus');
+
   late _RecordingInstallFactory factory;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
-    await ModelManager.reset();
-    SharedPreferences.setMockInitialValues({
-      ModelManager.modelVariantKey: ModelManager.variantE2B,
-      ModelManager.modelReadyKey: false,
-      ModelManager.modelProgressKey: 0.0,
+    DeviceInfo.clearCache();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(systemInfoChannel, (call) async {
+      if (call.method == 'getMemorySpace') {
+        return 4096;
+      }
+      return null;
     });
+    await ModelManager.reset();
     factory = _RecordingInstallFactory();
     ModelManager.installModelFactory = factory.call;
   });
 
   tearDown(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(systemInfoChannel, null);
     await gemma.FlutterGemmaPlugin.instance.modelManager.clearModelCache();
     ModelManager.installModelFactory = gemma.FlutterGemma.installModel;
     await ModelManager.reset();

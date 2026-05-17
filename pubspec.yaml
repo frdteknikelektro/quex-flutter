@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  sdk: '>=3.4.0 <4.0.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -45,7 +45,8 @@ dependencies:
   shared_preferences: ^2.3.2
 
   # ── AI & ML ────────────────────────────────────────────────
-  flutter_gemma: 0.15.1
+  flutter_gemma:
+    path: ../flutter_gemma
   background_downloader: ^9.5.4
 
   # ── Notifications ──────────────────────────────────────────
@@ -58,7 +59,7 @@ dependencies:
   connectivity_plus: ^6.0.3
   system_info_plus: ^0.0.6
   image_picker: ^1.0.0
-  file_picker: ^8.0.0
+  file_picker: ^10.3.10
   open_filex: ^4.5.0
   flutter_image_compress: ^2.3.0
   flutter_markdown_plus: ^1.0.7
