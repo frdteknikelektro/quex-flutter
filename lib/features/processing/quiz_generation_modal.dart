@@ -10,6 +10,7 @@ import '../../core/ai/quiz_generation_event.dart';
 import '../../core/db/daos.dart';
 import '../../core/models/models.dart';
 import '../../core/state/app_state.dart';
+import 'emoji_memory_game.dart';
 import '../../generated/l10n/app_localizations.dart';
 import '../../widgets/math_markdown.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -324,6 +325,17 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
             _phaseBuffers.containsKey(phase) ||
             _completedPhases.contains(phase))
         .toList(growable: false);
+  }
+
+  bool _shouldShowMemoryGame() {
+    return _isThinking ||
+        _isExtracting ||
+        _isReviewing ||
+        _isGenerating ||
+        _thinkingBuffer.isNotEmpty ||
+        _extractionBuffer.isNotEmpty ||
+        _planSteps.isNotEmpty ||
+        _visibleGenerationPhases().isNotEmpty;
   }
 
   Widget _buildPhaseTranscript(
@@ -828,11 +840,8 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
                       size: 64,
                       color: scheme.primary,
                     )
-                  : _isGenerating
-                      ? const _PulsingIcon(
-                          key: ValueKey('pencil'),
-                          emoji: '✏️',
-                        )
+                  : _shouldShowMemoryGame()
+                      ? _buildMemoryGameHero(scheme, theme.textTheme)
                       : const _PulsingBrain(
                           key: ValueKey('brain'),
                         ),
@@ -852,7 +861,7 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
             ),
           ],
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 16),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: Sp.md),
           child: AnimatedOpacity(
@@ -962,6 +971,40 @@ class _QuizGenerationModalState extends ConsumerState<QuizGenerationModal> {
       ],
     );
   }
+
+  Widget _buildMemoryGameHero(ColorScheme scheme, TextTheme textTheme) {
+    return Column(
+      key: const ValueKey('memory-hero'),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          'You can play while waiting...',
+          textAlign: TextAlign.center,
+          style: textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: scheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          key: const ValueKey('memory-game-frame'),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerHighest,
+            borderRadius: Br.md,
+            border: Border.all(
+              color: scheme.outlineVariant,
+              width: 1,
+            ),
+          ),
+          child: const EmojiMemoryGame(
+            maxWidth: 180,
+            key: ValueKey('memory-game'),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _ReviewPanel extends StatelessWidget {
@@ -986,16 +1029,14 @@ class _ReviewPanel extends StatelessWidget {
   }
 }
 
-class _PulsingIcon extends StatefulWidget {
-  final String emoji;
-
-  const _PulsingIcon({super.key, required this.emoji});
+class _PulsingBrain extends StatefulWidget {
+  const _PulsingBrain({super.key});
 
   @override
-  State<_PulsingIcon> createState() => _PulsingIconState();
+  State<_PulsingBrain> createState() => _PulsingBrainState();
 }
 
-class _PulsingIconState extends State<_PulsingIcon>
+class _PulsingBrainState extends State<_PulsingBrain>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
   late final Animation<double> _scale;
@@ -1022,52 +1063,7 @@ class _PulsingIconState extends State<_PulsingIcon>
   Widget build(BuildContext context) {
     return ScaleTransition(
       scale: _scale,
-      child: Text(widget.emoji, style: const TextStyle(fontSize: 64)),
-    );
-  }
-}
-
-class _PulsingBrain extends _PulsingIcon {
-  const _PulsingBrain({super.key}) : super(emoji: '🧠');
-}
-
-class _AnimatedEllipsis extends StatefulWidget {
-  const _AnimatedEllipsis();
-
-  @override
-  State<_AnimatedEllipsis> createState() => _AnimatedEllipsisState();
-}
-
-class _AnimatedEllipsisState extends State<_AnimatedEllipsis>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      duration: const Duration(milliseconds: 1200),
-      vsync: this,
-    )
-      ..repeat()
-      ..addListener(() => setState(() {}));
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final dots = '.' * ((_controller.value * 3).floor() + 1);
-    return Text(
-      dots,
-      style: TextStyle(
-        color: Theme.of(context).colorScheme.primary,
-        fontStyle: FontStyle.italic,
-      ),
+      child: const Text('🧠', style: TextStyle(fontSize: 64)),
     );
   }
 }

@@ -11,6 +11,7 @@ import 'package:quex/core/db/daos.dart';
 import 'package:quex/core/db/database.dart';
 import 'package:quex/core/models/models.dart';
 import 'package:quex/core/state/app_state.dart';
+import 'package:quex/features/processing/emoji_memory_game.dart';
 import 'package:quex/features/processing/quiz_generation_modal.dart';
 import 'package:quex/generated/l10n/app_localizations.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -79,6 +80,50 @@ class ControlledQuizGenerationService extends QuizGenerationService {
         '[QUESTION_REVIEW]\n- USABLE: What is photosynthesis?\n',
       ),
     ]);
+  }
+}
+
+class DeferredQuizGenerationService extends QuizGenerationService {
+  final extractionController = StreamController<QuizGenerationEvent>();
+  final reviewController = StreamController<QuizGenerationEvent>();
+  final generationController = StreamController<QuizGenerationEvent>();
+
+  @override
+  Future<void> initialize({
+    int maxTokens = 8192,
+    gemma.PreferredBackend? preferredBackend,
+    int? maxNumImages,
+    bool? enableSpeculativeDecoding,
+  }) async {}
+
+  @override
+  Stream<QuizGenerationEvent> runExtractionSession({
+    required Session session,
+    required List<StudyMaterial> materials,
+    String locale = 'en',
+  }) {
+    return extractionController.stream;
+  }
+
+  @override
+  Stream<QuizGenerationEvent> runGenerationSession({
+    required Session session,
+    required List<StudyMaterial> materials,
+    required String reviewText,
+    int targetCount = 10,
+    String locale = 'en',
+  }) {
+    return generationController.stream;
+  }
+
+  @override
+  Stream<QuizGenerationEvent> runReviewSession({
+    required Session session,
+    required List<StudyMaterial> materials,
+    required String extractedQuestions,
+    String locale = 'en',
+  }) {
+    return reviewController.stream;
   }
 }
 
@@ -191,6 +236,128 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Generate quiz (1)'), findsOneWidget);
+  });
+
+  testWidgets('shows the memory game while generation is running', (
+    tester,
+  ) async {
+    final service = DeferredQuizGenerationService();
+    final session = Session(
+      id: 1,
+      profileId: 1,
+      title: 'Science',
+      emoji: '🧪',
+      gradeOverride: 3,
+      createdAt: DateTime(2025, 1, 1),
+    );
+    final materials = [
+      StudyMaterial(
+        id: 1,
+        sessionId: 1,
+        kind: MaterialKind.text,
+        title: 'Photosynthesis',
+        content: 'Plants use sunlight to make food.',
+        pageIndex: 0,
+        createdAt: DateTime(2025, 1, 1),
+      ),
+    ];
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sessionBundleProvider(1).overrideWith(
+            (ref) async => SessionBundle(
+              session: session,
+              materials: materials,
+              quizzes: const [],
+              messages: const [],
+            ),
+          ),
+        ],
+        child: MaterialApp.router(
+          locale: const Locale('en'),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          routerConfig: GoRouter(
+            routes: [
+              GoRoute(
+                path: '/',
+                builder: (context, state) {
+                  return Scaffold(
+                    body: Center(
+                      child: Builder(
+                        builder: (context) => FilledButton(
+                          onPressed: () => showDialog<void>(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (_) => QuizGenerationModal(
+                              sessionId: 1,
+                              quizService: service,
+                            ),
+                          ),
+                          child: const Text('Open'),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              GoRoute(
+                path: '/session/:sessionId/quiz/:quizId/detail',
+                builder: (context, state) {
+                  return const Scaffold(
+                    body: Center(child: Text('quiz detail')),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(CheckboxListTile));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Generate quiz (1)'));
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    });
+    await tester.pump();
+
+    expect(find.text('🧠'), findsOneWidget);
+
+    service.extractionController.add(QuizExtractionStarted());
+    await tester.pump();
+    expect(find.text('You can play while waiting...'), findsOneWidget);
+    expect(find.byKey(const ValueKey('memory-game-frame')), findsOneWidget);
+    expect(find.byType(EmojiMemoryGame), findsOneWidget);
+
+    service.extractionController.add(
+      QuizExtractionComplete(
+        'What is photosynthesis?\nA. Food\nB. Process\n',
+      ),
+    );
+    await tester.pump();
+    service.reviewController.add(QuizPhaseStarted(QuizGenerationPhase.review));
+    service.reviewController.add(
+      QuizPhaseTextToken(
+        QuizGenerationPhase.review,
+        '[QUESTION_REVIEW]\n- USABLE: What is photosynthesis?\n',
+      ),
+    );
+    service.reviewController
+        .add(QuizPhaseCompleted(QuizGenerationPhase.review));
+    service.reviewController.add(
+      QuizReviewComplete(
+        '[QUESTION_REVIEW]\n- USABLE: What is photosynthesis?\n',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('What is photosynthesis?'), findsWidgets);
+    expect(find.textContaining('USABLE'), findsWidgets);
   });
 
   test('censors answer metadata in the visible transcript', () {
