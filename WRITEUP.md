@@ -51,7 +51,7 @@ Because some UI details are hard to read in motion, the README and media gallery
 
 APK: [Quex Android prototype](https://drive.google.com/file/d/1FwWAoeTvO0FAUn7hI_Ax-rMta77uOAi0/view?usp=drive_link)
 
-Judge notes:
+Notes:
 
 - The APK is a functional prototype.
 - First launch downloads a Gemma 4 LiteRT-LM model.

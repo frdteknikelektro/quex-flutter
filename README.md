@@ -1,4 +1,4 @@
-# Quex
+# 🦆 Quex
 
 ![Quex preview collage](docs/screenshot/group-01.jpeg)
 
@@ -23,7 +23,7 @@ Download the Android prototype APK:
 
 [Quex APK on Google Drive](https://drive.google.com/file/d/1FwWAoeTvO0FAUn7hI_Ax-rMta77uOAi0/view?usp=drive_link)
 
-Judge notes:
+Notes:
 
 - First launch downloads a Gemma 4 LiteRT-LM model.
 - Gemma 4 E2B is about **2.58 GB**.
