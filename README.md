@@ -1,6 +1,10 @@
 # Quex
 
-**Quex is a local-first AI study companion for kids.** It turns a photo of a worksheet, textbook page, or notes into a quiz, then explains mistakes in plain language with on-device Gemma 4.
+![Quex preview collage](docs/screenshot/group-01.jpeg)
+
+**Quex is a local-first AI study companion for kids.** It turns worksheet photos, textbook pages, or notes into quizzes, then explains mistakes in plain language with on-device Gemma 4.
+
+**Links:** [Demo video](https://www.youtube.com/watch?v=XkzYFKY4NgM) · [APK](https://drive.google.com/file/d/1FwWAoeTvO0FAUn7hI_Ax-rMta77uOAi0/view?usp=drive_link) · [Technical notes](TECHNICAL.md) · [Writeup](WRITEUP.md) · [Source](https://github.com/frdteknikelektro/quex-flutter)
 
 Built for [The Gemma 4 Good Hackathon](https://www.kaggle.com/competitions/gemma-4-good-hackathon/overview), targeting **Main Track + Future of Education + LiteRT / AI Edge**.
 
