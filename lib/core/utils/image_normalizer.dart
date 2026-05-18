@@ -1,6 +1,6 @@
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as pathlib;
@@ -22,6 +22,12 @@ class NormalizedImage {
 /// side, and never upscales smaller inputs.
 class ImageNormalizer {
   static const int maxDimension = 896;
+
+  @visibleForTesting
+  static Future<Uint8List?> Function(
+    String path, {
+    required int maxDimension,
+  })? nativeCompressorOverride;
 
   static Future<NormalizedImage?> normalizeFile(
     File source, {
@@ -61,7 +67,7 @@ class ImageNormalizer {
     if (!await source.exists()) return null;
 
     final raw = await source.readAsBytes();
-    final decoded = img.decodeImage(raw);
+    final decoded = _decodeImage(raw);
     if (decoded != null) {
       return _encodeNormalized(decoded, maxDimension: maxDimension);
     }
@@ -72,13 +78,21 @@ class ImageNormalizer {
     );
     if (compressed == null || compressed.isEmpty) return null;
 
-    final compressedDecoded = img.decodeImage(compressed);
+    final compressedDecoded = _decodeImage(compressed);
     if (compressedDecoded == null) return compressed;
 
     return _encodeNormalized(
       compressedDecoded,
       maxDimension: maxDimension,
     );
+  }
+
+  static img.Image? _decodeImage(Uint8List bytes) {
+    try {
+      return img.decodeImage(bytes);
+    } catch (_) {
+      return null;
+    }
   }
 
   static Uint8List _encodeNormalized(
@@ -97,6 +111,11 @@ class ImageNormalizer {
     String path, {
     required int maxDimension,
   }) async {
+    final override = nativeCompressorOverride;
+    if (override != null) {
+      return override(path, maxDimension: maxDimension);
+    }
+
     try {
       final compressed = await FlutterImageCompress.compressWithFile(
         path,

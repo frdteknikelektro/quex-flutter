@@ -1,8 +1,8 @@
 # Quex Technical Notes
 
-This document is the implementation appendix for Quex. The README is the judge-facing pitch; this file explains how the app is built, what is working well, and where the current Gemma 4 integration still has rough edges.
+This document is the implementation appendix for Quex. The README is the judge-facing pitch; this file explains how the app is built, where Gemma 4 is used, and what reliability limits are known.
 
-## System overview
+## 🏗️ System Overview
 
 Quex is a local-first study companion for elementary-age kids. The core loop is:
 
@@ -10,12 +10,12 @@ Quex is a local-first study companion for elementary-age kids. The core loop is:
 2. Create a study session for a subject or chapter.
 3. Add study material as text, photos, or documents.
 4. Generate a quiz from that material.
-5. Open a question and use the tutor chat to explain mistakes.
-6. Persist the session locally so the history stays on-device.
+5. Open a question and use tutor chat to explain mistakes.
+6. Persist the session locally so the history stays on device.
 
 The app is built with Flutter, Riverpod, `go_router`, `sqflite`, and `flutter_gemma`.
 
-## Runtime architecture
+## 📱 Runtime Flow
 
 ### App flow
 
@@ -23,17 +23,17 @@ The app is built with Flutter, Riverpod, `go_router`, `sqflite`, and `flutter_ge
 - Profile selection gates access to the main app.
 - Home shows recent study sessions.
 - Session detail is the hub for materials, quizzes, and tutoring.
-- Quiz and chat flows are separate screens with their own AI prompts.
+- Quiz and chat flows are separate screens with their own prompts and persistence paths.
 
 ### Data flow
 
 - Study data is stored in SQLite.
 - Lightweight state such as active profile and model state is stored in SharedPreferences.
-- AI interactions run on-device through Gemma 4 via LiteRT-LM.
+- AI interactions run on device through Gemma 4 via LiteRT-LM.
 
-## Persistence model
+## 💾 Persistence Model
 
-The main SQLite schema currently includes:
+The main SQLite schema includes:
 
 - `profiles`
 - `sessions`
@@ -52,75 +52,95 @@ Notable behavior:
 - Profile deletion cascades to sessions, materials, quizzes, questions, and chat history.
 - Questions and chat messages are stored separately so quiz review and free-form coaching can be handled independently.
 
-## AI pipeline
+## 🧠 AI Pipeline
 
 ### Model selection and download
 
-`ModelManager` selects between Gemma 4 E4B and E2B based on available device memory. The app downloads the selected LiteRT-LM model from Hugging Face and marks it ready once installed.
+`ModelManager` selects between Gemma 4 E4B and E2B based on available device memory.
+
+- E4B is selected when the device can support the target token budget.
+- E2B is used as the lower-memory fallback.
+- Both models use LiteRT-LM format.
+- The first-run model download is large: about 3.65 GB for E4B and 2.58 GB for E2B.
 
 ### Material preparation
 
 `MaterialPreprocessor` converts stored study materials into a multimodal-ready form:
 
-- text materials become plain text chunks
-- photo materials are reloaded as image bytes
-- documents are skipped in the current preprocessor path
+- Text materials become plain text chunks.
+- Photo materials are reloaded as image bytes.
+- Document materials are skipped in the current preprocessor path.
 
-This means the app can already assemble multiple stored images into a single multimodal context, even though the underlying library support still needs to be strengthened for a cleaner upload path.
+The app can assemble multiple stored images into model context, though the underlying multi-image path still needs improvement for production reliability.
 
 ### Quiz generation
 
-`QuizGenerationService` uses a two-session workflow:
+`QuizGenerationService` uses a staged workflow:
 
-- Session 1 extracts or drafts candidate questions from the materials.
-- Session 2 turns that draft into a final quiz.
+1. Extract existing questions or useful candidate material.
+2. Review extracted questions and identify missing topic coverage.
+3. Generate final multiple-choice quiz drafts.
+4. Parse and validate drafts before storing `Question` rows.
 
-The parser is intentionally defensive because LLM output can be messy. It validates drafts before converting them into stored `Question` rows.
+The parser is intentionally defensive because model output can be messy. It rejects malformed questions, duplicate options, weak options, leaked answer labels, and missing correct-answer metadata.
 
 ### Tutor chat
 
 `QuestionChatService` wraps the question tutor experience. It:
 
-- prewarms a session when possible
-- injects study materials once
-- keeps a question context active for the turn
-- uses the `evaluate_understanding` tool to score correct answers
+- Prewarms a session when possible.
+- Injects study materials once.
+- Keeps the active quiz question in context.
+- Uses short, child-friendly tutor prompts.
+- Keeps question chat separate from broader study coaching.
 
-`GemmaChatService` is the lower-level wrapper around `flutter_gemma` chat sessions.
+`GemmaChatService` is the lower-level wrapper around `flutter_gemma` chat sessions. It handles session creation, streaming text, thinking tokens, image/audio support, and function-call buffering.
 
-## What works well today
+## 🔒 Offline and Privacy Behavior
 
-From the current product and code, these are the strongest parts of the experience:
+Quex is local-first after model setup:
 
-- Voice input modal is responsive and pleasant to use.
-- Multilanguage support is solid enough to make the app usable in Indonesian and English.
-- Vision is strong for the intended study workflow.
-- Offline-first behavior is credible because the app does not depend on a cloud API for core tutoring.
-- The app can use the same local model for quiz generation and explanation.
+- Study data remains in SQLite on the device.
+- Model inference runs locally through Gemma 4 LiteRT-LM.
+- The app does not require a hosted LLM API for the core study loop.
+- Network access is needed for model download and optional setup, not for ordinary post-download tutoring.
 
-## Current Gemma 4 feedback
+## 📊 Current Strengths
 
-These are the main integration issues we have observed while building Quex. They are useful feedback for improving Gemma 4 and the Flutter integration layer:
+- The product loop is focused: photo → quiz → feedback → explanation.
+- Gemma 4 E2B/E4B is used in the actual runtime path.
+- Vision is useful for photographed worksheets and textbook pages.
+- Indonesian and English localization make the app fit the target audience.
+- Persistent sessions make tutoring feel more natural than one-shot prompting.
+- Local persistence makes the submission credible as an offline-first product prototype.
 
-- LiteRT-LM currently does not expose a visual token budget setting. That makes detailed image workflows harder to tune when a page has a lot of visual density.
-- `flutter_gemma` still needs a better multi-image upload path. A more complete upstream fix is tracked in [DenisovAV/flutter_gemma#262](https://github.com/DenisovAV/flutter_gemma/pull/262), and this project already contributed to that work.
-- Thinking mode in Gemma 4 is still hard to steer consistently for this tutoring use case.
+## ⚠️ Known Limitations
+
+- First-run setup requires a multi-GB model download.
+- LiteRT-LM currently does not expose a visual token budget setting.
+- `flutter_gemma` still needs a better multi-image upload path; related upstream work is tracked in [DenisovAV/flutter_gemma#262](https://github.com/DenisovAV/flutter_gemma/pull/262).
+- Thinking mode is hard to steer consistently for short child-friendly responses.
 - Tool calling becomes unreliable in long-context sessions and can corrupt the output stream.
+- Document materials are not fully included in the current `MaterialPreprocessor` path.
 
-These are not deal-breakers for Quex, but they are the main gaps that affect reliability in production tutoring flows.
+## 🧪 Tests and Checks
 
-## Why Gemma 4 still fits Quex
+Run the standard checks before submission:
 
-Despite the rough edges above, Gemma 4 is still a strong fit for this app because:
+```bash
+fvm flutter analyze
+fvm flutter test
+```
 
-- Vision quality is good for worksheets, textbook pages, and photographed study materials.
-- Voice and language support are good for kid-friendly tutoring.
-- The model is responsive enough for an interactive study loop.
-- The on-device story matters more than raw benchmark performance in this product category.
+The most submission-relevant test areas are:
 
-Quex is less about abstract model capability and more about whether a child can take a picture, get a quiz, hear an explanation, and keep going without internet.
+- Image normalization for worksheet photos.
+- Quiz generation parsing and validation.
+- Gemma chat stream handling.
+- Session detail UI behavior.
+- Processing modal and memory game UI stability.
 
-## Where to look in the code
+## 📂 Where to Look
 
 - `lib/core/ai/model_manager.dart`
 - `lib/core/ai/gemma_chat_service.dart`

@@ -1,5 +1,3 @@
-import 'dart:math';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quex/features/processing/emoji_memory_game.dart';
@@ -18,7 +16,7 @@ void main() {
     '🍊',
   ];
 
-  Map<String, List<int>> _positions(List<String> deck) {
+  Map<String, List<int>> positionsFor(List<String> deck) {
     final map = <String, List<int>>{};
     for (var i = 0; i < deck.length; i++) {
       map.putIfAbsent(deck[i], () => []).add(i);
@@ -46,7 +44,7 @@ void main() {
       emojiPool: emojiPool,
       seed: 17,
     );
-    final positions = _positions(deck);
+    final positions = positionsFor(deck);
     final matchEmoji = positions.entries.firstWhere(
       (entry) => entry.value.length == 2,
     );
@@ -56,13 +54,13 @@ void main() {
         .toList();
 
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         home: Scaffold(
           body: EmojiMemoryGame(
             pairCount: 6,
             emojiPool: emojiPool,
             seed: 17,
-            mismatchDelay: const Duration(milliseconds: 20),
+            mismatchDelay: Duration(milliseconds: 20),
           ),
         ),
       ),
@@ -100,16 +98,16 @@ void main() {
       emojiPool: emojiPool,
       seed: 29,
     );
-    final positions = _positions(deck);
+    final positions = positionsFor(deck);
 
     await tester.pumpWidget(
-      MaterialApp(
+      const MaterialApp(
         home: Scaffold(
           body: EmojiMemoryGame(
             pairCount: 6,
             emojiPool: emojiPool,
             seed: 29,
-            mismatchDelay: const Duration(milliseconds: 20),
+            mismatchDelay: Duration(milliseconds: 20),
           ),
         ),
       ),

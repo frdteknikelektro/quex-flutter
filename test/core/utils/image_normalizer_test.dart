@@ -1,6 +1,6 @@
 import 'dart:io';
+import 'dart:typed_data';
 
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 
@@ -22,8 +22,6 @@ Future<File> _writeJpegImage(
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-
-  const channel = MethodChannel('flutter_image_compress');
 
   group('ImageNormalizer', () {
     test('normalizes large images to a 896px longest side', () async {
@@ -99,20 +97,18 @@ void main() {
         quality: 95,
       );
 
-      int calls = 0;
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
+      var calls = 0;
+      ImageNormalizer.nativeCompressorOverride = (
+        path, {
+        required maxDimension,
+      }) async {
         calls++;
-        expect(call.method, 'compressWithFile');
-        final args = call.arguments as List<dynamic>;
-        expect(args[0], source.path);
-        expect(args[1], ImageNormalizer.maxDimension);
-        expect(args[2], ImageNormalizer.maxDimension);
+        expect(path, source.path);
+        expect(maxDimension, ImageNormalizer.maxDimension);
         return fallbackBytes;
-      });
+      };
       addTearDown(() {
-        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-            .setMockMethodCallHandler(channel, null);
+        ImageNormalizer.nativeCompressorOverride = null;
       });
 
       final normalized = await ImageNormalizer.normalizeFile(

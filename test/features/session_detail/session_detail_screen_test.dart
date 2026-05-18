@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quex/core/models/models.dart';
 import 'package:quex/core/state/app_state.dart';
 import 'package:quex/features/session_detail/session_detail_screen.dart';
+import 'package:quex/generated/l10n/app_localizations.dart';
 
 void main() {
   testWidgets('shows Study Materials and Chat with AI', (tester) async {
@@ -29,6 +30,8 @@ void main() {
           sessionBundleProvider(1).overrideWith((ref) async => bundle),
         ],
         child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: SessionDetailScreen(sessionId: 1),
         ),
       ),
@@ -76,6 +79,8 @@ void main() {
           sessionBundleProvider(1).overrideWith((ref) async => bundle),
         ],
         child: const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
           home: SessionDetailScreen(sessionId: 1),
         ),
       ),

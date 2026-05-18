@@ -1,156 +1,171 @@
-# Quex: a local-first AI study companion for kids
+# Quex: Offline Worksheet-to-Practice Help for Kids
 
-Quex helps a child study from the exact worksheet, textbook page, or notes they already have. It turns a photo into a quiz, explains mistakes in plain language, and keeps working offline on-device with Gemma 4. The goal is simple: make homework help available even when a parent is busy, the internet is unreliable, or the child only has one device.
+## 🌍 Problem
 
-## Problem
+In many Indonesian homes, the bottleneck in learning is not curiosity. It is timely help.
 
-In many homes, the hardest part of studying is not the content itself. It is getting timely help when a child gets stuck.
+A child has a worksheet, textbook page, or notes in front of them. The parent wants to help, but may be working, tired, or unable to explain the topic at that moment. The internet may also be unreliable or expensive, and cloud tutoring is a poor fit when the material is a private photo from a child’s schoolwork.
 
-Quex focuses on that gap:
+Two numbers make this concrete:
 
-- Parents are often unavailable during study time.
-- A child may not have a teacher, tutor, or older sibling nearby.
-- School materials are usually on paper, not in a clean digital format.
-- Cloud-based tutoring is fragile when connectivity is poor or expensive.
+- **28%** of Indonesian students had problems at least once a week finding someone who could help them with schoolwork during remote learning. Source: [OECD PISA 2022 Indonesia country note](https://www.oecd.org/en/publications/pisa-2022-results-volume-i-and-ii-country-notes_ed6fbcc5-en/indonesia_c2e1ae0e-en.html).
+- **53.8%** of surveyed Indonesian parents cited work demands as the main reason they could not accompany children studying at home. Source: [Konde / The Conversation Indonesia survey coverage](https://www.konde.co/2020/09/survey-beban-pendampingan-belajar-anak/).
 
-That is why Quex is built as a quiet, offline-first tutor rather than a general chatbot.
+Quex focuses on this narrow gap: **offline worksheet-to-practice help for kids at home.**
 
-### Why this matters
+## 👨‍👩‍👧 Who It Helps
 
-Two context numbers explain why Quex is worth building:
+Quex is for Indonesian elementary families:
 
-- 28% of Indonesian students can't find anyone to help them with schoolwork at home. Source: PISA 2022, OECD.
-- 53.8% of Indonesian parents couldn't accompany their children's study time because of work. Source note: BSKAP / The Conversation Indonesia.
+- Children who study from paper worksheets, textbook pages, or handwritten notes.
+- Parents who cannot always sit beside the child during study time.
+- Homes where privacy, connectivity, or shared devices make cloud AI fragile.
 
-Those numbers are not just a video hook. They describe the gap Quex is meant to close: the child has the material, but not always the help.
+The product is intentionally not a general AI tutor. It is a quiet local study companion for the exact page the child already has.
 
-## Why Quex exists
+## ✨ Product Loop
 
-The app grew from a very ordinary household moment: a child has a test coming up, the parent is busy, and the study material is already in front of them. Quex is meant to reduce that friction.
+The core loop is simple:
 
-Instead of asking a child to type out a question, copy a worksheet into a chatbot, or wait for a network connection, Quex lets them:
+1. A child or parent opens Quex.
+2. They choose a child profile.
+3. They create or open a study session.
+4. They photograph or add the study material.
+5. Quex generates quiz questions from that material.
+6. The child answers.
+7. If the answer is wrong, Quex explains the concept in simple language.
+8. The child retries until the idea clicks.
 
-1. open a study session,
-2. photograph the page,
-3. get a quiz from that material,
-4. answer,
-5. receive a simple explanation when they are wrong,
-6. retry until the concept clicks.
+That loop is the submission: photo → quiz → feedback → explanation → retry.
 
-That is the whole product loop.
+## 🎬 Demo Video
 
-## Demo flow
+Demo: [Quex - AI Study companions for kids](https://www.youtube.com/watch?v=XkzYFKY4NgM)  
+Duration: **2:50**
 
-The demo follows one tight story:
+The video opens with the 28% OECD/PISA statistic, then shows the family study context, Quex running on a tablet, Gemma 4 E2B/E4B positioning, quiz practice, wrong/correct answer feedback, and parent-child interaction.
 
-1. A child opens Quex and chooses a profile.
-2. They create or open a study session for a subject or chapter.
-3. They take a photo of the worksheet or textbook page.
-4. Quex generates quiz questions from the material.
-5. The child answers a question.
-6. If the answer is wrong, Quex explains the concept again.
-7. The child retries with better understanding.
+Because some UI details are hard to read in motion, the README and media gallery should include static screenshots from `docs/screenshot/`.
 
-This is the sequence the video should show, and it is the sequence judges should remember.
+## 📱 APK Demo
 
-## How it works
+APK: [Quex Android prototype](https://drive.google.com/file/d/1FwWAoeTvO0FAUn7hI_Ax-rMta77uOAi0/view?usp=drive_link)
+
+Judge notes:
+
+- The APK is a functional prototype.
+- First launch downloads a Gemma 4 LiteRT-LM model.
+- Gemma 4 E2B is about **2.58 GB**.
+- Gemma 4 E4B is about **3.65 GB**.
+- After the model is downloaded, the core study loop is designed to run locally and offline.
+
+## 🖼️ Screenshots
+
+Static screenshots are included so judges can inspect the app UI without relying only on the moving video.
+
+| | | |
+|---|---|---|
+| ![Quex screenshot 1](docs/screenshot/screenshot-01.jpeg) | ![Quex screenshot 2](docs/screenshot/screenshot-02.jpeg) | ![Quex screenshot 3](docs/screenshot/screenshot-03.jpeg) |
+| ![Quex screenshot 4](docs/screenshot/screenshot-04.jpeg) | ![Quex screenshot 5](docs/screenshot/screenshot-05.jpeg) | ![Quex screenshot 6](docs/screenshot/screenshot-06.jpeg) |
+| ![Quex screenshot 7](docs/screenshot/screenshot-07.jpeg) | ![Quex screenshot 8](docs/screenshot/screenshot-08.jpeg) | ![Quex screenshot 9](docs/screenshot/screenshot-09.jpeg) |
+
+## 🧠 Why Gemma 4
+
+Gemma 4 is central to Quex, not an interchangeable chatbot layer.
+
+- **Multimodal understanding:** children can photograph real pages instead of typing them into a prompt.
+- **Edge deployment:** E2B and E4B make a mobile-first tutoring workflow feasible.
+- **Local inference:** private school materials do not need to be sent to a cloud LLM API.
+- **Persistent tutoring:** the app keeps context across study turns instead of asking one-off questions.
+- **Structured quiz behavior:** Quex asks Gemma 4 to produce quiz drafts, then validates and stores usable questions.
+
+This makes Quex a strong fit for **Future of Education** and **LiteRT / AI Edge** judging.
+
+## 🏗️ Technical Architecture
 
 Quex is a Flutter app built around on-device inference and local persistence.
 
 ### AI layer
 
-- Gemma 4 E4B or E2B runs locally in LiteRT-LM format.
-- `flutter_gemma` provides the on-device chat and generation flow.
-- The app selects a model variant based on available device memory.
-- Quiz generation and tutoring use persistent sessions instead of one-shot prompts.
+- `flutter_gemma` runs Gemma 4 locally.
+- `ModelManager` selects Gemma 4 E2B or E4B based on device memory.
+- Models are downloaded in LiteRT-LM format from Hugging Face.
+- `GemmaChatService` wraps model initialization, sessions, streaming responses, image input, audio support, thinking streams, and function-call handling.
+- Quiz generation uses a staged workflow: extraction, review, generation, validation.
+- Tutor sessions are persistent, so the child can ask follow-up questions.
 
 ### Storage layer
 
-- Study sessions, materials, quizzes, questions, and chat history are stored in SQLite.
-- Lightweight app state such as active profile and model readiness lives in SharedPreferences.
-- The app keeps the study history on-device so the experience survives weak or missing connectivity.
+- SQLite stores profiles, study sessions, materials, quizzes, questions, question messages, and chat messages.
+- SharedPreferences stores lightweight app state such as active profile and model readiness.
+- The app keeps study history on device.
 
 ### Product layer
 
-- The camera flow turns real paper pages into study material.
-- The quiz flow turns that material into practice.
-- The tutor flow explains mistakes in simple language.
-- The voice input modal makes the interaction feel fast and natural.
+- Profile selection supports multiple kids.
+- Material upload supports text, images, and files.
+- Quiz generation turns the child’s source material into practice.
+- Tutor chat explains mistakes in short, child-friendly language.
+- The UI is localized for Indonesian and English.
 
-## Proof points
+## 📊 Proof Points
 
-The writeup should include concrete evidence here before submission.
+Current verified proof from the repository:
 
-### Screenshots to add
+- On-device Gemma 4 E2B/E4B model selection.
+- LiteRT-LM model integration through `flutter_gemma`.
+- Local SQLite persistence.
+- Multimodal material preparation for text and image material.
+- Persistent tutoring and coaching sessions.
+- Defensive quiz parsing and validation before storing generated questions.
+- Public video and APK artifacts.
 
-- [ ] Profile selection screen
-- [ ] Camera capture or material upload
-- [ ] Quiz generation screen
-- [ ] Wrong-answer explanation screen
-- [ ] Tutor chat or voice input modal
-- [ ] Offline mode / airplane mode proof
+Metrics to add before final Kaggle submission if available:
 
-### Metrics to add
+- Device tested.
+- Selected model variant.
+- First model load time.
+- Photo-to-quiz time.
+- Help-to-explanation time.
+- Offline behavior after model download.
 
-- [ ] Device tested
-- [ ] Model variant used
-- [ ] First quiz generation time
-- [ ] First response latency
-- [ ] App start or model load time
-- [ ] Offline behavior notes
+## 🔒 Offline & Privacy
 
-### Two video metrics to show
+Quex is local-first:
 
-These are the two numbers that should appear in the demo video or caption overlays:
+- The child’s worksheet photo is used by the on-device model path.
+- Study history stays in local SQLite.
+- The core tutoring experience does not depend on a hosted LLM API after setup.
+- Offline use is realistic once the model is downloaded.
 
-- Capture to quiz ready: `__ s` from photo capture to the first quiz screen.
-- Help to explanation ready: `__ s` from tapping help to the explanation starting.
+This matters for families with weak connectivity and for parents who do not want a child’s school material sent to a remote model by default.
 
-### Current verified proof from the repo
+## ⚠️ Limitations and Gemma 4 Feedback
 
-- Quex runs on-device with Gemma 4 E4B or E2B in LiteRT-LM format.
-- The app stores study data locally with SQLite.
-- The core tutoring flow is designed around persistent sessions.
-- The product is meant to remain useful without a cloud API.
+Quex is a prototype, and the current Gemma 4 mobile stack still has rough edges:
 
-## What works well today
+- First-run setup requires a large model download.
+- LiteRT-LM currently does not expose a visual token budget setting, which makes dense worksheet photos harder to tune.
+- `flutter_gemma` still needs a cleaner multi-image upload path. This project has already contributed to [DenisovAV/flutter_gemma#262](https://github.com/DenisovAV/flutter_gemma/pull/262).
+- Thinking mode is useful but still hard to steer consistently for short child-friendly tutoring.
+- Tool calling can become unreliable in long-context sessions and may corrupt the output stream.
 
-The strongest parts of the current build are:
+These are not blockers for the submission, but they are important implementation learnings.
 
-- Voice input modal is responsive and easy to use.
-- Multilanguage behavior is solid for the intended tutoring flow.
-- Vision is good enough for photographed worksheets and textbook pages.
-- Offline-first behavior is credible and central to the product.
-- The same local model can support quiz generation and explanation.
+## 🚀 Future Work
 
-## Brief Gemma 4 feedback
+- Add better OCR and page segmentation for dense worksheets.
+- Add parent-facing progress summaries.
+- Add teacher-provided quiz templates.
+- Improve offline model setup and preflight storage checks.
+- Add more robust multimodal batching for multi-page materials.
 
-Quex is a good fit for Gemma 4, but the integration also surfaced a few gaps that are worth calling out honestly:
+## ✅ Closing
 
-- LiteRT-LM currently does not expose a visual token budget setting, which makes dense page handling harder to tune.
-- `flutter_gemma` still needs a better multi-image upload path, and this project already contributed to [DenisovAV/flutter_gemma#262](https://github.com/DenisovAV/flutter_gemma/pull/262).
-- Gemma 4 steering in thinking mode is still hard for this tutoring use case.
-- Tool calling becomes unreliable in long-context sessions and can corrupt the output stream.
+Quex is not trying to replace teachers or parents. It helps during the ordinary moment when a child is stuck, the material is already on the page, and help is not immediately available.
 
-These are not blockers for Quex, but they are the main rough edges that affect reliability in a real study flow.
+The submission should leave judges with three clear ideas:
 
-## Why Gemma 4 still fits
-
-Gemma 4 still fits Quex well because the product depends more on practical interaction quality than benchmark theater.
-
-- The vision experience is good for real study material.
-- Voice and multilingual support make the app usable for children.
-- On-device inference matters more than cloud convenience in this use case.
-- The app is strongest when it can go from photo to quiz to explanation without leaving the device.
-
-## Closing summary
-
-Quex is not trying to be a broad AI tutor for everyone. It is a focused offline study companion for kids who need help with the exact page in front of them.
-
-The submission should make three things obvious:
-
-1. the problem is real,
-2. the product works on-device,
-3. Gemma 4 is a credible fit for the workflow.
-
-That is the story the video should support, and the story the judges should be able to scan quickly in this writeup.
+1. The problem is real.
+2. The app works as a focused local prototype.
+3. Gemma 4 is a credible fit for worksheet-to-practice learning on the edge.

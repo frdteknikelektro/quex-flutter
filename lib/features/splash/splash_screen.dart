@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -20,10 +21,14 @@ class SplashScreen extends ConsumerStatefulWidget {
 class _SplashScreenState extends ConsumerState<SplashScreen>
     with TickerProviderStateMixin {
   static const _duckAsset = 'assets/images/splash/duck_mascot.png';
-  static const _skyAccentsLeftAsset = 'assets/images/splash/sky_accents-left.png';
-  static const _skyAccentsRightAsset = 'assets/images/splash/sky_accents-right.png';
-  static const _skyAccentsLeftDarkAsset = 'assets/images/splash/sky_accents-left-dark.png';
-  static const _skyAccentsRightDarkAsset = 'assets/images/splash/sky_accents-right-dark.png';
+  static const _skyAccentsLeftAsset =
+      'assets/images/splash/sky_accents-left.png';
+  static const _skyAccentsRightAsset =
+      'assets/images/splash/sky_accents-right.png';
+  static const _skyAccentsLeftDarkAsset =
+      'assets/images/splash/sky_accents-left-dark.png';
+  static const _skyAccentsRightDarkAsset =
+      'assets/images/splash/sky_accents-right-dark.png';
   static const _foregroundFloraLeftAsset =
       'assets/images/splash/foreground_flora-left.png';
   static const _foregroundFloraRightAsset =
@@ -39,6 +44,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   late final Animation<Offset> _bounceAnimation;
 
   ProviderSubscription<ModelDownloadState>? _downloadStateSubscription;
+  Timer? _bounceTimer;
+  Timer? _fadeTimer;
+  Timer? _completionNavigationTimer;
 
   @override
   void initState() {
@@ -69,10 +77,10 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       curve: Curves.easeOutCubic,
     );
 
-    Future.delayed(const Duration(milliseconds: 160), () {
+    _bounceTimer = Timer(const Duration(milliseconds: 160), () {
       if (mounted) _bounceController.forward();
     });
-    Future.delayed(const Duration(milliseconds: 260), () {
+    _fadeTimer = Timer(const Duration(milliseconds: 260), () {
       if (mounted) _fadeController.forward();
     });
 
@@ -86,7 +94,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
         if (next.isCompleted && previous?.isCompleted != true) {
           debugPrint(
               '[Splash] Download completed, navigating to profile selection');
-          Future.delayed(const Duration(milliseconds: 2000), () {
+          _completionNavigationTimer?.cancel();
+          _completionNavigationTimer =
+              Timer(const Duration(milliseconds: 2000), () {
             if (mounted) {
               context.go(Routes.profileSelection);
             }
@@ -99,6 +109,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   @override
   void dispose() {
     _downloadStateSubscription?.close();
+    _bounceTimer?.cancel();
+    _fadeTimer?.cancel();
+    _completionNavigationTimer?.cancel();
     _bounceController.dispose();
     _fadeController.dispose();
     super.dispose();
@@ -169,7 +182,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               ),
               Positioned.fill(
                 child: CustomPaint(
-                  painter: _SplashLandscapePainter(isDark: theme.brightness == Brightness.dark),
+                  painter: _SplashLandscapePainter(
+                      isDark: theme.brightness == Brightness.dark),
                 ),
               ),
               // Left half of sky accents
@@ -180,7 +194,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
                       maxWidth: size.width / 2,
-                      maxHeight: size.height * 0.3, // Limit to 30% of screen height
+                      maxHeight:
+                          size.height * 0.3, // Limit to 30% of screen height
                     ),
                     child: Opacity(
                       opacity: 0.86,
