@@ -46,5 +46,6 @@ flutter {
 }
 
 dependencies {
+    implementation("com.google.auto.value:auto-value-annotations:1.10.4")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }

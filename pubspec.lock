@@ -385,10 +385,11 @@ packages:
   flutter_gemma:
     dependency: "direct main"
     description:
-      path: "../flutter_gemma"
-      relative: true
-    source: path
-    version: "0.15.2"
+      name: flutter_gemma
+      sha256: b1491d0c0cad6dfe2c6441974e39215ed6e0b177e5e5502c3efa60cc03b64cb1
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.15.3"
   flutter_image_compress:
     dependency: "direct main"
     description:
