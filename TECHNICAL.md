@@ -96,6 +96,21 @@ The parser is intentionally defensive because model output can be messy. It reje
 
 `GemmaChatService` is the lower-level wrapper around `flutter_gemma` chat sessions. It handles session creation, streaming text, thinking tokens, image/audio support, and function-call buffering.
 
+### Interaction latency
+
+The quiz flow is designed to hide tutor startup cost from the user instead of making them wait for every question.
+
+- `QuizDetailScreen` starts `QuestionChatService.prewarmSession()` before the user opens a question, so the tutor context and model session are already warm.
+- The first question can reuse that prepared session instead of paying the full initialization cost on demand.
+- When the user goes back to the quiz list and picks another question, the screen waits for the active turn to finish, then warms the tutor session again so the next question opens faster.
+
+The actual warmup is a deliberate fake turn:
+
+- The app sends an internal prompt that says the model should read the study materials, do nothing else, and reply exactly `READY`.
+- If images exist, they are attached to that warmup turn so the model ingests the same material it will use later.
+- The code then waits for the streamed response to finish and checks for the `READY` cue before marking the tutor session as warm.
+- When the user leaves a question, the app waits for `waitForQuestionTurnToEnd()` so the previous answer stream is fully settled before reusing or rebuilding the tutor session for the next question.
+
 ## 🔒 Offline and Privacy Behavior
 
 Quex is local-first after model setup:
